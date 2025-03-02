@@ -81,7 +81,16 @@ struct PasteboardClientLive {
         let script = """
         tell application "System Events"
             tell process (name of first application process whose frontmost is true)
-                click menu item "Paste" of menu "Edit" of menu bar item "Edit" of menu bar 1
+                -- Open the "Edit" menu
+                click menu item "Paste" of menu bar item "Edit" of menu bar 1
+                
+                -- Check if the "Paste" menu item exits
+                if exists menu item "Paste" of menu item "Paste" of menu 1 of menu bar item "Edit" of menu bar 1 then
+                    click menu item "Paste" of menu item "Paste" of menu 1 of menu bar item "Edit" of menu bar 1
+                else
+                    -- If not, click the "Paste" menu item directly
+                    click menu item "Paste" of menu 1 of menu bar item "Edit" of menu bar 1
+                end if
             end tell
         end tell
         """
