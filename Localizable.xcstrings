@@ -1,0 +1,507 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+      "shouldTranslate" : false
+    },
+    "•" : {
+      "shouldTranslate" : false
+    },
+    "About" : {
+      "comment" : "Settings -> About Section headline",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über"
+          }
+        }
+      }
+    },
+    "Accessibility" : {
+      "comment" : "Settings -> Accessibility Section headline",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen"
+          }
+        }
+      }
+    },
+    "Are you sure you want to delete all transcripts? This action cannot be undone." : {
+      "comment" : "Delete transcript history confirm",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bist du sicher, dass du alle Transkriptionen löschen möchtest? Das kann nicht gängig gemacht werden."
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "comment" : "Cancel deleting All Transcripts",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        }
+      }
+    },
+    "Check for Updates" : {
+      "comment" : "Check for updates button in About section of Settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Updates suchen"
+          }
+        }
+      }
+    },
+    "Check for Updates…" : {
+      "comment" : "Check for updates button in top menu",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche nach Updates…"
+          }
+        }
+      }
+    },
+    "Copied" : {
+      "comment" : "Transcription from history copied.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert"
+          }
+        }
+      }
+    },
+    "Copy to clipboard" : {
+      "comment" : "copy transcription from history.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Zwischenablage kopieren"
+          }
+        }
+      }
+    },
+    "Delete All" : {
+      "comment" : "Delete all transcriptions from history.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle löschen"
+          }
+        }
+      }
+    },
+    "Delete All Transcripts" : {
+      "comment" : "\"Delete all transcriptions from history\" pop up headline",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Transkriptionen löschen"
+          }
+        }
+      }
+    },
+    "Delete Selected Model" : {
+      "comment" : "Delete the selected model in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewähltes Modell löschen"
+          }
+        }
+      }
+    },
+    "Delete transcript" : {
+      "comment" : "Delete individual transcript button. Help text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription löschen"
+          }
+        }
+      }
+    },
+    "Download Error: %@" : {
+      "comment" : "Model download error.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloadfehler: %@"
+          }
+        }
+      }
+    },
+    "Download Selected Model" : {
+      "comment" : "In Transcription Model section in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewähltes Modell herunterladen"
+          }
+        }
+      }
+    },
+    "Downloading %@..." : {
+      "comment" : "In Transcription Model section in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade %@ herunter"
+          }
+        }
+      }
+    },
+    "Ensure Hex can access your microphone and system accessibility features." : {
+      "comment" : "Footer for permissions section in settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sicherstellen, dass Hex dein Mikrofon und Systemweite Bedienungshilfen benutzen kann."
+          }
+        }
+      }
+    },
+    "Enter a key combination" : {
+      "comment" : "Replacement text to be shown when hotkey selection is active.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabe einer Tastenkombination"
+          }
+        }
+      }
+    },
+    "General" : {
+      "comment" : "General section in Settings Header.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemein"
+          }
+        }
+      }
+    },
+    "Granted" : {
+      "comment" : "Label title for granted permissions.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugelassen"
+          }
+        }
+      }
+    },
+    "Hex is open source" : {
+      "comment" : "In about section in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hex ist Open Source"
+          }
+        }
+      }
+    },
+    "History" : {
+      "comment" : "History View Title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionsaktivitäten"
+          }
+        }
+      }
+    },
+    "Hot Key" : {
+      "comment" : "hotkey section in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tassenkombination"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "comment" : "Microphone permission.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        }
+      }
+    },
+    "No models found." : {
+      "comment" : "Replacement text in transcription model section when no available models are found",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Modelle gefunden."
+          }
+        }
+      }
+    },
+    "No Transcriptions" : {
+      "comment" : "Empty history headline.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Transkriptionen"
+          }
+        }
+      }
+    },
+    "Open on Login" : {
+      "comment" : "Label for general setting to open app on login.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Anmeldung öffnen"
+          }
+        }
+      }
+    },
+    "Output Language" : {
+      "comment" : "transcription model setting for which language to use for text output.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabesprache"
+          }
+        }
+      }
+    },
+    "Pause Media while Recording" : {
+      "comment" : "Label for general setting whether to pause media while recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medien während der Aufnahme pausieren"
+          }
+        }
+      }
+    },
+    "Permissions" : {
+      "comment" : "Header for permission section in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen"
+          }
+        }
+      }
+    },
+    "Play audio" : {
+      "comment" : "Help text for play button in history view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio abspielen"
+          }
+        }
+      }
+    },
+    "Prevent System Sleep while Recording" : {
+      "comment" : "Label for general setting whether to prevent system sleep while recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemschlaf während der Aufnahme verhindern"
+          }
+        }
+      }
+    },
+    "Request Permission" : {
+      "comment" : "Button texts for requesting permissions in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubnis anfordern"
+          }
+        }
+      }
+    },
+    "Selected Model" : {
+      "comment" : "Label for selecting which model is active",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell auswählen"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "comment" : "title for settings view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        }
+      }
+    },
+    "Settings..." : {
+      "comment" : "button in top bar for opening settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen…"
+          }
+        }
+      }
+    },
+    "Show Dock Icon" : {
+      "comment" : "label for general setting whether to show the dock icon or not.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dock-Symbol anzeigen"
+          }
+        }
+      }
+    },
+    "Sound" : {
+      "comment" : "sound section in general settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton"
+          }
+        }
+      }
+    },
+    "Sound Effects" : {
+      "comment" : "Label for toggle for sound effects in sound section in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton-Effekte"
+          }
+        }
+      }
+    },
+    "Stop playback" : {
+      "comment" : "Help text for play button in history view.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe anhalten."
+          }
+        }
+      }
+    },
+    "Transcription Model" : {
+      "comment" : "Label for Transcription Model Section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionsmodell"
+          }
+        }
+      }
+    },
+    "Use clipboard to insert" : {
+      "comment" : "Label for toggle in general section.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage zum Einfügen verwenden"
+          }
+        }
+      }
+    },
+    "Use clipboard to insert text. Fast but may not restore all clipboard content.\nTurn off to use simulated keypresses. Slower, but doesn't need to restore clipboard" : {
+      "comment" : "More info on \"use clipboard to insert\" toggle in general section.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage zum Einfügen von Text benutzen. Schnell, aber möglicherweise wird nicht der gesamte Inhalt der Zwischenablage wiederhergestellt.\nAusschalten, um simulierte Tasteneingaben zu verwenden. Langsamer, aber muss die Zwischenablage nicht wiederherstellen."
+          }
+        }
+      }
+    },
+    "Version" : {
+      "comment" : "Label for version in About section.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        }
+      }
+    },
+    "Visit our GitHub" : {
+      "comment" : "button text to link to github",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Besuche unser GitHub"
+          }
+        }
+      }
+    },
+    "Your transcription history will appear here." : {
+      "comment" : "Empty history subtitle.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Transkriptionsaktivitäten werden hier angezeigt werden"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
