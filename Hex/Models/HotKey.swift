@@ -32,7 +32,7 @@ public enum Modifier: Identifiable, Codable, Equatable, Hashable, Comparable {
   }
 }
 
-public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral {
+public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Hashable {
   var modifiers: Set<Modifier>
 
   var sorted: [Modifier] {
@@ -102,7 +102,7 @@ public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral {
   }
 }
 
-public struct HotKey: Codable, Equatable {
+public struct HotKey: Codable, Equatable, Hashable {
   public var key: Key?
   public var modifiers: Modifiers
 }
