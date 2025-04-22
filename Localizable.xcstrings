@@ -17,6 +17,9 @@
         }
       }
     },
+    "%.2f" : {
+
+    },
     "•" : {
       "shouldTranslate" : false
     },
@@ -67,6 +70,15 @@
     "Add Removal" : {
 
     },
+    "AI Enhancement" : {
+
+    },
+    "AI enhancement requires Ollama to be installed and running locally." : {
+
+    },
+    "AI enhancing text..." : {
+
+    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -85,6 +97,9 @@
 
     },
     "Become a Sponsor" : {
+
+    },
+    "Browse Models" : {
 
     },
     "Cancel" : {
@@ -120,6 +135,9 @@
           }
         }
       }
+    },
+    "Check Connection" : {
+
     },
     "Check for Updates" : {
       "comment" : "Check for updates button in About section of Settings",
@@ -181,6 +199,9 @@
     "Copy transcription text to clipboard in addition to pasting it" : {
 
     },
+    "Creativity" : {
+
+    },
     "Delete" : {
 
     },
@@ -232,6 +253,9 @@
     "Do Nothing" : {
 
     },
+    "Done" : {
+
+    },
     "Download" : {
 
     },
@@ -245,6 +269,9 @@
           }
         }
       }
+    },
+    "Download Ollama" : {
+
     },
     "Download Selected Model" : {
       "comment" : "In Transcription Model section in settings.",
@@ -285,6 +312,15 @@
     "Enable Word Removals" : {
 
     },
+    "Edit" : {
+
+    },
+    "Enable AI to improve transcription quality by fixing grammar, formatting, and errors." : {
+
+    },
+    "Enhancement Prompt" : {
+
+    },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
       "extractionState" : "stale",
@@ -307,6 +343,9 @@
           }
         }
       }
+    },
+    "Error: %@" : {
+
     },
     "General" : {
       "comment" : "General section in Settings Header.",
@@ -386,7 +425,22 @@
     "Input Monitoring is required so Hex can listen for your hotkey." : {
 
     },
+    "Instructions" : {
+
+    },
     "Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed." : {
+
+    },
+    "Language Model" : {
+
+    },
+    "Loading available models..." : {
+
+    },
+    "Lower values produce more consistent, conservative improvements. Higher values allow more creative rewording." : {
+
+    },
+    "Make changes to customize how the AI enhances your transcriptions. Be specific about what should be preserved or changed." : {
 
     },
     "Match" : {
@@ -422,6 +476,12 @@
     "Mute Volume" : {
 
     },
+    "Model Selection" : {
+
+    },
+    "No models found in Ollama" : {
+
+    },
     "No models found." : {
       "comment" : "Replacement text in transcription model section when no available models are found",
       "extractionState" : "stale",
@@ -449,6 +509,18 @@
 
     },
     "Oldest entries will be automatically deleted when limit is reached" : {
+
+    },
+    "Ollama Connected" : {
+
+    },
+    "Ollama connection required to view models" : {
+
+    },
+    "Ollama Not Connected" : {
+
+    },
+    "Ollama Status" : {
 
     },
     "On" : {
@@ -525,6 +597,9 @@
         }
       }
     },
+    "Precision" : {
+
+    },
     "Prevent System Sleep while Recording" : {
       "comment" : "Label for general setting whether to prevent system sleep while recording.",
       "localizations" : {
@@ -572,6 +647,12 @@
         }
       }
     },
+    "Reset to Default" : {
+
+    },
+    "Response Style" : {
+
+    },
     "Save Transcription History" : {
 
     },
@@ -582,6 +663,9 @@
 
     },
     "Scratchpad" : {
+
+    },
+    "Select AI model:" : {
 
     },
     "Selected device not connected. System default will be used." : {
@@ -651,6 +735,9 @@
     "Show more" : {
 
     },
+    "Smaller models are faster but less capable. Llama3 offers a good balance of speed and quality." : {
+
+    },
     "Sound" : {
       "comment" : "sound section in general settings.",
       "localizations" : {
@@ -699,6 +786,12 @@
     "Transcription history is currently disabled." : {
 
     },
+    "These instructions tell the AI how to improve your transcribed text." : {
+
+    },
+    "To set up Ollama:" : {
+
+    },
     "Transcription Model" : {
       "comment" : "Label for Transcription Model Section",
       "localizations" : {
@@ -714,6 +807,9 @@
 
     },
     "Unlimited" : {
+
+    },
+    "Use AI Enhancement" : {
 
     },
     "Use at least one modifier (⌘, ⌥, ⇧, ⌃) plus a key." : {

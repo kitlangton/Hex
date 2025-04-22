@@ -55,12 +55,17 @@ struct TranscriptionFeature {
 
     // Model availability
     case modelMissing
+
+    // AI Enhancement flow
+    case aiEnhancementResult(String, URL)
+    case aiEnhancementError(Error)
   }
 
   enum CancelID {
     case metering
     case recordingCleanup
     case transcription
+    case aiEnhancement
   }
 
   @Dependency(\.transcription) var transcription
@@ -71,6 +76,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.aiEnhancement) var aiEnhancement
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -121,6 +127,15 @@ struct TranscriptionFeature {
 
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
+
+      // MARK: - AI Enhancement Results
+
+      case let .aiEnhancementResult(result, audioURL):
+        return handleAIEnhancement(&state, result: result, audioURL: audioURL)
+
+      case let .aiEnhancementError(error):
+        print("AI Enhancement error: \(error)")
+        return .none
 
       case .modelMissing:
         return .none
@@ -395,10 +410,76 @@ private extension TranscriptionFeature {
     result: String,
     audioURL: URL
   ) -> Effect<Action> {
+    // First check if we should use AI enhancement
+    if state.hexSettings.useAIEnhancement {
+      return enhanceWithAI(result: result, audioURL: audioURL, state: state)
+    } else {
+      state.isTranscribing = false
+      state.isPrewarming = false
+
+      // If empty text, nothing else to do
+      guard !result.isEmpty else {
+        return .none
+      }
+
+      let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+      let sourceAppBundleID = state.sourceAppBundleID
+      let sourceAppName = state.sourceAppName
+      let transcriptionHistory = state.$transcriptionHistory
+
+      return .run { send in
+        do {
+          try await finalizeRecordingAndStoreTranscript(
+            result: result,
+            duration: duration,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            audioURL: audioURL,
+            transcriptionHistory: transcriptionHistory
+          )
+        } catch {
+          await send(.transcriptionError(error, audioURL))
+        }
+      }
+      .cancellable(id: CancelID.transcription)
+    }
+  }
+  
+  // MARK: - AI Enhancement Handlers
+  
+  // Use AI to enhance the transcription result
+  private func enhanceWithAI(result: String, audioURL: URL, state: State) -> Effect<Action> {
+    guard !result.isEmpty else {
+      return .send(.aiEnhancementResult(result, audioURL))
+    }
+
+    let model = state.hexSettings.selectedAIModel
+    let options = EnhancementOptions(
+      prompt: state.hexSettings.aiEnhancementPrompt,
+      temperature: state.hexSettings.aiEnhancementTemperature
+    )
+
+    return .run { send in
+      do {
+        let enhancedText = try await aiEnhancement.enhance(result, model, options) { _ in }
+        await send(.aiEnhancementResult(enhancedText, audioURL))
+      } catch {
+        print("Error enhancing text with AI: \(error)")
+        await send(.aiEnhancementResult(result, audioURL))
+      }
+    }
+    .cancellable(id: CancelID.aiEnhancement)
+  }
+  
+  // Handle the AI enhancement result
+  private func handleAIEnhancement(
+    _ state: inout State,
+    result: String,
+    audioURL: URL
+  ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
 
-    // Check for force quit command (emergency escape hatch)
     if ForceQuitCommandDetector.matches(result) {
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
       return .run { _ in
@@ -409,7 +490,6 @@ private extension TranscriptionFeature {
       }
     }
 
-    // If empty text, nothing else to do
     guard !result.isEmpty else {
       return .none
     }
@@ -534,10 +614,9 @@ private extension TranscriptionFeature {
 
     return .merge(
       .cancel(id: CancelID.transcription),
+      .cancel(id: CancelID.aiEnhancement),
       .run { [sleepManagement] _ in
-        // Allow system to sleep again
         await sleepManagement.allowSleep()
-        // Stop the recording to release microphone access
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
         try? FileManager.default.removeItem(at: url)
@@ -570,7 +649,9 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing {
+    if store.isTranscribing && store.hexSettings.useAIEnhancement {
+      return .enhancing 
+    } else if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording

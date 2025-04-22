@@ -59,6 +59,8 @@ struct SettingsFeature {
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
 
+    // AI Enhancement
+    var aiEnhancement = AIEnhancementFeature.State()
   }
 
   enum Action: BindableAction {
@@ -113,6 +115,9 @@ struct SettingsFeature {
     case updateWordRemapping(WordRemapping)
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
+
+    // AI Enhancement
+    case aiEnhancement(AIEnhancementFeature.Action)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -218,6 +223,10 @@ struct SettingsFeature {
 
     Scope(state: \.modelDownload, action: \.modelDownload) {
       ModelDownloadFeature()
+    }
+    
+    Scope(state: \.aiEnhancement, action: \.aiEnhancement) {
+      AIEnhancementFeature()
     }
 
     Reduce { state, action in
@@ -537,6 +546,10 @@ struct SettingsFeature {
         return .none
 
       case .modelDownload:
+        return .none
+        
+      // AI Enhancement
+      case .aiEnhancement:
         return .none
       
       // Microphone device selection

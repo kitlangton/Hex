@@ -17,12 +17,15 @@ struct TranscriptionIndicatorView: View {
     case recording
     case transcribing
     case prewarming
+    case enhancing
   }
 
   var status: Status
   var meter: Meter
 
   let transcribeBaseColor: Color = .blue
+  let enhanceBaseColor: Color = .green
+
   private var backgroundColor: Color {
     switch status {
     case .hidden: return Color.clear
@@ -30,6 +33,7 @@ struct TranscriptionIndicatorView: View {
     case .recording: return .red.mix(with: .black, by: 0.5).mix(with: .red, by: meter.averagePower * 3)
     case .transcribing: return transcribeBaseColor.mix(with: .black, by: 0.5)
     case .prewarming: return transcribeBaseColor.mix(with: .black, by: 0.5)
+    case .enhancing: return enhanceBaseColor.mix(with: .black, by: 0.5)
     }
   }
 
@@ -40,6 +44,7 @@ struct TranscriptionIndicatorView: View {
     case .recording: return Color.red.mix(with: .white, by: 0.1).opacity(0.6)
     case .transcribing: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
     case .prewarming: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
+    case .enhancing: return enhanceBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
     }
   }
 
@@ -50,6 +55,7 @@ struct TranscriptionIndicatorView: View {
     case .recording: return Color.red
     case .transcribing: return transcribeBaseColor
     case .prewarming: return transcribeBaseColor
+    case .enhancing: return enhanceBaseColor
     }
   }
 
@@ -127,10 +133,10 @@ struct TranscriptionIndicatorView: View {
           }
         }
       
-      // Show tooltip when prewarming
-      if status == .prewarming {
+      // Show tooltip for prewarming/enhancing
+      if status == .prewarming || status == .enhancing {
         VStack(spacing: 4) {
-          Text("Model prewarming...")
+          Text(status == .prewarming ? "Model prewarming..." : "AI enhancing text...")
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(.white)
             .padding(.horizontal, 8)
@@ -156,6 +162,7 @@ struct TranscriptionIndicatorView: View {
     TranscriptionIndicatorView(status: .recording, meter: .init(averagePower: 0.5, peakPower: 0.5))
     TranscriptionIndicatorView(status: .transcribing, meter: .init(averagePower: 0, peakPower: 0))
     TranscriptionIndicatorView(status: .prewarming, meter: .init(averagePower: 0, peakPower: 0))
+    TranscriptionIndicatorView(status: .enhancing, meter: .init(averagePower: 0, peakPower: 0))
   }
   .padding(40)
 }
