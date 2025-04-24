@@ -132,18 +132,21 @@ struct TranscriptionIndicatorView: View {
         .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: transcribeEffect)
         .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: enhanceEffect)
         .compositingGroup()
-        // Task for transcribing animation effect
-        .task(id: status == .transcribing) {
-          while status == .transcribing, !Task.isCancelled {
-            transcribeEffect += 1
-            try? await Task.sleep(for: .seconds(0.25))
-          }
-        }
-        // Task for enhancement animation effect
-        .task(id: status == .enhancing) {
-          while status == .enhancing, !Task.isCancelled {
-            enhanceEffect += 1
-            try? await Task.sleep(for: .seconds(0.25))
+        // Shared animation task to reduce the number of active tasks
+        .task(id: status) {
+          // Only animate if we're in a state that needs animation
+          guard status == .transcribing || status == .enhancing else { return }
+          
+          // Use a single timer loop for both types of animations
+          let animationDelay: Duration = .seconds(0.3)
+          while (status == .transcribing || status == .enhancing), !Task.isCancelled {
+            // Update the appropriate counter based on current status
+            if status == .transcribing {
+              transcribeEffect += 1
+            } else if status == .enhancing {
+              enhanceEffect += 1
+            }
+            try? await Task.sleep(for: animationDelay)
           }
         }
       

@@ -123,32 +123,32 @@ struct PasteboardClientLive {
                 // Fn key doesn't need explicit key down/up
             }
         }
-        
+
         // Press modifiers down
         for keyCode in modifierKeyCodes {
             let modDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
             modDown?.post(tap: .cghidEventTap)
         }
-        
+
         // Press main key if present
         if let key = command.key {
             let keyCode = Sauce.shared.keyCode(for: key)
-            
+
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
             keyDown?.flags = flags
             keyDown?.post(tap: .cghidEventTap)
-            
+
             let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
             keyUp?.flags = flags
             keyUp?.post(tap: .cghidEventTap)
         }
-        
+
         // Release modifiers in reverse order
         for keyCode in modifierKeyCodes.reversed() {
             let modUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
             modUp?.post(tap: .cghidEventTap)
         }
-        
+
         pasteboardLogger.debug("Sent keyboard command: \(command.displayName)")
     }
 
