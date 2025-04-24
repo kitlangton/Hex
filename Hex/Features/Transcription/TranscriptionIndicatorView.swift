@@ -68,6 +68,7 @@ struct TranscriptionIndicatorView: View {
   }
 
   @State var transcribeEffect = 0
+  @State var enhanceEffect = 0
 
   var body: some View {
     let averagePower = min(1, meter.averagePower * 3)
@@ -107,11 +108,15 @@ struct TranscriptionIndicatorView: View {
         }
         .cornerRadius(cornerRadius)
         .shadow(
-          color: status == .recording ? .red.opacity(averagePower) : .red.opacity(0),
+          color: status == .recording ? .red.opacity(averagePower) : 
+                 status == .enhancing ? enhanceBaseColor.opacity(0.7) :
+                 status == .transcribing ? transcribeBaseColor.opacity(0.7) : .red.opacity(0),
           radius: 4
         )
         .shadow(
-          color: status == .recording ? .red.opacity(averagePower * 0.5) : .red.opacity(0),
+          color: status == .recording ? .red.opacity(averagePower * 0.5) : 
+                 status == .enhancing ? enhanceBaseColor.opacity(0.4) :
+                 status == .transcribing ? transcribeBaseColor.opacity(0.4) : .red.opacity(0),
           radius: 8
         )
         .animation(.interactiveSpring(), value: meter)
@@ -123,20 +128,29 @@ struct TranscriptionIndicatorView: View {
         .scaleEffect(status == .hidden ? 0.0 : 1)
         .blur(radius: status == .hidden ? 4 : 0)
         .animation(.bouncy(duration: 0.3), value: status)
-        .changeEffect(.glow(color: .red.opacity(0.5), radius: 8), value: status)
+        .changeEffect(.glow(color: status == .enhancing ? enhanceBaseColor.opacity(0.5) : .red.opacity(0.5), radius: 8), value: status)
         .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: transcribeEffect)
+        .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: enhanceEffect)
         .compositingGroup()
+        // Task for transcribing animation effect
         .task(id: status == .transcribing) {
           while status == .transcribing, !Task.isCancelled {
             transcribeEffect += 1
             try? await Task.sleep(for: .seconds(0.25))
           }
         }
+        // Task for enhancement animation effect
+        .task(id: status == .enhancing) {
+          while status == .enhancing, !Task.isCancelled {
+            enhanceEffect += 1
+            try? await Task.sleep(for: .seconds(0.25))
+          }
+        }
       
-      // Show tooltip for prewarming/enhancing
-      if status == .prewarming || status == .enhancing {
+      // Show tooltip only for prewarming, not for enhancing
+      if status == .prewarming {
         VStack(spacing: 4) {
-          Text(status == .prewarming ? "Model prewarming..." : "AI enhancing text...")
+          Text("Model prewarming...")
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(.white)
             .padding(.horizontal, 8)

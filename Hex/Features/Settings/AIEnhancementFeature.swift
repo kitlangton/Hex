@@ -22,7 +22,7 @@ struct AIEnhancementFeature {
         
         // Computed property for convenient access to the default model
         var defaultAIModel: String {
-            "llama3:8b"
+            "gemma3"
         }
     }
     

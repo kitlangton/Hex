@@ -22,6 +22,7 @@ struct TranscriptionFeature {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
+    var isEnhancing: Bool = false // Add this to track when AI enhancement is active
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
@@ -57,6 +58,7 @@ struct TranscriptionFeature {
     case modelMissing
 
     // AI Enhancement flow
+    case setEnhancingState(Bool)
     case aiEnhancementResult(String, URL)
     case aiEnhancementError(Error)
   }
@@ -129,6 +131,10 @@ struct TranscriptionFeature {
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
 
       // MARK: - AI Enhancement Results
+
+      case let .setEnhancingState(isEnhancing):
+        state.isEnhancing = isEnhancing
+        return .none
 
       case let .aiEnhancementResult(result, audioURL):
         return handleAIEnhancement(&state, result: result, audioURL: audioURL)
@@ -459,16 +465,20 @@ private extension TranscriptionFeature {
       temperature: state.hexSettings.aiEnhancementTemperature
     )
 
-    return .run { send in
-      do {
-        let enhancedText = try await aiEnhancement.enhance(result, model, options) { _ in }
-        await send(.aiEnhancementResult(enhancedText, audioURL))
-      } catch {
-        print("Error enhancing text with AI: \(error)")
-        await send(.aiEnhancementResult(result, audioURL))
+    return .merge(
+      .send(.setEnhancingState(true)),
+      .run { send in
+        do {
+          let enhancedText = try await aiEnhancement.enhance(result, model, options) { _ in }
+          await send(.aiEnhancementResult(enhancedText, audioURL))
+        } catch {
+          print("Error enhancing text with AI: \(error)")
+          await send(.aiEnhancementResult(result, audioURL))
+        }
       }
-    }
-    .cancellable(id: CancelID.aiEnhancement)
+    )
+    // Don't make this cancellable to avoid premature cancellation
+    // This may have been causing the issue with the enhancement being cancelled
   }
   
   // Handle the AI enhancement result
@@ -479,6 +489,7 @@ private extension TranscriptionFeature {
   ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
+    state.isEnhancing = false  // Reset the enhancing state
 
     if ForceQuitCommandDetector.matches(result) {
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
@@ -611,6 +622,7 @@ private extension TranscriptionFeature {
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
+    state.isEnhancing = false
 
     return .merge(
       .cancel(id: CancelID.transcription),
@@ -649,7 +661,7 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing && store.hexSettings.useAIEnhancement {
+    if store.isEnhancing {
       return .enhancing 
     } else if store.isTranscribing {
       return .transcribing

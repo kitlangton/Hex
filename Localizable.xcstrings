@@ -76,9 +76,6 @@
     "AI enhancement requires Ollama to be installed and running locally." : {
 
     },
-    "AI enhancing text..." : {
-
-    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -249,6 +246,12 @@
           }
         }
       }
+    },
+    "Disable auto-capitalization" : {
+
+    },
+    "Disable automatic capitalization in transcriptions" : {
+
     },
     "Do Nothing" : {
 
