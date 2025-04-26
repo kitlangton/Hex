@@ -97,12 +97,34 @@ struct HexSettings: Codable, Equatable {
 }
 
 extension SharedReaderKey
-	where Self == FileStorageKey<HexSettings>.Default
+    where Self == FileStorageKey<HexSettings>.Default
 {
-	static var hexSettings: Self {
-		Self[
-			.fileStorage(URL.documentsDirectory.appending(component: "hex_settings.json")),
-			default: .init()
-		]
-	}
+    static var hexSettings: Self {
+        let fileManager = FileManager.default
+        let settingsURL: URL
+
+        do {
+            // Construct the path: ~/.config/hex/
+            let homeDir = fileManager.homeDirectoryForCurrentUser
+            let configDir = homeDir.appendingPathComponent(".config", isDirectory: true)
+                                   .appendingPathComponent("hex", isDirectory: true)
+
+            // Ensure the directory exists
+            try fileManager.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: nil)
+
+            // Define the final file URL
+            settingsURL = configDir.appendingPathComponent("hex_settings.json")
+
+        } catch {
+            // Fallback in case of error
+            print("Error creating/finding config directory: \(error). Falling back to Documents.")
+            settingsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("hex_settings_fallback.json")
+        }
+
+        // Return the FileStorageKey pointing to the desired URL
+        return Self[
+            .fileStorage(settingsURL),
+            default: .init()
+        ]
+    }
 }
