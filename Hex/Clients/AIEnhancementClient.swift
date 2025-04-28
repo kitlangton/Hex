@@ -252,7 +252,16 @@ class AIEnhancementClientLive {
             print("[AIEnhancementClientLive] Sending request to Ollama API...")
             
             // Make the request
-            let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
+            let (responseData, urlResponse): (Data, URLResponse)
+            do {
+                (responseData, urlResponse) = try await URLSession.shared.data(for: request)
+            } catch {
+                // Treat timeouts and connectivity issues as "Ollama unavailable"
+                print("[AIEnhancementClientLive] Generation failed: \(error.localizedDescription)")
+                throw NSError(domain: "AIEnhancementClient",
+                            code: -1001, // NSURLErrorTimedOut or similar
+                            userInfo: [NSLocalizedDescriptionKey: "Ollama is unresponsive. Please check if it's running."])
+            }
             
             // Progress update - response received
             progressCallback(0.8)

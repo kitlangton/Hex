@@ -61,6 +61,8 @@ struct TranscriptionFeature {
     case setEnhancingState(Bool)
     case aiEnhancementResult(String, URL)
     case aiEnhancementError(Error)
+    case ollamaBecameUnavailable
+    case recheckOllamaAvailability
   }
 
   enum CancelID {
@@ -140,8 +142,25 @@ struct TranscriptionFeature {
         return handleAIEnhancement(&state, result: result, audioURL: audioURL)
 
       case let .aiEnhancementError(error):
-        print("AI Enhancement error: \(error)")
-        return .none
+        let nsError = error as NSError
+        if nsError.domain == "AIEnhancementClient" && (nsError.code == -1001 || nsError.localizedDescription.contains("Ollama")) {
+          print("AI Enhancement error due to Ollama connectivity: \(error)")
+          return .send(.ollamaBecameUnavailable)
+        } else {
+          print("AI Enhancement error: \(error)")
+          return .none
+        }
+
+      case .ollamaBecameUnavailable:
+        return .send(.recheckOllamaAvailability)
+
+      case .recheckOllamaAvailability:
+        return .run { send in
+          let isAvailable = await aiEnhancement.isOllamaAvailable()
+          if !isAvailable {
+            print("[TranscriptionFeature] Ollama is not available. AI enhancement is disabled.")
+          }
+        }
 
       case .modelMissing:
         return .none
@@ -371,9 +390,13 @@ private extension TranscriptionFeature {
     // Otherwise, proceed to transcription
     state.isTranscribing = true
     state.error = nil
+    
+    // Extract all required state values to local variables to avoid capturing inout parameter
     let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
-
+    let settings = state.hexSettings
+    let recordingStartTime = state.recordingStartTime
+    
     state.isPrewarming = true
 
     return .run { [sleepManagement] send in
@@ -460,9 +483,11 @@ private extension TranscriptionFeature {
     }
 
     let model = state.hexSettings.selectedAIModel
+    let promptText = state.hexSettings.aiEnhancementPrompt
+    let temperature = state.hexSettings.aiEnhancementTemperature
     let options = EnhancementOptions(
-      prompt: state.hexSettings.aiEnhancementPrompt,
-      temperature: state.hexSettings.aiEnhancementTemperature
+      prompt: promptText,
+      temperature: temperature
     )
 
     return .merge(
@@ -472,8 +497,8 @@ private extension TranscriptionFeature {
           let enhancedText = try await aiEnhancement.enhance(result, model, options) { _ in }
           await send(.aiEnhancementResult(enhancedText, audioURL))
         } catch {
-          print("Error enhancing text with AI: \(error)")
-          await send(.aiEnhancementResult(result, audioURL))
+          print("[TranscriptionFeature] Error enhancing text with AI: \(error)")
+          await send(.aiEnhancementError(error))
         }
       }
     )
