@@ -217,6 +217,13 @@ struct SettingsView: View {
 				} icon: {
 					Image(systemName: "doc.on.clipboard")
 				}
+                
+                Label {
+                    Toggle("Disable auto-capitalization", isOn: $store.hexSettings.disableAutoCapitalization)
+                    Text("Disable automatic capitalization in transcriptions")
+                } icon: {
+                    Image(systemName: "textformat.abc")
+                }
 
 				Label {
 					Toggle(

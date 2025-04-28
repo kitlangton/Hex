@@ -19,6 +19,7 @@ struct TranscriptionFeature {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
+    var isEnhancing: Bool = false // Add this to track when AI enhancement is active
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
@@ -45,12 +46,20 @@ struct TranscriptionFeature {
     // Transcription result flow
     case transcriptionResult(String)
     case transcriptionError(Error)
+    
+    // AI Enhancement flow
+    case setEnhancingState(Bool)
+    case aiEnhancementResult(String)
+    case aiEnhancementError(Error)
+    case ollamaBecameUnavailable
+    case recheckOllamaAvailability
   }
 
   enum CancelID {
     case delayedRecord
     case metering
     case transcription
+    case aiEnhancement
   }
 
   @Dependency(\.transcription) var transcription
@@ -58,6 +67,7 @@ struct TranscriptionFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.soundEffects) var soundEffect
+  @Dependency(\.aiEnhancement) var aiEnhancement
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -106,6 +116,42 @@ struct TranscriptionFeature {
 
       case let .transcriptionError(error):
         return handleTranscriptionError(&state, error: error)
+        
+      // MARK: - AI Enhancement Results
+      
+      case let .setEnhancingState(isEnhancing):
+        state.isEnhancing = isEnhancing
+        return .none
+        
+      case let .aiEnhancementResult(result):
+        return handleAIEnhancement(&state, result: result)
+        
+      case let .aiEnhancementError(error):
+        // Check if this is an Ollama connectivity error
+        let nsError = error as NSError
+        if nsError.domain == "AIEnhancementClient" && (nsError.code == -1001 || nsError.localizedDescription.contains("Ollama")) {
+          print("AI Enhancement error due to Ollama connectivity: \(error)")
+          return .send(.ollamaBecameUnavailable)
+        } else {
+          // For other errors, just use the original transcription
+          print("AI Enhancement error: \(error)")
+          return .none
+        }
+        
+      case .ollamaBecameUnavailable:
+        // When Ollama becomes unavailable, recheck availability and handle UI updates
+        return .send(.recheckOllamaAvailability)
+        
+      case .recheckOllamaAvailability:
+        // Recheck if Ollama is available and update UI accordingly
+        return .run { send in
+          let isAvailable = await aiEnhancement.isOllamaAvailable()
+          if !isAvailable {
+            // Could dispatch to a UI state to show an alert or notification
+            print("[TranscriptionFeature] Ollama is not available. AI enhancement is disabled.")
+            // Here you would typically update UI state to show an alert
+          }
+        }
 
       // MARK: - Cancel Entire Flow
 
@@ -267,9 +313,13 @@ private extension TranscriptionFeature {
     // Otherwise, proceed to transcription
     state.isTranscribing = true
     state.error = nil
+    
+    // Extract all required state values to local variables to avoid capturing inout parameter
     let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
-
+    let settings = state.hexSettings
+    // recordingStartTime captured in handleTranscriptionResult
+    
     state.isPrewarming = true
     
     return .run { send in
@@ -284,7 +334,7 @@ private extension TranscriptionFeature {
           chunkingStrategy: .vad
         )
         
-        let result = try await transcription.transcribe(audioURL, model, decodeOptions) { _ in }
+        let result = try await transcription.transcribe(audioURL, model, decodeOptions, settings) { _ in }
         
         print("Transcribed audio from URL: \(audioURL) to text: \(result)")
         await send(.transcriptionResult(result))
@@ -304,8 +354,96 @@ private extension TranscriptionFeature {
     _ state: inout State,
     result: String
   ) -> Effect<Action> {
+    // First check if we should use AI enhancement
+    if state.hexSettings.useAIEnhancement {
+      // Keep state.isTranscribing = true since we're still processing
+      
+      // Extract values to avoid capturing inout parameter
+      let selectedAIModel = state.hexSettings.selectedAIModel
+      let promptText = state.hexSettings.aiEnhancementPrompt
+      let temperature = state.hexSettings.aiEnhancementTemperature
+      
+      return enhanceWithAI(
+        result: result,
+        model: selectedAIModel,
+        promptText: promptText,
+        temperature: temperature
+      )
+    } else {
+      state.isTranscribing = false
+      state.isPrewarming = false
+
+      // If empty text, nothing else to do
+      guard !result.isEmpty else {
+        return .none
+      }
+
+      // Compute how long we recorded
+      let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+
+      // Continue with storing the final result in the background
+      return finalizeRecordingAndStoreTranscript(
+        result: result,
+        duration: duration,
+        transcriptionHistory: state.$transcriptionHistory
+      )
+    }
+  }
+  
+  // MARK: - AI Enhancement Handlers
+  
+  // Use AI to enhance the transcription result
+  private func enhanceWithAI(
+    result: String,
+    model: String,
+    promptText: String,
+    temperature: Double
+  ) -> Effect<Action> {
+    // If empty text, nothing else to do
+    guard !result.isEmpty else {
+      return .send(.aiEnhancementResult(result)) // Just pass through empty text
+    }
+    
+    let options = EnhancementOptions(
+      prompt: promptText,
+      temperature: temperature
+    )
+    
+    print("[TranscriptionFeature] Starting AI enhancement with model: \(model)")
+    
+    // We need to use .send to set the enhancing state through the proper action
+    return .merge(
+      // First update the state to indicate enhancement is starting
+      .send(.setEnhancingState(true)),
+      
+      // Then run the enhancement
+      .run { send in
+        do {
+          print("[TranscriptionFeature] Calling aiEnhancement.enhance()")
+          let enhancedText = try await aiEnhancement.enhance(result, model, options) { progress in
+            // Optional: Could update UI with progress information here if needed
+          }
+          print("[TranscriptionFeature] AI enhancement succeeded")
+          await send(.aiEnhancementResult(enhancedText))
+        } catch {
+          print("[TranscriptionFeature] Error enhancing text with AI: \(error)")
+          // Properly handle the error through the action system
+          await send(.aiEnhancementError(error))
+        }
+      }
+    )
+    // Don't make this cancellable to avoid premature cancellation
+    // This may have been causing the issue with the enhancement being cancelled
+  }
+  
+  // Handle the AI enhancement result
+  private func handleAIEnhancement(
+    _ state: inout State,
+    result: String
+  ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
+    state.isEnhancing = false  // Reset the enhancing state
 
     // If empty text, nothing else to do
     guard !result.isEmpty else {
@@ -395,10 +533,13 @@ private extension TranscriptionFeature {
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
+    state.isEnhancing = false
 
     return .merge(
       .cancel(id: CancelID.transcription),
       .cancel(id: CancelID.delayedRecord),
+      // Don't cancel AI enhancement as it might cause issues
+      // .cancel(id: CancelID.aiEnhancement),
       .run { _ in
         await soundEffect.play(.cancel)
       }
@@ -440,7 +581,9 @@ struct TranscriptionView: View {
   @Bindable var store: StoreOf<TranscriptionFeature>
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing {
+    if store.isEnhancing {
+      return .enhancing 
+    } else if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording

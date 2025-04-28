@@ -381,7 +381,7 @@ actor RecordingClientLive {
     
     var deviceName: CFString? = nil
     var size = UInt32(MemoryLayout<CFString?>.size)
-    var deviceNamePtr: UnsafeMutableRawPointer = .allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
+    let deviceNamePtr = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
     defer { deviceNamePtr.deallocate() }
     
     let status = AudioObjectGetPropertyData(
@@ -559,13 +559,29 @@ actor RecordingClientLive {
 
   func startMeterTask() {
     meterTask = Task {
+      var lastMeter = Meter(averagePower: 0, peakPower: 0)
+      var updateCount = 0
+      
       while !Task.isCancelled, let r = self.recorder, r.isRecording {
         r.updateMeters()
         let averagePower = r.averagePower(forChannel: 0)
         let averageNormalized = pow(10, averagePower / 20.0)
         let peakPower = r.peakPower(forChannel: 0)
         let peakNormalized = pow(10, peakPower / 20.0)
-        meterContinuation.yield(Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized)))
+        let currentMeter = Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized))
+        
+        // Only emit if there's a significant change, or every ~5 updates (500ms)
+        let significantChange = abs(currentMeter.averagePower - lastMeter.averagePower) > 0.05 ||
+                               abs(currentMeter.peakPower - lastMeter.peakPower) > 0.1
+        
+        if significantChange || updateCount >= 5 {
+          meterContinuation.yield(currentMeter)
+          lastMeter = currentMeter
+          updateCount = 0
+        } else {
+          updateCount += 1
+        }
+        
         try? await Task.sleep(for: .milliseconds(100))
       }
     }

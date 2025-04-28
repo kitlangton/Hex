@@ -35,6 +35,9 @@ struct SettingsFeature {
 
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
+    
+    // AI Enhancement
+    var aiEnhancement = AIEnhancementFeature.State()
   }
 
   enum Action: BindableAction {
@@ -60,6 +63,9 @@ struct SettingsFeature {
 
     // Model Management
     case modelDownload(ModelDownloadFeature.Action)
+    
+    // AI Enhancement
+    case aiEnhancement(AIEnhancementFeature.Action)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -72,6 +78,10 @@ struct SettingsFeature {
 
     Scope(state: \.modelDownload, action: \.modelDownload) {
       ModelDownloadFeature()
+    }
+    
+    Scope(state: \.aiEnhancement, action: \.aiEnhancement) {
+      AIEnhancementFeature()
     }
 
     Reduce { state, action in
@@ -99,13 +109,18 @@ struct SettingsFeature {
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
           
-          // Set up periodic refresh of available devices (every 120 seconds)
-          // Using a longer interval to reduce resource usage
+          // Set up periodic refresh of available devices (every 180 seconds = 3 minutes)
+          // Using an even longer interval to further reduce resource usage
           let deviceRefreshTask = Task { @MainActor in
-            for await _ in clock.timer(interval: .seconds(120)) {
-              // Only refresh when the app is active to save resources
-              if await NSApplication.shared.isActive {
-                await send(.loadAvailableInputDevices)
+            for await _ in clock.timer(interval: .seconds(180)) {
+              // Only refresh when the app is active AND the settings panel is visible
+              let isActive = NSApplication.shared.isActive
+              let areSettingsVisible = NSApp.windows.contains { 
+                $0.isVisible && ($0.title.contains("Settings") || $0.title.contains("Preferences")) 
+              }
+              
+              if isActive && areSettingsVisible {
+                send(.loadAvailableInputDevices)
               }
             }
           }
@@ -278,6 +293,10 @@ struct SettingsFeature {
         return .none
 
       case .modelDownload:
+        return .none
+        
+      // AI Enhancement
+      case .aiEnhancement:
         return .none
       
       // Microphone device selection
