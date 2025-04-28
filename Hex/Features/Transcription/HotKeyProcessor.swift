@@ -201,7 +201,14 @@ extension HotKeyProcessor {
     // MARK: - Helpers
 
     private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
-        e.key == hotkey.key && e.modifiers == hotkey.modifiers
+        // For hotkeys that include a key, both the key and modifiers must match exactly
+        if hotkey.key != nil {
+            return e.key == hotkey.key && e.modifiers == hotkey.modifiers
+        } else {
+            // For modifier-only hotkeys, we just check that all required modifiers are present
+            // This allows other modifiers to be pressed without affecting the match
+            return hotkey.modifiers.isSubset(of: e.modifiers)
+        }
     }
 
     /// "Dirty" if chord includes any extra modifiers or a different key.
@@ -219,11 +226,16 @@ extension HotKeyProcessor {
     /// For a modifier-only hotkey, "release" => no modifiers at all.
     private func isReleaseForActiveHotkey(_ e: KeyEvent) -> Bool {
         if hotkey.key != nil {
-            // standard hotkey => release means chord = (nil, same modifiers)
+            // For key+modifier hotkeys, we need to check:
+            // 1. Key is released (key == nil)
+            // 2. Modifiers match exactly what was in the hotkey
             return e.key == nil && e.modifiers == hotkey.modifiers
         } else {
-            // modifier-only => release means chord= (nil, [])
-            return e.key == nil && e.modifiers.isSubset(of: hotkey.modifiers)
+            // For modifier-only hotkeys, we check:
+            // 1. Key is nil
+            // 2. Required hotkey modifiers are no longer pressed
+            // This detects when user has released the specific modifiers in the hotkey
+            return e.key == nil && !hotkey.modifiers.isSubset(of: e.modifiers)
         }
     }
 
