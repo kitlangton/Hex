@@ -198,38 +198,51 @@ struct TranscriptionFeature {
 private extension TranscriptionFeature {
   /// Effect to begin observing the audio meter.
   func startMeteringEffect() -> Effect<Action> {
-    .run { send in
-      // Use a rate limiter to prevent too many updates
-      var lastUpdateTime = Date()
-      var lastMeter: Meter? = nil
-
-      for await meter in await recording.observeAudioLevel() {
-        // Apply main-thread protection
-        await MainActor.run {
-          // Rate limit updates based on time and significant changes
-          let now = Date()
-          let timeSinceLastUpdate = now.timeIntervalSince(lastUpdateTime)
-
-          // Determine if we should process this update
-          var shouldUpdate = false
-
-          // Always update if enough time has passed (ensures UI responsiveness)
-          if timeSinceLastUpdate >= 0.05 { // Max 20 updates per second
-            shouldUpdate = true
-          }
-          // Or if there's a significant change from the last meter we actually sent
-          else if let last = lastMeter {
-            let averageDiff = abs(meter.averagePower - last.averagePower)
-            let peakDiff = abs(meter.peakPower - last.peakPower)
-            // More responsive threshold for significant changes
-            shouldUpdate = averageDiff > 0.02 || peakDiff > 0.04
-          }
-
+    // Create a separate actor to handle rate limiting safely in Swift 6
+    actor MeterRateLimiter {
+      private var lastUpdateTime = Date()
+      private var lastMeter: Meter? = nil
+      
+      func shouldUpdate(meter: Meter) -> Bool {
+        let now = Date()
+        let timeSinceLastUpdate = now.timeIntervalSince(lastUpdateTime)
+        
+        // Always update if enough time has passed (ensures UI responsiveness)
+        if timeSinceLastUpdate >= 0.05 { // Max 20 updates per second
+          self.lastUpdateTime = now
+          self.lastMeter = meter
+          return true
+        }
+        // Or if there's a significant change from the last meter we actually sent
+        else if let last = lastMeter {
+          let averageDiff = abs(meter.averagePower - last.averagePower)
+          let peakDiff = abs(meter.peakPower - last.peakPower)
+          // More responsive threshold for significant changes
+          let shouldUpdate = averageDiff > 0.02 || peakDiff > 0.04
+          
           if shouldUpdate {
-            send(.audioLevelUpdated(meter))
-            lastUpdateTime = now
-            lastMeter = meter
+            self.lastUpdateTime = now
+            self.lastMeter = meter
           }
+          
+          return shouldUpdate
+        }
+        
+        self.lastUpdateTime = now
+        self.lastMeter = meter
+        return true // First update always passes through
+      }
+    }
+    
+    return .run { send in
+      let rateLimiter = MeterRateLimiter()
+      
+      for await meter in await recording.observeAudioLevel() {
+        // Check if we should send this update
+        if await rateLimiter.shouldUpdate(meter: meter) {
+          // The Effect.run captures its function as @Sendable, so we're already on an appropriate context
+          // for sending actions. ComposableArchitecture handles dispatching to the main thread as needed.
+            await send(.audioLevelUpdated(meter))
         }
       }
     }
@@ -553,6 +566,7 @@ private extension TranscriptionFeature {
     state.isTranscribing = false
     state.isPrewarming = false
     state.isEnhancing = false  // Reset the enhancing state
+    state.pendingTranscription = nil  // Clear the pending transcription since enhancement succeeded
 
     if ForceQuitCommandDetector.matches(result) {
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
