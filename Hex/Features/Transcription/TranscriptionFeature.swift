@@ -101,7 +101,15 @@ struct TranscriptionFeature {
       // MARK: - Metering
 
       case let .audioLevelUpdated(meter):
-        state.meter = meter
+        // Only update state.meter if it's significantly different from the previous value
+        // or if we're currently recording (when we need more responsive updates)
+        let averageDiff = abs(meter.averagePower - state.meter.averagePower)
+        let peakDiff = abs(meter.peakPower - state.meter.peakPower)
+        let significantChange = averageDiff > 0.03 || peakDiff > 0.05
+
+        if state.isRecording || significantChange {
+          state.meter = meter
+        }
         return .none
 
       // MARK: - HotKey Flow
@@ -191,8 +199,38 @@ private extension TranscriptionFeature {
   /// Effect to begin observing the audio meter.
   func startMeteringEffect() -> Effect<Action> {
     .run { send in
+      // Use a rate limiter to prevent too many updates
+      var lastUpdateTime = Date()
+      var lastMeter: Meter? = nil
+
       for await meter in await recording.observeAudioLevel() {
-        await send(.audioLevelUpdated(meter))
+        // Apply main-thread protection
+        await MainActor.run {
+          // Rate limit updates based on time and significant changes
+          let now = Date()
+          let timeSinceLastUpdate = now.timeIntervalSince(lastUpdateTime)
+
+          // Determine if we should process this update
+          var shouldUpdate = false
+
+          // Always update if enough time has passed (ensures UI responsiveness)
+          if timeSinceLastUpdate >= 0.05 { // Max 20 updates per second
+            shouldUpdate = true
+          }
+          // Or if there's a significant change from the last meter we actually sent
+          else if let last = lastMeter {
+            let averageDiff = abs(meter.averagePower - last.averagePower)
+            let peakDiff = abs(meter.peakPower - last.peakPower)
+            // More responsive threshold for significant changes
+            shouldUpdate = averageDiff > 0.02 || peakDiff > 0.04
+          }
+
+          if shouldUpdate {
+            send(.audioLevelUpdated(meter))
+            lastUpdateTime = now
+            lastMeter = meter
+          }
+        }
       }
     }
     .cancellable(id: CancelID.metering, cancelInFlight: true)

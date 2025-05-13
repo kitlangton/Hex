@@ -1416,7 +1416,12 @@ actor RecordingClientLive {
     meterTask = Task {
       var lastMeter = Meter(averagePower: 0, peakPower: 0)
       var updateCount = 0
-      
+      var lastUpdateTime = Date()
+
+      // Use lower sampling rates when there's less activity
+      var inactiveCount = 0
+      var samplingInterval: Duration = .milliseconds(100) // Start with default
+
       while !Task.isCancelled, let r = self.recorder, r.isRecording {
         r.updateMeters()
         let averagePower = r.averagePower(forChannel: 0)
@@ -1424,20 +1429,41 @@ actor RecordingClientLive {
         let peakPower = r.peakPower(forChannel: 0)
         let peakNormalized = pow(10, peakPower / 20.0)
         let currentMeter = Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized))
-        
-        // Only emit if there's a significant change, or every ~5 updates (500ms)
-        let significantChange = abs(currentMeter.averagePower - lastMeter.averagePower) > 0.05 ||
-                               abs(currentMeter.peakPower - lastMeter.peakPower) > 0.1
-        
-        if significantChange || updateCount >= 5 {
+
+        // Determine threshold for significant change (adaptive based on current levels)
+        let averageThreshold = max(0.05, lastMeter.averagePower * 0.15) // More sensitive at low levels
+        let peakThreshold = max(0.1, lastMeter.peakPower * 0.15)
+
+        // Check if there's a significant change
+        let significantChange = abs(currentMeter.averagePower - lastMeter.averagePower) > averageThreshold ||
+                               abs(currentMeter.peakPower - lastMeter.peakPower) > peakThreshold
+
+        // Force update if too much time has passed (prevents UI from appearing frozen)
+        let timeSinceLastUpdate = Date().timeIntervalSince(lastUpdateTime)
+        let forceUpdate = timeSinceLastUpdate > 0.3 // Max 300ms between updates for smooth UI
+
+        // Adaptive sampling rate based on activity level
+        if significantChange {
+          inactiveCount = 0
+          samplingInterval = .milliseconds(80) // Faster sampling during active periods
+        } else {
+          inactiveCount += 1
+          if inactiveCount > 10 {
+            // Gradually increase sampling interval during periods of low activity
+            samplingInterval = .milliseconds(min(150, 80 + inactiveCount * 5))
+          }
+        }
+
+        if significantChange || forceUpdate || updateCount >= 3 {
           meterContinuation.yield(currentMeter)
           lastMeter = currentMeter
+          lastUpdateTime = Date()
           updateCount = 0
         } else {
           updateCount += 1
         }
-        
-        try? await Task.sleep(for: .milliseconds(100))
+
+        try? await Task.sleep(for: samplingInterval)
       }
     }
   }
