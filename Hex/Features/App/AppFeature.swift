@@ -15,6 +15,7 @@ struct AppFeature {
     case settings
     case history
     case about
+    case aiEnhancement
   }
 
   @ObservableState
@@ -81,6 +82,13 @@ struct AppView: View {
           .tag(AppFeature.ActiveTab.settings)
 
         Button {
+          store.send(.setActiveTab(.aiEnhancement))
+        } label: {
+          Label("AI Enhancement", systemImage: "brain")
+        }.buttonStyle(.plain)
+          .tag(AppFeature.ActiveTab.aiEnhancement)
+
+        Button {
           store.send(.setActiveTab(.history))
         } label: {
           Label("History", systemImage: "clock")
@@ -99,6 +107,9 @@ struct AppView: View {
       case .settings:
         SettingsView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("Settings")
+      case .aiEnhancement:
+        AIEnhancementView(store: store.scope(state: \.settings.aiEnhancement, action: \.settings.aiEnhancement))
+          .navigationTitle("AI Enhancement")
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")
