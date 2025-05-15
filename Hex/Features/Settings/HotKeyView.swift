@@ -64,12 +64,12 @@ struct KeyView: View {
   var body: some View {
     Text(text)
       .font(.title.weight(.bold))
-      .foregroundColor(.primary)
+      .foregroundColor(.white)
       .frame(width: 48, height: 48)
       .background(
         RoundedRectangle(cornerRadius: 8)
           .fill(
-            .black.mix(with: .primary, by: 0.2)
+            .black.mix(with: .white, by: 0.2)
               .shadow(.inner(color: .white.opacity(0.3), radius: 1, y: 1))
               .shadow(.inner(color: .white.opacity(0.1), radius: 5, y: 8))
               .shadow(.inner(color: .black.opacity(0.3), radius: 1, y: -3))
