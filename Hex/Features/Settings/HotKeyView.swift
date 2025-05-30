@@ -5,11 +5,13 @@
 //  Created by Kit Langton on 1/30/25.
 //
 
+import Inject
 import Sauce
 import SwiftUI
 
 // This view shows the actual "keys" in a more modern, subtle style.
 struct HotKeyView: View {
+  @ObserveInjection var inject
   var modifiers: Modifiers
   var key: Key?
   var isActive: Bool
@@ -55,10 +57,12 @@ struct HotKeyView: View {
     .animation(.bouncy(duration: 0.3), value: key)
     .animation(.bouncy(duration: 0.3), value: modifiers)
     .animation(.bouncy(duration: 0.3), value: isActive)
+    .enableInjection()
   }
 }
 
 struct KeyView: View {
+  @ObserveInjection var inject
   var text: String
 
   var body: some View {
@@ -76,6 +80,7 @@ struct KeyView: View {
           )
       )
       .shadow(radius: 4, y: 2)
+      .enableInjection()
   }
 }
 

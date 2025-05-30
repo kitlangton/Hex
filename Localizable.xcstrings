@@ -339,6 +339,7 @@
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -349,6 +350,9 @@
       }
     },
     "Microphone Selection" : {
+
+    },
+    "Microphone!" : {
 
     },
     "Model" : {

@@ -1,9 +1,11 @@
 import ComposableArchitecture
+import Inject
 import SwiftUI
 
 struct SettingsView: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
-	
+
 	var body: some View {
 		Form {
 			// --- Permissions Section ---
@@ -61,7 +63,7 @@ struct SettingsView: View {
 					.font(.footnote)
 					.foregroundColor(.secondary)
 			}
-      
+
 			// --- Input Device Selection Section ---
 			if store.microphonePermission == .granted && !store.availableInputDevices.isEmpty {
 				Section {
@@ -79,7 +81,7 @@ struct SettingsView: View {
 						} icon: {
 							Image(systemName: "mic.circle")
 						}
-						
+
 						Button(action: {
 							store.send(.loadAvailableInputDevices)
 						}) {
@@ -88,10 +90,11 @@ struct SettingsView: View {
 						.buttonStyle(.borderless)
 						.help("Refresh available input devices")
 					}
-					
+
 					// Show fallback note for selected device not connected
-					if let selectedID = store.hexSettings.selectedMicrophoneID, 
-					   !store.availableInputDevices.contains(where: { $0.id == selectedID }) {
+					if let selectedID = store.hexSettings.selectedMicrophoneID,
+					   !store.availableInputDevices.contains(where: { $0.id == selectedID })
+					{
 						Text("Selected device not connected. System default will be used.")
 							.font(.caption)
 							.foregroundColor(.secondary)
@@ -127,7 +130,7 @@ struct SettingsView: View {
 				let hotKey = store.hexSettings.hotkey
 				let key = store.isSettingHotKey ? nil : hotKey.key
 				let modifiers = store.isSettingHotKey ? store.currentModifiers : hotKey.modifiers
-				
+
 				VStack(spacing: 12) {
 					// Info text for full keyboard shortcut support
 					if hotKey.key != nil {
@@ -136,7 +139,7 @@ struct SettingsView: View {
 							.foregroundColor(.secondary)
 							.frame(maxWidth: .infinity, alignment: .center)
 					}
-					
+
 					// Hot key view
 					HStack {
 						Spacer()
@@ -150,7 +153,7 @@ struct SettingsView: View {
 						store.send(.startSettingHotKey)
 					}
 				}
-				
+
 				// Double-tap toggle (for key+modifier combinations)
 				if hotKey.key != nil {
 					Label {
@@ -162,17 +165,17 @@ struct SettingsView: View {
 						Image(systemName: "hand.tap")
 					}
 				}
-				
+
 				// Minimum key time (for modifier-only shortcuts)
-                if store.hexSettings.hotkey.key == nil {
-                    Label {
-                        Slider(value: $store.hexSettings.minimumKeyTime, in: 0.0...2.0, step: 0.1) {
-                            Text("Ignore below \(store.hexSettings.minimumKeyTime, specifier: "%.1f")s")
-                        }
-                    } icon: {
-                        Image(systemName: "clock")
-                    }
-                }
+				if store.hexSettings.hotkey.key == nil {
+					Label {
+						Slider(value: $store.hexSettings.minimumKeyTime, in: 0.0 ... 2.0, step: 0.1) {
+							Text("Ignore below \(store.hexSettings.minimumKeyTime, specifier: "%.1f")s")
+						}
+					} icon: {
+						Image(systemName: "clock")
+					}
+				}
 			}
 
 			// --- Sound Section ---
@@ -210,7 +213,7 @@ struct SettingsView: View {
 				} icon: {
 					Image(systemName: "doc.on.doc.fill")
 				}
-				
+
 				Label {
 					Toggle("Copy to clipboard", isOn: $store.hexSettings.copyToClipboard)
 					Text("Copy transcription text to clipboard in addition to pasting it")
@@ -224,25 +227,27 @@ struct SettingsView: View {
 						isOn: Binding(
 							get: { store.hexSettings.preventSystemSleep },
 							set: { store.send(.togglePreventSystemSleep($0)) }
-						))
+						)
+					)
 				} icon: {
 					Image(systemName: "zzz")
 				}
-                
-                Label {
-                    Toggle(
-                        "Pause Media while Recording",
-                        isOn: Binding(
-                            get: { store.hexSettings.pauseMediaOnRecord },
-                            set: { store.send(.togglePauseMediaOnRecord($0)) }
-                        ))
-                } icon: {
-                    Image(systemName: "pause")
-                }
+
+				Label {
+					Toggle(
+						"Pause Media while Recording",
+						isOn: Binding(
+							get: { store.hexSettings.pauseMediaOnRecord },
+							set: { store.send(.togglePauseMediaOnRecord($0)) }
+						)
+					)
+				} icon: {
+					Image(systemName: "pause")
+				}
 			} header: {
 				Text("General")
 			}
-			
+
 			// --- History Section ---
 			Section {
 				Label {
@@ -256,7 +261,7 @@ struct SettingsView: View {
 				} icon: {
 					Image(systemName: "clock.arrow.circlepath")
 				}
-				
+
 				if store.hexSettings.saveTranscriptionHistory {
 					Label {
 						HStack {
@@ -281,7 +286,7 @@ struct SettingsView: View {
 					} icon: {
 						Image(systemName: "number.square")
 					}
-					
+
 					if store.hexSettings.maxHistoryEntries != nil {
 						Text("Oldest entries will be automatically deleted when limit is reached")
 							.font(.caption)
@@ -303,5 +308,6 @@ struct SettingsView: View {
 		.task {
 			await store.send(.task).finish()
 		}
+		.enableInjection()
 	}
 }

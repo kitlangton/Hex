@@ -2,6 +2,7 @@ import AVFoundation
 import ComposableArchitecture
 import Dependencies
 import SwiftUI
+import Inject
 
 // MARK: - Models
 
@@ -311,55 +312,58 @@ struct TranscriptView: View {
 }
 
 struct HistoryView: View {
+	@ObserveInjection var inject
 	let store: StoreOf<HistoryFeature>
 	@State private var showingDeleteConfirmation = false
 	@Shared(.hexSettings) var hexSettings: HexSettings
 
 	var body: some View {
-		if !hexSettings.saveTranscriptionHistory {
-			ContentUnavailableView {
-				Label("History Disabled", systemImage: "clock.arrow.circlepath")
-			} description: {
-				Text("Transcription history is currently disabled.")
-			} actions: {
-				Button("Enable in Settings") {
-					store.send(.navigateToSettings)
-				}
-			}
-		} else if store.transcriptionHistory.history.isEmpty {
-			ContentUnavailableView {
-				Label("No Transcriptions", systemImage: "text.bubble")
-			} description: {
-				Text("Your transcription history will appear here.")
-			}
-		} else {
-			ScrollView {
-				LazyVStack(spacing: 12) {
-					ForEach(store.transcriptionHistory.history) { transcript in
-						TranscriptView(
-							transcript: transcript,
-							isPlaying: store.playingTranscriptID == transcript.id,
-							onPlay: { store.send(.playTranscript(transcript.id)) },
-							onCopy: { store.send(.copyToClipboard(transcript.text)) },
-							onDelete: { store.send(.deleteTranscript(transcript.id)) }
-						)
-					}
-				}
-				.padding()
-			}
-			.toolbar {
-				Button(role: .destructive, action: { showingDeleteConfirmation = true }) {
-					Label("Delete All", systemImage: "trash")
-				}
-			}
-			.alert("Delete All Transcripts", isPresented: $showingDeleteConfirmation) {
-				Button("Delete All", role: .destructive) {
-					store.send(.confirmDeleteAll)
-				}
-				Button("Cancel", role: .cancel) {}
-			} message: {
-				Text("Are you sure you want to delete all transcripts? This action cannot be undone.")
-			}
-		}
+      Group {
+        if !hexSettings.saveTranscriptionHistory {
+          ContentUnavailableView {
+            Label("History Disabled", systemImage: "clock.arrow.circlepath")
+          } description: {
+            Text("Transcription history is currently disabled.")
+          } actions: {
+            Button("Enable in Settings") {
+              store.send(.navigateToSettings)
+            }
+          }
+        } else if store.transcriptionHistory.history.isEmpty {
+          ContentUnavailableView {
+            Label("No Transcriptions", systemImage: "text.bubble")
+          } description: {
+            Text("Your transcription history will appear here.")
+          }
+        } else {
+          ScrollView {
+            LazyVStack(spacing: 12) {
+              ForEach(store.transcriptionHistory.history) { transcript in
+                TranscriptView(
+                  transcript: transcript,
+                  isPlaying: store.playingTranscriptID == transcript.id,
+                  onPlay: { store.send(.playTranscript(transcript.id)) },
+                  onCopy: { store.send(.copyToClipboard(transcript.text)) },
+                  onDelete: { store.send(.deleteTranscript(transcript.id)) }
+                )
+              }
+            }
+            .padding()
+          }
+          .toolbar {
+            Button(role: .destructive, action: { showingDeleteConfirmation = true }) {
+              Label("Delete All", systemImage: "trash")
+            }
+          }
+          .alert("Delete All Transcripts", isPresented: $showingDeleteConfirmation) {
+            Button("Delete All", role: .destructive) {
+              store.send(.confirmDeleteAll)
+            }
+            Button("Cancel", role: .cancel) {}
+          } message: {
+            Text("Are you sure you want to delete all transcripts? This action cannot be undone.")
+          }
+        }
+      }.enableInjection()
 	}
 }

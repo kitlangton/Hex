@@ -7,6 +7,7 @@
 
 import ComposableArchitecture
 import CoreGraphics
+import Inject
 import SwiftUI
 import WhisperKit
 import IOKit
@@ -456,6 +457,7 @@ private extension TranscriptionFeature {
 
 struct TranscriptionView: View {
   @Bindable var store: StoreOf<TranscriptionFeature>
+  @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
     if store.isTranscribing {
@@ -477,5 +479,6 @@ struct TranscriptionView: View {
     .task {
       await store.send(.task).finish()
     }
+    .enableInjection()
   }
 }

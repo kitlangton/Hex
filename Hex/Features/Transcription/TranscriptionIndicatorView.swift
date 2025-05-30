@@ -4,10 +4,13 @@
 //
 //  Created by Kit Langton on 1/25/25.
 
+import Inject
 import Pow
 import SwiftUI
 
 struct TranscriptionIndicatorView: View {
+  @ObserveInjection var inject
+  
   enum Status {
     case hidden
     case optionKeyPressed
@@ -143,6 +146,7 @@ struct TranscriptionIndicatorView: View {
         .zIndex(2)
       }
     }
+    .enableInjection()
   }
 }
 

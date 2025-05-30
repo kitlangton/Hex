@@ -1,4 +1,5 @@
 import ComposableArchitecture
+import Inject
 import Sparkle
 import SwiftUI
 
@@ -9,7 +10,7 @@ struct HexApp: App {
 	}
 
 	@NSApplicationDelegateAdaptor(HexAppDelegate.self) var appDelegate
-
+  
 	var body: some Scene {
 		MenuBarExtra {
 			CheckForUpdatesView()

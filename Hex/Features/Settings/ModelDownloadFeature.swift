@@ -521,6 +521,7 @@ private struct FooterView: View {
 					.foregroundStyle(.secondary)
 				}
 			}
+			.enableInjection()
 		}
 	}
 }

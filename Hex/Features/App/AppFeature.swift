@@ -110,5 +110,6 @@ struct AppView: View {
           .navigationTitle("About")
       }
     }
+    .enableInjection()
   }
 }

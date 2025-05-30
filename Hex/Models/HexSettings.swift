@@ -13,7 +13,7 @@ struct HexSettings: Codable, Equatable {
 	var preventSystemSleep: Bool = true
 	var pauseMediaOnRecord: Bool = true
 	var minimumKeyTime: Double = 0.2
-	var copyToClipboard: Bool = true
+	var copyToClipboard: Bool = false
 	var useDoubleTapOnly: Bool = false
 	var outputLanguage: String? = nil
 	var selectedMicrophoneID: String? = nil
@@ -49,7 +49,7 @@ struct HexSettings: Codable, Equatable {
 		preventSystemSleep: Bool = true,
 		pauseMediaOnRecord: Bool = true,
 		minimumKeyTime: Double = 0.2,
-		copyToClipboard: Bool = true,
+		copyToClipboard: Bool = false,
 		useDoubleTapOnly: Bool = false,
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
@@ -82,12 +82,12 @@ struct HexSettings: Codable, Equatable {
 			try container.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? true
 		hotkey =
 			try container.decodeIfPresent(HotKey.self, forKey: .hotkey)
-			?? .init(key: nil, modifiers: [.option])
+				?? .init(key: nil, modifiers: [.option])
 		openOnLogin = try container.decodeIfPresent(Bool.self, forKey: .openOnLogin) ?? false
 		showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? true
 		selectedModel =
 			try container.decodeIfPresent(String.self, forKey: .selectedModel)
-			?? "openai_whisper-large-v3-v20240930"
+				?? "openai_whisper-large-v3-v20240930"
 		useClipboardPaste = try container.decodeIfPresent(Bool.self, forKey: .useClipboardPaste) ?? true
 		preventSystemSleep =
 			try container.decodeIfPresent(Bool.self, forKey: .preventSystemSleep) ?? true
@@ -96,7 +96,7 @@ struct HexSettings: Codable, Equatable {
 		minimumKeyTime =
 			try container.decodeIfPresent(Double.self, forKey: .minimumKeyTime) ?? 0.2
 		copyToClipboard =
-			try container.decodeIfPresent(Bool.self, forKey: .copyToClipboard) ?? true
+			try container.decodeIfPresent(Bool.self, forKey: .copyToClipboard) ?? false
 		useDoubleTapOnly =
 			try container.decodeIfPresent(Bool.self, forKey: .useDoubleTapOnly) ?? false
 		outputLanguage = try container.decodeIfPresent(String.self, forKey: .outputLanguage)

@@ -1,7 +1,9 @@
 import SwiftUI
+import Inject
 import MarkdownUI
 
 struct ChangelogView: View {
+    @ObserveInjection var inject
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
@@ -31,5 +33,6 @@ struct ChangelogView: View {
             }
             .padding()
         }
+        .enableInjection()
     }
 }
