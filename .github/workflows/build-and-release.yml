@@ -1,0 +1,192 @@
+name: Build, Test and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+env:
+  XCODE_VERSION: '16.2'
+  MACOS_VERSION: '15'
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: macos-15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      
+    - name: Show Xcode version
+      run: xcodebuild -version
+      
+    - name: Resolve dependencies
+      run: |
+        xcodebuild -resolvePackageDependencies \
+          -project Hex.xcodeproj \
+          -scheme Hex
+          
+    - name: Build for testing
+      run: |
+        xcodebuild build-for-testing \
+          -project Hex.xcodeproj \
+          -scheme Hex \
+          -configuration Debug \
+          -destination 'platform=macOS,arch=arm64' \
+          -derivedDataPath build/DerivedData \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
+          
+    - name: Run tests
+      run: |
+        xcodebuild test-without-building \
+          -project Hex.xcodeproj \
+          -scheme Hex \
+          -configuration Debug \
+          -destination 'platform=macOS,arch=arm64' \
+          -derivedDataPath build/DerivedData \
+          -resultBundlePath build/TestResults.xcresult
+          
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: test-results
+        path: build/TestResults.xcresult
+        
+    - name: Build Release
+      run: |
+        xcodebuild clean build \
+          -project Hex.xcodeproj \
+          -scheme Hex \
+          -configuration Release \
+          -derivedDataPath build/DerivedData \
+          -destination 'platform=macOS,arch=arm64' \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=NO
+          
+    - name: Create build artifact
+      run: |
+        cd build/DerivedData/Build/Products/Release
+        zip -r Hex.zip Hex.app
+        
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: hex-app
+        path: build/DerivedData/Build/Products/Release/Hex.zip
+
+  release:
+    name: Create Release
+    needs: build-and-test
+    runs-on: macos-15
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: hex-app
+        
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      
+    - name: Install create-dmg
+      run: brew install create-dmg
+      
+    - name: Prepare for DMG
+      run: |
+        unzip Hex.zip
+        mkdir -p dmg-content
+        cp -R Hex.app dmg-content/
+        
+    - name: Create DMG
+      run: |
+        create-dmg \
+          --volname "Hex Installer" \
+          --volicon "Hex.app/Contents/Resources/AppIcon.icns" \
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --icon "Hex.app" 150 185 \
+          --hide-extension "Hex.app" \
+          --app-drop-link 450 185 \
+          --no-internet-enable \
+          "Hex-${{ github.ref_name }}.dmg" \
+          "dmg-content/"
+          
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Extract version number from tag
+        VERSION="${{ github.ref_name }}"
+        
+        # Read changelog content for this version
+        if [ -f "Hex/Resources/changelog.md" ]; then
+          # Extract content between version headers
+          CHANGELOG=$(awk "/^## $VERSION/{flag=1; next} /^## v[0-9]/{flag=0} flag" Hex/Resources/changelog.md)
+          
+          # If no specific version found, use the top section
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG=$(awk '/^## /{if(++count==2) exit} count==1{if(!/^## /) print}' Hex/Resources/changelog.md)
+          fi
+          
+          # Store in GitHub output
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "content=No changelog available for this release." >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: Hex ${{ github.ref_name }}
+        body: |
+          ## What's New in ${{ github.ref_name }}
+          
+          ${{ steps.changelog.outputs.content }}
+          
+          ---
+          
+          ### Installation
+          
+          1. Download `Hex-${{ github.ref_name }}.dmg`
+          2. Open the DMG file
+          3. Drag Hex.app to your Applications folder
+          4. Launch Hex from Applications
+          
+          ### Requirements
+          
+          - macOS 15.0 or later
+          - Apple Silicon Mac (M1 or later)
+          
+          ### Notes
+          
+          - First launch requires granting microphone and accessibility permissions
+          - Models will be downloaded on first use
+        files: |
+          Hex-${{ github.ref_name }}.dmg
+          Hex.zip
+        draft: false
+        prerelease: false
+        
+    - name: Upload Release Stats
+      run: |
+        echo "Release ${{ github.ref_name }} created successfully"
+        echo "DMG: Hex-${{ github.ref_name }}.dmg"
+        echo "ZIP: Hex.zip"

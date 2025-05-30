@@ -1,0 +1,83 @@
+# SwiftLint configuration for Hex
+
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - force_cast
+  - identifier_name
+  - type_name
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - collection_alignment
+  - contains_over_first_not_nil
+  - empty_string
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - last_where
+  - multiline_function_chains
+  - multiline_parameters
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - trailing_closure
+  - unneeded_parentheses_in_closure_argument
+  - vertical_parameter_alignment_on_call
+  - yoda_condition
+
+excluded:
+  - build
+  - .build
+  - SourcePackages
+  - DerivedData
+  - .swiftpm
+  - Hex.xcodeproj
+  - HexTests
+
+line_length:
+  warning: 150
+  error: 200
+  ignores_function_declarations: true
+  ignores_comments: true
+  ignores_urls: true
+
+function_body_length:
+  warning: 60
+  error: 100
+
+file_length:
+  warning: 500
+  error: 1000
+
+type_body_length:
+  warning: 300
+  error: 500
+
+large_tuple:
+  warning: 3
+  error: 4
+
+function_parameter_count:
+  warning: 6
+  error: 8
+
+cyclomatic_complexity:
+  warning: 15
+  error: 20
+
+nesting:
+  type_level:
+    warning: 2
+  function_level:
+    warning: 3
+
+custom_rules:
+  tca_reducer_protocol:
+    name: "TCA Reducer Protocol"
+    regex: "struct\\s+\\w+:\\s*Reducer"
+    message: "Consider using ReducerProtocol for TCA reducers"
+    severity: warning
