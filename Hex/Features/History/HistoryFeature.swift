@@ -82,6 +82,7 @@ struct HistoryFeature {
 		case deleteAllTranscripts
 		case confirmDeleteAll
 		case playbackFinished
+		case navigateToSettings
 	}
 
 	@Dependency(\.pasteboard) var pasteboard
@@ -190,6 +191,10 @@ struct HistoryFeature {
 						try? FileManager.default.removeItem(at: transcript.audioPath)
 					}
 				}
+				
+			case .navigateToSettings:
+				// This will be handled by the parent reducer
+				return .none
 			}
 		}
 	}
@@ -308,9 +313,20 @@ struct TranscriptView: View {
 struct HistoryView: View {
 	let store: StoreOf<HistoryFeature>
 	@State private var showingDeleteConfirmation = false
+	@Shared(.hexSettings) var hexSettings: HexSettings
 
 	var body: some View {
-		if store.transcriptionHistory.history.isEmpty {
+		if !hexSettings.saveTranscriptionHistory {
+			ContentUnavailableView {
+				Label("History Disabled", systemImage: "clock.arrow.circlepath")
+			} description: {
+				Text("Transcription history is currently disabled.")
+			} actions: {
+				Button("Enable in Settings") {
+					store.send(.navigateToSettings)
+				}
+			}
+		} else if store.transcriptionHistory.history.isEmpty {
 			ContentUnavailableView {
 				Label("No Transcriptions", systemImage: "text.bubble")
 			} description: {

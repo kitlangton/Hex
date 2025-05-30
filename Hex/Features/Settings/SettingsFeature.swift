@@ -22,6 +22,7 @@ struct SettingsFeature {
   struct State {
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isSettingHotKey) var isSettingHotKey: Bool = false
+    @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
 
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
@@ -60,6 +61,9 @@ struct SettingsFeature {
 
     // Model Management
     case modelDownload(ModelDownloadFeature.Action)
+    
+    // History Management
+    case toggleSaveTranscriptionHistory(Bool)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -289,6 +293,28 @@ struct SettingsFeature {
         
       case let .availableInputDevicesLoaded(devices):
         state.availableInputDevices = devices
+        return .none
+        
+      case let .toggleSaveTranscriptionHistory(enabled):
+        state.$hexSettings.withLock { $0.saveTranscriptionHistory = enabled }
+        
+        // If disabling history, delete all existing entries
+        if !enabled {
+          let transcripts = state.transcriptionHistory.history
+          
+          // Clear the history
+          state.$transcriptionHistory.withLock { history in
+            history.history.removeAll()
+          }
+          
+          // Delete all audio files
+          return .run { _ in
+            for transcript in transcripts {
+              try? FileManager.default.removeItem(at: transcript.audioPath)
+            }
+          }
+        }
+        
         return .none
       }
     }

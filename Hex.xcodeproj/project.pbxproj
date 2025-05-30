@@ -540,7 +540,7 @@
 		};
 		47C08AB42DE9F61B00564AE6 /* XCRemoteSwiftPackageReference "Inject" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/krzysztofzablocki/Inject?tab=readme-ov-file";
+			repositoryURL = "https://github.com/krzysztofzablocki/Inject";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.5.2;

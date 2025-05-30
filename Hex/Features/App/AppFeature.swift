@@ -56,6 +56,9 @@ struct AppFeature {
         return .none
       case .settings:
         return .none
+      case .history(.navigateToSettings):
+        state.activeTab = .settings
+        return .none
       case .history:
         return .none
       case let .setActiveTab(tab):

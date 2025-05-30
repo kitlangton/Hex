@@ -7,6 +7,21 @@
     "•" : {
       "shouldTranslate" : false
     },
+    "50" : {
+
+    },
+    "100" : {
+
+    },
+    "200" : {
+
+    },
+    "500" : {
+
+    },
+    "1000" : {
+
+    },
     "About" : {
       "comment" : "Settings -> About Section headline",
       "localizations" : {
@@ -223,6 +238,9 @@
     "Downloading model..." : {
 
     },
+    "Enable in Settings" : {
+
+    },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
       "localizations" : {
@@ -289,6 +307,9 @@
         }
       }
     },
+    "History Disabled" : {
+
+    },
     "Hot Key" : {
       "comment" : "hotkey section in settings.",
       "localizations" : {
@@ -311,6 +332,9 @@
       }
     },
     "Input Device" : {
+
+    },
+    "Maximum History Entries" : {
 
     },
     "Microphone" : {
@@ -355,6 +379,9 @@
           }
         }
       }
+    },
+    "Oldest entries will be automatically deleted when limit is reached" : {
+
     },
     "Open on Login" : {
       "comment" : "Label for general setting to open app on login.",
@@ -444,6 +471,12 @@
           }
         }
       }
+    },
+    "Save Transcription History" : {
+
+    },
+    "Save transcriptions and audio recordings for later access" : {
+
     },
     "Selected device not connected. System default will be used." : {
 
@@ -565,6 +598,9 @@
     "System Default" : {
 
     },
+    "Transcription history is currently disabled." : {
+
+    },
     "Transcription Model" : {
       "comment" : "Label for Transcription Model Section",
       "localizations" : {
@@ -575,6 +611,9 @@
           }
         }
       }
+    },
+    "Unlimited" : {
+
     },
     "Use clipboard to insert" : {
       "comment" : "Label for toggle in general section.",
@@ -622,6 +661,9 @@
           }
         }
       }
+    },
+    "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
+
     },
     "You're using a full keyboard shortcut. Double-tap is recommended." : {
 

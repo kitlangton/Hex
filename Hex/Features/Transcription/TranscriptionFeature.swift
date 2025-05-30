@@ -345,37 +345,55 @@ private extension TranscriptionFeature {
     .run { send in
       do {
         let originalURL = await recording.stopRecording()
+        
+        @Shared(.hexSettings) var hexSettings: HexSettings
 
-        // Move the file to a permanent location
-        let fm = FileManager.default
-        let supportDir = try fm.url(
-          for: .applicationSupportDirectory,
-          in: .userDomainMask,
-          appropriateFor: nil,
-          create: true
-        )
-        let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-        let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-        try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
+        // Check if we should save to history
+        if hexSettings.saveTranscriptionHistory {
+          // Move the file to a permanent location
+          let fm = FileManager.default
+          let supportDir = try fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+          )
+          let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
+          let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
+          try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
 
-        // Create a unique file name
-        let filename = "\(Date().timeIntervalSince1970).wav"
-        let finalURL = recordingsFolder.appendingPathComponent(filename)
+          // Create a unique file name
+          let filename = "\(Date().timeIntervalSince1970).wav"
+          let finalURL = recordingsFolder.appendingPathComponent(filename)
 
-        // Move temp => final
-        try fm.moveItem(at: originalURL, to: finalURL)
+          // Move temp => final
+          try fm.moveItem(at: originalURL, to: finalURL)
 
-        // Build a transcript object
-        let transcript = Transcript(
-          timestamp: Date(),
-          text: result,
-          audioPath: finalURL,
-          duration: duration
-        )
+          // Build a transcript object
+          let transcript = Transcript(
+            timestamp: Date(),
+            text: result,
+            audioPath: finalURL,
+            duration: duration
+          )
 
-        // Append to the in-memory shared history
-        transcriptionHistory.withLock {
-          $0.history.insert(transcript, at: 0)
+          // Append to the in-memory shared history
+          transcriptionHistory.withLock { history in
+            history.history.insert(transcript, at: 0)
+            
+            // Trim history if max entries is set
+            if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
+              while history.history.count > maxEntries {
+                if let removedTranscript = history.history.popLast() {
+                  // Delete the audio file
+                  try? FileManager.default.removeItem(at: removedTranscript.audioPath)
+                }
+              }
+            }
+          }
+        } else {
+          // If not saving history, just delete the temp audio file
+          try? FileManager.default.removeItem(at: originalURL)
         }
 
         // Paste text (and copy if enabled via pasteWithClipboard)
