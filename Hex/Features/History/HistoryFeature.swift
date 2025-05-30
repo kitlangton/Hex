@@ -26,14 +26,36 @@ struct TranscriptionHistory: Codable, Equatable {
 }
 
 extension SharedReaderKey
-	where Self == FileStorageKey<TranscriptionHistory>.Default
+    where Self == FileStorageKey<TranscriptionHistory>.Default
 {
-	static var transcriptionHistory: Self {
-		Self[
-			.fileStorage(URL.documentsDirectory.appending(component: "transcription_history.json")),
-			default: .init()
-		]
-	}
+    static var transcriptionHistory: Self {
+        let fileManager = FileManager.default
+        let historyURL: URL
+
+        do {
+            // Construct the path: ~/.config/hex/
+            let homeDir = fileManager.homeDirectoryForCurrentUser
+            let configDir = homeDir.appendingPathComponent(".config", isDirectory: true)
+                                   .appendingPathComponent("hex", isDirectory: true)
+
+            // Ensure the directory exists
+            try fileManager.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: nil)
+
+            // Define the final file URL
+            historyURL = configDir.appendingPathComponent("transcription_history.json")
+
+        } catch {
+            // Fallback
+            print("Error creating/finding config directory for history: \(error). Falling back to Documents.")
+            historyURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("transcription_history_fallback.json")
+        }
+
+        // Return the FileStorageKey pointing to the desired URL
+        return Self[
+            .fileStorage(historyURL),
+            default: .init()
+        ]
+    }
 }
 
 class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
