@@ -4,6 +4,9 @@
     "" : {
       "shouldTranslate" : false
     },
+    "%.2f" : {
+
+    },
     "•" : {
       "shouldTranslate" : false
     },
@@ -32,6 +35,12 @@
     "Accuracy" : {
 
     },
+    "AI Enhancement" : {
+
+    },
+    "AI enhancement requires Ollama to be installed and running locally." : {
+
+    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -44,6 +53,9 @@
       }
     },
     "Become a Sponsor" : {
+
+    },
+    "Browse Models" : {
 
     },
     "Cancel" : {
@@ -76,6 +88,9 @@
           }
         }
       }
+    },
+    "Check Connection" : {
+
     },
     "Check for Updates" : {
       "comment" : "Check for updates button in About section of Settings",
@@ -134,6 +149,9 @@
     "Copy transcription text to clipboard in addition to pasting it" : {
 
     },
+    "Creativity" : {
+
+    },
     "Delete" : {
 
     },
@@ -182,6 +200,15 @@
         }
       }
     },
+    "Disable auto-capitalization" : {
+
+    },
+    "Disable automatic capitalization in transcriptions" : {
+
+    },
+    "Done" : {
+
+    },
     "Download" : {
 
     },
@@ -195,6 +222,9 @@
           }
         }
       }
+    },
+    "Download Ollama" : {
+
     },
     "Download Selected Model" : {
       "comment" : "In Transcription Model section in settings.",
@@ -223,6 +253,15 @@
     "Downloading model..." : {
 
     },
+    "Edit" : {
+
+    },
+    "Enable AI to improve transcription quality by fixing grammar, formatting, and errors." : {
+
+    },
+    "Enhancement Prompt" : {
+
+    },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
       "localizations" : {
@@ -244,6 +283,9 @@
           }
         }
       }
+    },
+    "Error: %@" : {
+
     },
     "General" : {
       "comment" : "General section in Settings Header.",
@@ -313,6 +355,21 @@
     "Input Device" : {
 
     },
+    "Instructions" : {
+
+    },
+    "Language Model" : {
+
+    },
+    "Loading available models..." : {
+
+    },
+    "Lower values produce more consistent, conservative improvements. Higher values allow more creative rewording." : {
+
+    },
+    "Make changes to customize how the AI enhances your transcriptions. Be specific about what should be preserved or changed." : {
+
+    },
     "Microphone" : {
       "comment" : "Microphone permission.",
       "localizations" : {
@@ -331,6 +388,12 @@
 
     },
     "Model prewarming..." : {
+
+    },
+    "Model Selection" : {
+
+    },
+    "No models found in Ollama" : {
 
     },
     "No models found." : {
@@ -355,6 +418,18 @@
           }
         }
       }
+    },
+    "Ollama Connected" : {
+
+    },
+    "Ollama connection required to view models" : {
+
+    },
+    "Ollama Not Connected" : {
+
+    },
+    "Ollama Status" : {
+
     },
     "Open on Login" : {
       "comment" : "Label for general setting to open app on login.",
@@ -414,6 +489,9 @@
         }
       }
     },
+    "Precision" : {
+
+    },
     "Prevent System Sleep while Recording" : {
       "comment" : "Label for general setting whether to prevent system sleep while recording.",
       "localizations" : {
@@ -444,6 +522,15 @@
           }
         }
       }
+    },
+    "Reset to Default" : {
+
+    },
+    "Response Style" : {
+
+    },
+    "Select AI model:" : {
+
     },
     "Selected device not connected. System default will be used." : {
 
@@ -523,6 +610,9 @@
     "Size" : {
 
     },
+    "Smaller models are faster but less capable. Llama3 offers a good balance of speed and quality." : {
+
+    },
     "Sound" : {
       "comment" : "sound section in general settings.",
       "localizations" : {
@@ -565,6 +655,12 @@
     "System Default" : {
 
     },
+    "These instructions tell the AI how to improve your transcribed text." : {
+
+    },
+    "To set up Ollama:" : {
+
+    },
     "Transcription Model" : {
       "comment" : "Label for Transcription Model Section",
       "localizations" : {
@@ -575,6 +671,9 @@
           }
         }
       }
+    },
+    "Use AI Enhancement" : {
+
     },
     "Use clipboard to insert" : {
       "comment" : "Label for toggle in general section.",

@@ -17,7 +17,8 @@ import WhisperKit
 struct TranscriptionClient {
   /// Transcribes an audio file at the specified `URL` using the named `model`.
   /// Reports transcription progress via `progressCallback`.
-  var transcribe: @Sendable (URL, String, DecodingOptions, @escaping (Progress) -> Void) async throws -> String
+  /// Optionally accepts HexSettings for features like auto-capitalization.
+  var transcribe: @Sendable (URL, String, DecodingOptions, HexSettings?, @escaping (Progress) -> Void) async throws -> String
 
   /// Ensures a model is downloaded (if missing) and loaded into memory, reporting progress via `progressCallback`.
   var downloadModel: @Sendable (String, @escaping (Progress) -> Void) async throws -> Void
@@ -39,7 +40,7 @@ extension TranscriptionClient: DependencyKey {
   static var liveValue: Self {
     let live = TranscriptionClientLive()
     return Self(
-      transcribe: { try await live.transcribe(url: $0, model: $1, options: $2, progressCallback: $3) },
+      transcribe: { try await live.transcribe(url: $0, model: $1, options: $2, settings: $3, progressCallback: $4) },
       downloadModel: { try await live.downloadAndLoadModel(variant: $0, progressCallback: $1) },
       deleteModel: { try await live.deleteModel(variant: $0) },
       isModelDownloaded: { await live.isModelDownloaded($0) },
@@ -206,6 +207,7 @@ actor TranscriptionClientLive {
     url: URL,
     model: String,
     options: DecodingOptions,
+    settings: HexSettings? = nil,
     progressCallback: @escaping (Progress) -> Void
   ) async throws -> String {
     // Load or switch to the required model if needed.
@@ -231,7 +233,16 @@ actor TranscriptionClientLive {
     let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
 
     // Concatenate results from all segments.
-    let text = results.map(\.text).joined(separator: " ")
+    var text = results.map(\.text).joined(separator: " ")
+    
+    // Use provided settings or default to auto-capitalization
+    let useAutoCapitalization = settings == nil ? true : !settings!.disableAutoCapitalization
+    
+    // Convert to lowercase if auto-capitalization is disabled
+    if !useAutoCapitalization {
+      text = text.lowercased()
+    }
+    
     return text
   }
 

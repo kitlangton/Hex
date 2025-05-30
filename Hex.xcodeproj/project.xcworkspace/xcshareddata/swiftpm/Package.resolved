@@ -1,5 +1,5 @@
 {
-  "originHash" : "59bf00219a966d82c75a54eb4322a9b59a51c689972d1f70957352575925a174",
+  "originHash" : "ccdfd2e59edbb435d25bf392fd2edaecafacefd6a9f90a7b71d4efe657fa874f",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -195,8 +195,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/argmaxinc/WhisperKit",
       "state" : {
-        "branch" : "main",
-        "revision" : "b84fcd30134c800024b05050e895232c7b1fbba8"
+        "revision" : "6a509d6181da1f71517159425d6ec9d94d424f55",
+        "version" : "0.12.0"
       }
     },
     {

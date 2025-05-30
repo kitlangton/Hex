@@ -8,6 +8,33 @@ import Sauce
 
 private let logger = Logger(subsystem: "com.kitlangton.Hex", category: "KeyEventMonitor")
 
+/// Thread-safe wrapper for interacting with the Sauce library
+/// This ensures all Sauce operations happen on the main thread
+/// to prevent "_dispatch_assert_queue_fail" errors
+enum SafeSauce {
+    /// Thread-safe way to call Sauce methods from any thread
+    static func performOnMainThread<T>(_ operation: @escaping () -> T) -> T {
+        // If we're already on the main thread, just perform the operation
+        if Thread.isMainThread {
+            return operation()
+        }
+        
+        // Otherwise dispatch to main thread and wait for result
+        return DispatchQueue.main.sync {
+            operation()
+        }
+    }
+    
+    // Convenience methods that handle thread switching automatically
+    static func safeKey(for keyCode: Int) -> Key? {
+        performOnMainThread { Sauce.shared.key(for: keyCode) }
+    }
+    
+    static func safeKeyCode(for key: Key) -> CGKeyCode {
+        performOnMainThread { Sauce.shared.keyCode(for: key) }
+    }
+}
+
 public struct KeyEvent {
   let key: Key?
   let modifiers: Modifiers
@@ -16,7 +43,8 @@ public struct KeyEvent {
 public extension KeyEvent {
   init(cgEvent: CGEvent, type _: CGEventType) {
     let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
-    let key = cgEvent.type == .keyDown ? Sauce.shared.key(for: keyCode) : nil
+    // Use our thread-safe wrapper to prevent _dispatch_assert_queue_fail
+    let key: Key? = cgEvent.type == .keyDown ? SafeSauce.safeKey(for: keyCode) : nil
 
     let modifiers = Modifiers.from(carbonFlags: cgEvent.flags)
     self.init(key: key, modifiers: modifiers)
