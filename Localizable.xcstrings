@@ -263,6 +263,9 @@
         }
       }
     },
+    "Fast but may not restore all clipboard content.\nTurn off to insert by simulating keypresses: slower, doesn't need to restore the clipboard, and works in apps that don't open in a window, like Spotlight, Raycast, or Alfred." : {
+
+    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -339,7 +342,6 @@
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -350,9 +352,6 @@
       }
     },
     "Microphone Selection" : {
-
-    },
-    "Microphone!" : {
 
     },
     "Model" : {
@@ -632,6 +631,7 @@
     },
     "Use clipboard to insert text. Fast but may not restore all clipboard content.\nTurn off to use simulated keypresses. Slower, but doesn't need to restore clipboard" : {
       "comment" : "More info on \"use clipboard to insert\" toggle in general section.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
