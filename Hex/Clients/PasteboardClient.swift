@@ -46,7 +46,7 @@ struct PasteboardClientLive {
         if hexSettings.useClipboardPaste {
             await pasteWithClipboard(text)
         } else {
-            simulateTypingWithAppleScript(text)
+            simulateTyping(text)
         }
     }
     
@@ -194,14 +194,24 @@ struct PasteboardClientLive {
         }
     }
     
-    func simulateTypingWithAppleScript(_ text: String) {
-        let escapedText = text.replacingOccurrences(of: "\"", with: "\\\"")
-        let script = NSAppleScript(source: "tell application \"System Events\" to keystroke \"\(escapedText)\"")
-        var error: NSDictionary?
-        script?.executeAndReturnError(&error)
-        if let error = error {
-            print("Error executing AppleScript: \(error)")
-        }
+    func simulateTyping(_ text: String) {
+		
+		// Type simulation with low-level synthetic keyboard events using UTF-16, instead of AppleScript at one go
+		
+		guard let source = CGEventSource(stateID: .hidSystemState) else { return }
+		
+		var utf16 = Array(text.utf16)
+		let length = utf16.count
+		
+		let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
+		let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+		
+		keyDown?.keyboardSetUnicodeString(stringLength: length, unicodeString: &utf16)
+		keyUp?.keyboardSetUnicodeString(stringLength: length, unicodeString: &utf16)
+		
+		keyDown?.post(tap: .cghidEventTap)
+		keyUp?.post(tap: .cghidEventTap)
+		
     }
 
     enum PasteError: Error {

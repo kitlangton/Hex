@@ -209,7 +209,7 @@ struct SettingsView: View {
 
 				Label {
 					Toggle("Use clipboard to insert", isOn: $store.hexSettings.useClipboardPaste)
-					Text("Use clipboard to insert text. Fast but may not restore all clipboard content.\nTurn off to use simulated keypresses. Slower, but doesn't need to restore clipboard")
+					Text("Fast but may not restore all clipboard content.\nTurn off to insert by simulating keypresses: slower, doesn't need to restore the clipboard, and works in apps that don't open in a window, like Spotlight, Raycast, or Alfred.")
 				} icon: {
 					Image(systemName: "doc.on.doc.fill")
 				}
@@ -310,4 +310,17 @@ struct SettingsView: View {
 		}
 		.enableInjection()
 	}
+}
+
+#Preview {
+  SettingsView(
+	store: Store(
+	  initialState: SettingsFeature.State(
+		hexSettings: Shared(wrappedValue: HexSettings(), .hexSettings),
+		isSettingHotKey: false,
+		transcriptionHistory: Shared(wrappedValue: .init(), .transcriptionHistory)
+	  ),
+	  reducer: { SettingsFeature() }
+	)
+  )
 }
