@@ -313,12 +313,25 @@ private extension TranscriptionFeature {
       return .none
     }
 
+    // Apply text capitalization based on user setting
+    let processedResult: String
+    switch state.hexSettings.textCapitalization {
+    case .asTranscribed:
+      processedResult = result
+    case .smartLowercase:
+      // Convert to lowercase but preserve standalone "I"
+      processedResult = result.lowercased()
+        .replacingOccurrences(of: "\\bi\\b", with: "I", options: .regularExpression)
+    case .allLowercase:
+      processedResult = result.lowercased()
+    }
+
     // Compute how long we recorded
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
     // Continue with storing the final result in the background
     return finalizeRecordingAndStoreTranscript(
-      result: result,
+      result: processedResult,
       duration: duration,
       transcriptionHistory: state.$transcriptionHistory
     )

@@ -244,6 +244,17 @@ struct SettingsView: View {
 				} icon: {
 					Image(systemName: "pause")
 				}
+				
+				Label {
+					Picker("Text Capitalization", selection: $store.hexSettings.textCapitalization) {
+						ForEach(TextCapitalization.allCases, id: \.self) { option in
+							Text(option.displayName).tag(option)
+						}
+					}
+					.pickerStyle(.menu)
+				} icon: {
+					Image(systemName: "textformat")
+				}
 			} header: {
 				Text("General")
 			}
