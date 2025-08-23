@@ -24,6 +24,7 @@ struct TranscriptionFeature {
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
     var assertionID: IOPMAssertionID?
+    var lastRecordingURL: URL?
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
   }
@@ -46,6 +47,7 @@ struct TranscriptionFeature {
     // Transcription result flow
     case transcriptionResult(String)
     case transcriptionError(Error)
+    case setLastRecordingURL(URL)
   }
 
   enum CancelID {
@@ -108,6 +110,10 @@ struct TranscriptionFeature {
 
       case let .transcriptionError(error):
         return handleTranscriptionError(&state, error: error)
+
+      case let .setLastRecordingURL(url):
+        state.lastRecordingURL = url
+        return .none
 
       // MARK: - Cancel Entire Flow
 
@@ -193,7 +199,7 @@ private extension TranscriptionFeature {
           return false
         }
       }
-      
+
       // Use withTaskCancellationHandler to ensure cleanup when the effect is cancelled
       await withTaskCancellationHandler {
         // Keep the effect running indefinitely
@@ -282,11 +288,12 @@ private extension TranscriptionFeature {
     let language = state.hexSettings.outputLanguage
 
     state.isPrewarming = true
-    
+
     return .run { send in
       do {
         await soundEffect.play(.stopRecording)
         let audioURL = await recording.stopRecording()
+        await send(.setLastRecordingURL(audioURL))
 
         // Create transcription options with the selected language
         let decodeOptions = DecodingOptions(
@@ -294,9 +301,9 @@ private extension TranscriptionFeature {
           detectLanguage: language == nil, // Only auto-detect if no language specified
           chunkingStrategy: .vad
         )
-        
+
         let result = try await transcription.transcribe(audioURL, model, decodeOptions) { _ in }
-        
+
         print("Transcribed audio from URL: \(audioURL) to text: \(result)")
         await send(.transcriptionResult(result))
       } catch {
@@ -327,9 +334,13 @@ private extension TranscriptionFeature {
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
     // Continue with storing the final result in the background
+    guard let originalURL = state.lastRecordingURL else {
+      return .none
+    }
     return finalizeRecordingAndStoreTranscript(
       result: result,
       duration: duration,
+      originalURL: originalURL,
       transcriptionHistory: state.$transcriptionHistory
     )
   }
@@ -351,28 +362,27 @@ private extension TranscriptionFeature {
   func finalizeRecordingAndStoreTranscript(
     result: String,
     duration: TimeInterval,
+    originalURL: URL,
     transcriptionHistory: Shared<TranscriptionHistory>
   ) -> Effect<Action> {
     .run { send in
       do {
-        let originalURL = await recording.stopRecording()
-        
         @Shared(.hexSettings) var hexSettings: HexSettings
+        let fm = FileManager.default
+
+        // Compute application support paths up front
+        let supportDir = try fm.url(
+          for: .applicationSupportDirectory,
+          in: .userDomainMask,
+          appropriateFor: nil,
+          create: true
+        )
+        let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
+        let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
+        try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
 
         // Check if we should save to history
         if hexSettings.saveTranscriptionHistory {
-          // Move the file to a permanent location
-          let fm = FileManager.default
-          let supportDir = try fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-          )
-          let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-          let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-          try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
-
           // Create a unique file name
           let filename = "\(Date().timeIntervalSince1970).wav"
           let finalURL = recordingsFolder.appendingPathComponent(filename)
@@ -391,10 +401,10 @@ private extension TranscriptionFeature {
           // Append to the in-memory shared history
           // Collect files to delete after state persistence
           var filesToDelete: [URL] = []
-          
+
           transcriptionHistory.withLock { history in
             history.history.insert(transcript, at: 0)
-            
+
             // Trim history if max entries is set
             if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
               while history.history.count > maxEntries {
@@ -405,7 +415,7 @@ private extension TranscriptionFeature {
               }
             }
           }
-          
+
           // Ensure state is persisted before deleting files
           if !filesToDelete.isEmpty {
             // Create a task to handle persistence and deletion
@@ -439,16 +449,16 @@ private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
     // Store whether we were recording before clearing the flag
     let wasRecording = state.isRecording
-    
+
     // Clear all active state flags
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
-    
+
     // Clear any stale state that could affect future operations
     state.recordingStartTime = nil
     state.error = nil
-    
+
     // Release power management assertion if one exists
     // This prevents system sleep leaks if we cancel during recording
     reallowSystemSleep(&state)

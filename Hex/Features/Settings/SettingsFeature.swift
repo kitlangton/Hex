@@ -26,7 +26,7 @@ struct SettingsFeature {
 
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
-    
+
     // Available microphones
     var availableInputDevices: [AudioInputDevice] = []
 
@@ -54,16 +54,21 @@ struct SettingsFeature {
     case requestMicrophonePermission
     case requestAccessibilityPermission
     case accessibilityStatusDidChange
-    
+
     // Microphone selection
     case loadAvailableInputDevices
     case availableInputDevicesLoaded([AudioInputDevice])
 
     // Model Management
     case modelDownload(ModelDownloadFeature.Action)
-    
+
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
+  }
+
+  enum CancelID {
+    case deviceNotifications
+    case keyEvents
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -97,67 +102,16 @@ struct SettingsFeature {
           print("Failed to load languages")
         }
 
-        // Listen for key events and load microphones (existing + new)
-        return .run { send in
-          await send(.checkPermissions)
-          await send(.modelDownload(.fetchModels))
-          await send(.loadAvailableInputDevices)
-          
-          // Set up periodic refresh of available devices (every 120 seconds)
-          // Using a longer interval to reduce resource usage
-          let deviceRefreshTask = Task { @MainActor in
-            for await _ in clock.timer(interval: .seconds(120)) {
-              // Only refresh when the app is active to save resources
-              if await NSApplication.shared.isActive {
-                await send(.loadAvailableInputDevices)
-              }
-            }
-          }
-          
-          // Listen for device connection/disconnection notifications
-          // Using a simpler debounced approach with a single task
-          var deviceUpdateTask: Task<Void, Never>?
-          
-          // Helper function to debounce device updates
-          func debounceDeviceUpdate() {
-            deviceUpdateTask?.cancel()
-            deviceUpdateTask = Task {
-              try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
-              if !Task.isCancelled {
-                await send(.loadAvailableInputDevices)
-              }
-            }
-          }
-          
-          let deviceConnectionObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(rawValue: "AVCaptureDeviceWasConnected"),
-            object: nil,
-            queue: .main
-          ) { _ in
-            debounceDeviceUpdate()
-          }
-          
-          let deviceDisconnectionObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(rawValue: "AVCaptureDeviceWasDisconnected"),
-            object: nil,
-            queue: .main
-          ) { _ in
-            debounceDeviceUpdate()
-          }
-          
-          // Be sure to clean up resources when the task is finished
-          defer {
-            deviceUpdateTask?.cancel()
-            NotificationCenter.default.removeObserver(deviceConnectionObserver)
-            NotificationCenter.default.removeObserver(deviceDisconnectionObserver)
-          }
-
-          for try await keyEvent in await keyEventMonitor.listenForKeyPress() {
-            await send(.keyEvent(keyEvent))
-          }
-          
-          deviceRefreshTask.cancel()
-        }
+        // Kick off initial loads, device notifications, and key event listening
+        return .merge(
+          .run { send in
+            await send(.checkPermissions)
+            await send(.modelDownload(.fetchModels))
+            await send(.loadAvailableInputDevices)
+          },
+          deviceNotificationsEffect(),
+          keyPressListenerEffect()
+        )
 
       case .startSettingHotKey:
         state.$isSettingHotKey.withLock { $0 = true }
@@ -283,30 +237,30 @@ struct SettingsFeature {
 
       case .modelDownload:
         return .none
-      
+
       // Microphone device selection
       case .loadAvailableInputDevices:
         return .run { send in
           let devices = await recording.getAvailableInputDevices()
           await send(.availableInputDevicesLoaded(devices))
         }
-        
+
       case let .availableInputDevicesLoaded(devices):
         state.availableInputDevices = devices
         return .none
-        
+
       case let .toggleSaveTranscriptionHistory(enabled):
         state.$hexSettings.withLock { $0.saveTranscriptionHistory = enabled }
-        
+
         // If disabling history, delete all existing entries
         if !enabled {
           let transcripts = state.transcriptionHistory.history
-          
+
           // Clear the history
           state.$transcriptionHistory.withLock { history in
             history.history.removeAll()
           }
-          
+
           // Delete all audio files
           return .run { _ in
             for transcript in transcripts {
@@ -314,7 +268,7 @@ struct SettingsFeature {
             }
           }
         }
-        
+
         return .none
       }
     }
@@ -322,6 +276,61 @@ struct SettingsFeature {
 }
 
 // MARK: - Permissions Helpers
+
+// MARK: - Effects
+
+private extension SettingsFeature {
+  func deviceNotificationsEffect() -> Effect<Action> {
+    .run { send in
+      @Dependency(\.continuousClock) var clock
+      // Debounce helper
+      var deviceUpdateTask: Task<Void, Never>?
+      func debounceDeviceUpdate() {
+        deviceUpdateTask?.cancel()
+        deviceUpdateTask = Task {
+          try? await Task.sleep(nanoseconds: 500_000_000)
+          if !Task.isCancelled {
+            await send(.loadAvailableInputDevices)
+          }
+        }
+      }
+
+      let deviceConnectionObserver = NotificationCenter.default.addObserver(
+        forName: NSNotification.Name(rawValue: "AVCaptureDeviceWasConnected"),
+        object: nil,
+        queue: .main
+      ) { _ in
+        debounceDeviceUpdate()
+      }
+
+      let deviceDisconnectionObserver = NotificationCenter.default.addObserver(
+        forName: NSNotification.Name(rawValue: "AVCaptureDeviceWasDisconnected"),
+        object: nil,
+        queue: .main
+      ) { _ in
+        debounceDeviceUpdate()
+      }
+
+      await withTaskCancellationHandler {
+        for await _ in AsyncStream<Never>.never {}
+      } onCancel: {
+        deviceUpdateTask?.cancel()
+        NotificationCenter.default.removeObserver(deviceConnectionObserver)
+        NotificationCenter.default.removeObserver(deviceDisconnectionObserver)
+      }
+    }
+    .cancellable(id: CancelID.deviceNotifications, cancelInFlight: true)
+  }
+
+  func keyPressListenerEffect() -> Effect<Action> {
+    .run { send in
+      for try await keyEvent in await keyEventMonitor.listenForKeyPress() {
+        await send(.keyEvent(keyEvent))
+      }
+    }
+    .cancellable(id: CancelID.keyEvents, cancelInFlight: true)
+  }
+}
 
 /// Check current microphone permission
 private func checkMicrophonePermission() async -> PermissionStatus {
