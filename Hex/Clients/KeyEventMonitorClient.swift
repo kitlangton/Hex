@@ -26,7 +26,8 @@ public extension KeyEvent {
 @DependencyClient
 struct KeyEventMonitorClient {
   var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
-  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> Void = { _ in }
+  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> UUID = { _ in UUID() }
+  var removeKeyEventHandler: @Sendable (UUID) -> Void = { _ in }
   var startMonitoring: @Sendable () async -> Void = {}
 }
 
@@ -39,6 +40,9 @@ extension KeyEventMonitorClient: DependencyKey {
       },
       handleKeyEvent: { handler in
         live.handleKeyEvent(handler)
+      },
+      removeKeyEventHandler: { uuid in
+        live.removeKeyEventHandler(uuid)
       },
       startMonitoring: {
         live.startMonitoring()
@@ -59,6 +63,9 @@ class KeyEventMonitorClientLive {
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: (KeyEvent) -> Bool] = [:]
   private var isMonitoring = false
+  
+  // Thread safety: All access to continuations and isMonitoring must be synchronized
+  private let lock = NSLock()
 
   init() {
     logger.info("Initializing HotKeyClient with CGEvent tap.")
@@ -72,13 +79,17 @@ class KeyEventMonitorClientLive {
   func listenForKeyPress() -> AsyncThrowingStream<KeyEvent, Error> {
     AsyncThrowingStream { continuation in
       let uuid = UUID()
+      
+      lock.lock()
       continuations[uuid] = { event in
         continuation.yield(event)
         return false
       }
+      let shouldStartMonitoring = continuations.count == 1
+      lock.unlock()
 
       // Start monitoring if this is the first subscription
-      if continuations.count == 1 {
+      if shouldStartMonitoring {
         startMonitoring()
       }
 
@@ -90,17 +101,25 @@ class KeyEventMonitorClientLive {
   }
 
   private func removeContinuation(uuid: UUID) {
+    lock.lock()
     continuations[uuid] = nil
+    let shouldStopMonitoring = continuations.isEmpty
+    lock.unlock()
 
     // Stop monitoring if no more listeners
-    if continuations.isEmpty {
+    if shouldStopMonitoring {
       stopMonitoring()
     }
   }
 
   func startMonitoring() {
-    guard !isMonitoring else { return }
+    lock.lock()
+    guard !isMonitoring else {
+      lock.unlock()
+      return
+    }
     isMonitoring = true
+    lock.unlock()
 
     // Create an event tap at the HID level to capture keyDown, keyUp, and flagsChanged
     let eventMask =
@@ -150,19 +169,43 @@ class KeyEventMonitorClientLive {
     logger.info("Started monitoring key events via CGEvent tap.")
   }
 
-  // TODO: Handle removing the handler from the continuations on deinit/cancellation
-  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) {
+  /// Register a key event handler and return a UUID for later removal
+  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) -> UUID {
     let uuid = UUID()
+    
+    lock.lock()
     continuations[uuid] = handler
+    let shouldStartMonitoring = continuations.count == 1
+    lock.unlock()
 
-    if continuations.count == 1 {
+    if shouldStartMonitoring {
       startMonitoring()
+    }
+    
+    return uuid
+  }
+  
+  /// Remove a previously registered key event handler
+  func removeKeyEventHandler(_ uuid: UUID) {
+    lock.lock()
+    continuations[uuid] = nil
+    let shouldStopMonitoring = continuations.isEmpty
+    lock.unlock()
+    
+    // Stop monitoring if no more listeners
+    if shouldStopMonitoring {
+      stopMonitoring()
     }
   }
 
   private func stopMonitoring() {
-    guard isMonitoring else { return }
+    lock.lock()
+    guard isMonitoring else {
+      lock.unlock()
+      return
+    }
     isMonitoring = false
+    lock.unlock()
 
     if let runLoopSource = runLoopSource {
       CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
@@ -180,8 +223,14 @@ class KeyEventMonitorClientLive {
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
     var handled = false
 
-    for continuation in continuations.values {
-      if continuation(keyEvent) {
+    // Create a copy of handlers to avoid holding the lock while calling them
+    lock.lock()
+    let handlers = Array(continuations.values)
+    lock.unlock()
+    
+    // Process handlers outside the lock to avoid deadlocks
+    for handler in handlers {
+      if handler(keyEvent) {
         handled = true
       }
     }

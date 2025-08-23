@@ -141,14 +141,14 @@ private extension TranscriptionFeature {
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
-      // Handle incoming key events
-      keyEventMonitor.handleKeyEvent { keyEvent in
+      // Register the key event handler and store its UUID for cleanup
+      let handlerUUID = keyEventMonitor.handleKeyEvent { keyEvent in
         // Skip if the user is currently setting a hotkey
         if isSettingHotKey {
           return false
         }
 
-        // If Escape is pressed with no modifiers while idle, let’s treat that as `cancel`.
+        // If Escape is pressed with no modifiers while idle, let's treat that as `cancel`.
         if keyEvent.key == .escape, keyEvent.modifiers.isEmpty,
            hotKeyProcessor.state == .idle
         {
@@ -191,6 +191,15 @@ private extension TranscriptionFeature {
           }
           return false
         }
+      }
+      
+      // Use withTaskCancellationHandler to ensure cleanup when the effect is cancelled
+      await withTaskCancellationHandler {
+        // Keep the effect running indefinitely
+        for await _ in AsyncStream<Never>.never {}
+      } onCancel: {
+        // Clean up the handler when the effect is cancelled
+        keyEventMonitor.removeKeyEventHandler(handlerUUID)
       }
     }
   }
