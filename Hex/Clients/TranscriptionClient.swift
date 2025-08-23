@@ -68,6 +68,11 @@ actor TranscriptionClientLive {
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
 
+  /// Small in-memory cache for model presence checks
+  private var modelPresenceCache: [String: Bool] = [:]
+  private var modelPresenceCacheTime: Date = .distantPast
+  private let modelPresenceCacheTTL: TimeInterval = 30 // seconds
+
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
     do {
@@ -159,6 +164,16 @@ actor TranscriptionClientLive {
   /// Returns `true` if the model is already downloaded to the local folder.
   /// Performs a thorough check to ensure the model files are actually present and usable.
   func isModelDownloaded(_ modelName: String) async -> Bool {
+    // Use a short-lived cache to reduce repeated filesystem scans
+    let now = Date()
+    if now.timeIntervalSince(modelPresenceCacheTime) > modelPresenceCacheTTL {
+      modelPresenceCache.removeAll()
+      modelPresenceCacheTime = now
+    }
+    if let cached = modelPresenceCache[modelName] {
+      return cached
+    }
+
     let modelFolderPath = modelPath(for: modelName).path
     let fileManager = FileManager.default
 
@@ -183,8 +198,11 @@ actor TranscriptionClientLive {
       let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolderPath)
 
       // Both conditions must be true for a model to be considered downloaded
-      return hasModelFiles && hasTokenizer
+      let present = hasModelFiles && hasTokenizer
+      modelPresenceCache[modelName] = present
+      return present
     } catch {
+      modelPresenceCache[modelName] = false
       return false
     }
   }

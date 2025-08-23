@@ -139,7 +139,10 @@ struct HistoryFeature {
 					}
 				} catch {
 					print("Error playing audio: \(error)")
-					return .none
+					// Surface error to user via alert
+					return .run { _ in
+						NSApp.presentError(error as NSError)
+					}
 				}
 
 			case .stopPlayback, .playbackFinished:
