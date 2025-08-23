@@ -12,7 +12,7 @@ struct Transcript: Codable, Equatable, Identifiable {
 	var text: String
 	var audioPath: URL
 	var duration: TimeInterval
-	
+
 	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL, duration: TimeInterval) {
 		self.id = id
 		self.timestamp = timestamp
@@ -52,13 +52,18 @@ class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
 	func stop() {
 		player?.stop()
 		player = nil
+		// Break any potential retain cycles by clearing callback
+		onPlaybackFinished = nil
 	}
 
 	// AVAudioPlayerDelegate method
 	func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
 		self.player = nil
+		// Capture and clear the callback to avoid any retain cycles
+		let completion = self.onPlaybackFinished
+		self.onPlaybackFinished = nil
 		Task { @MainActor in
-			onPlaybackFinished?()
+			completion?()
 		}
 	}
 }
@@ -203,7 +208,7 @@ struct HistoryFeature {
 						try? FileManager.default.removeItem(at: transcript.audioPath)
 					}
 				}
-				
+
 			case .navigateToSettings:
 				// This will be handled by the parent reducer
 				return .none

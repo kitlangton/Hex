@@ -106,7 +106,7 @@ public struct ModelDownloadFeature {
 		public var downloadProgress: Double = 0
 		public var downloadError: String?
 		public var downloadingModelName: String?
-        
+
         // Track which model generated a progress update to handle switching models
         public var activeDownloadID: UUID?
 
@@ -132,7 +132,7 @@ public struct ModelDownloadFeature {
 		case downloadSelectedModel
 		// Effects
 		case modelsLoaded(recommended: String, available: [ModelInfo])
-		case downloadProgress(Double)
+		case downloadProgress(id: UUID, progress: Double)
 		case downloadCompleted(Result<String, Error>)
 
 		case deleteSelectedModel
@@ -211,11 +211,14 @@ public struct ModelDownloadFeature {
 			state.downloadError = nil
 			state.isDownloading = true
 			state.downloadingModelName = state.selectedModel
-			return .run { [state] send in
+			let downloadID = UUID()
+			state.activeDownloadID = downloadID
+			state.downloadProgress = 0
+			return .run { [state, downloadID] send in
 				do {
 					// Assume downloadModel returns AsyncThrowingStream<Double, Error>
 					try await transcription.downloadModel(state.selectedModel) { progress in
-						Task { await send(.downloadProgress(progress.fractionCompleted)) }
+						Task { await send(.downloadProgress(id: downloadID, progress: progress.fractionCompleted)) }
 					}
 					await send(.downloadCompleted(.success(state.selectedModel)))
 				} catch {
@@ -223,13 +226,15 @@ public struct ModelDownloadFeature {
 				}
 			}
 
-		case let .downloadProgress(progress):
+		case let .downloadProgress(id, progress):
+			guard state.activeDownloadID == id else { return .none }
 			state.downloadProgress = progress
 			return .none
 
 		case let .downloadCompleted(result):
 			state.isDownloading = false
 			state.downloadingModelName = nil
+			state.activeDownloadID = nil
 			switch result {
 			case let .success(name):
 				state.availableModels[id: name]?.isDownloaded = true
