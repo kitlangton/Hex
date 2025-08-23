@@ -52,6 +52,7 @@ struct TranscriptionFeature {
     case delayedRecord
     case metering
     case transcription
+    case cancellationCleanup
   }
 
   @Dependency(\.transcription) var transcription
@@ -446,6 +447,7 @@ private extension TranscriptionFeature {
         }
         await soundEffect.play(.cancel)
       }
+      .cancellable(id: CancelID.cancellationCleanup, cancelInFlight: true)
     )
   }
 }
