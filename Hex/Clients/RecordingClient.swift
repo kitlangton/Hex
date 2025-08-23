@@ -184,7 +184,7 @@ func pauseAllMediaApplications() async -> [String] {
   var pausedPlayers: [String] = []
   let count = resultDescriptor.numberOfItems
   
-  for i in 0...count {
+  for i in 1...count {
     if let item = resultDescriptor.atIndex(i)?.stringValue {
       pausedPlayers.append(item)
     }
