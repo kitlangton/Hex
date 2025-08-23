@@ -427,11 +427,12 @@ actor RecordingClientLive {
     }
     
     // Allocate raw memory based on the actual byte size needed
-    let bufferList = UnsafeMutableRawPointer.allocate(
+    let rawBufferList = UnsafeMutableRawPointer.allocate(
       byteCount: Int(propertySize),
       alignment: MemoryLayout<AudioBufferList>.alignment
     )
-    defer { bufferList.deallocate() }
+    defer { rawBufferList.deallocate() }
+    let bufferList = rawBufferList.bindMemory(to: AudioBufferList.self, capacity: 1)
     
     let getStatus = AudioObjectGetPropertyData(
       deviceID,
