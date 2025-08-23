@@ -426,8 +426,13 @@ actor RecordingClientLive {
       return false
     }
     
-    let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(propertySize))
-    defer { bufferList.deallocate() }
+    // Allocate raw memory based on the actual byte size needed
+    let rawBufferList = UnsafeMutableRawPointer.allocate(
+      byteCount: Int(propertySize),
+      alignment: MemoryLayout<AudioBufferList>.alignment
+    )
+    defer { rawBufferList.deallocate() }
+    let bufferList = rawBufferList.bindMemory(to: AudioBufferList.self, capacity: 1)
     
     let getStatus = AudioObjectGetPropertyData(
       deviceID,
@@ -442,6 +447,7 @@ actor RecordingClientLive {
       return false
     }
     
+    // Check if we have any input channels
     // Check if we have any input channels
     let buffersPointer = UnsafeMutableAudioBufferListPointer(bufferList)
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
