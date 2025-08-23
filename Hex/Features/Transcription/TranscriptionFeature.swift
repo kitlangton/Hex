@@ -389,6 +389,9 @@ private extension TranscriptionFeature {
           )
 
           // Append to the in-memory shared history
+          // Collect files to delete after state persistence
+          var filesToDelete: [URL] = []
+          
           transcriptionHistory.withLock { history in
             history.history.insert(transcript, at: 0)
             
@@ -396,9 +399,22 @@ private extension TranscriptionFeature {
             if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
               while history.history.count > maxEntries {
                 if let removedTranscript = history.history.popLast() {
-                  // Delete the audio file
-                  try? FileManager.default.removeItem(at: removedTranscript.audioPath)
+                  // Queue file for deletion after state is persisted
+                  filesToDelete.append(removedTranscript.audioPath)
                 }
+              }
+            }
+          }
+          
+          // Ensure state is persisted before deleting files
+          if !filesToDelete.isEmpty {
+            // Create a task to handle persistence and deletion
+            Task {
+              // Explicitly save the state and wait for completion
+              try? await transcriptionHistory.save()
+              // Now safe to delete the files
+              for fileURL in filesToDelete {
+                try? FileManager.default.removeItem(at: fileURL)
               }
             }
           }

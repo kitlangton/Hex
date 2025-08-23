@@ -164,11 +164,16 @@ struct HistoryFeature {
 					state.playingTranscriptID = nil
 				}
 
+				// Update state first
 				_ = state.$transcriptionHistory.withLock { history in
 					history.history.remove(at: index)
 				}
 
-				return .run { _ in
+				// Delete file after ensuring state persistence completes
+				return .run { [sharedHistory = state.$transcriptionHistory] _ in
+					// Explicitly save the state and wait for completion
+					try? await sharedHistory.save()
+					// Now safe to delete the file
 					try? FileManager.default.removeItem(at: transcript.audioPath)
 				}
 
@@ -176,6 +181,7 @@ struct HistoryFeature {
 				return .send(.confirmDeleteAll)
 
 			case .confirmDeleteAll:
+				// Capture transcripts before clearing state
 				let transcripts = state.transcriptionHistory.history
 
 				state.audioPlayerController?.stop()
@@ -183,11 +189,16 @@ struct HistoryFeature {
 				state.audioPlayerController = nil
 				state.playingTranscriptID = nil
 
+				// Update state first
 				state.$transcriptionHistory.withLock { history in
 					history.history.removeAll()
 				}
 
-				return .run { _ in
+				// Delete files after ensuring state persistence completes
+				return .run { [sharedHistory = state.$transcriptionHistory] _ in
+					// Explicitly save the state and wait for completion
+					try? await sharedHistory.save()
+					// Now safe to delete all files
 					for transcript in transcripts {
 						try? FileManager.default.removeItem(at: transcript.audioPath)
 					}
