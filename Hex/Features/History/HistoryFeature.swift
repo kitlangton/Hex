@@ -164,16 +164,16 @@ struct HistoryFeature {
 					state.playingTranscriptID = nil
 				}
 
-				// Update state first, then delete file
+				// Update state first
 				_ = state.$transcriptionHistory.withLock { history in
 					history.history.remove(at: index)
 				}
 
-				// Delete file after state has been updated
-				// This ensures that if the app crashes, the state is consistent
-				return .run { _ in
-					// Small delay to ensure state persistence completes
-					try await Task.sleep(for: .milliseconds(100))
+				// Delete file after ensuring state persistence completes
+				return .run { [sharedHistory = state.$transcriptionHistory] _ in
+					// Explicitly save the state and wait for completion
+					try? await sharedHistory.save()
+					// Now safe to delete the file
 					try? FileManager.default.removeItem(at: transcript.audioPath)
 				}
 
@@ -194,11 +194,11 @@ struct HistoryFeature {
 					history.history.removeAll()
 				}
 
-				// Delete files after state has been updated
-				// This ensures that if the app crashes, the state is consistent
-				return .run { _ in
-					// Small delay to ensure state persistence completes
-					try await Task.sleep(for: .milliseconds(100))
+				// Delete files after ensuring state persistence completes
+				return .run { [sharedHistory = state.$transcriptionHistory] _ in
+					// Explicitly save the state and wait for completion
+					try? await sharedHistory.save()
+					// Now safe to delete all files
 					for transcript in transcripts {
 						try? FileManager.default.removeItem(at: transcript.audioPath)
 					}

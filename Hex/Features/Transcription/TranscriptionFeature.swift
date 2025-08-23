@@ -406,10 +406,17 @@ private extension TranscriptionFeature {
             }
           }
           
-          // Delete files after state has been updated
-          // This ensures that if the app crashes, the state is consistent
-          for fileURL in filesToDelete {
-            try? FileManager.default.removeItem(at: fileURL)
+          // Ensure state is persisted before deleting files
+          if !filesToDelete.isEmpty {
+            // Create a task to handle persistence and deletion
+            Task {
+              // Explicitly save the state and wait for completion
+              try? await transcriptionHistory.save()
+              // Now safe to delete the files
+              for fileURL in filesToDelete {
+                try? FileManager.default.removeItem(at: fileURL)
+              }
+            }
           }
         } else {
           // If not saving history, just delete the temp audio file
