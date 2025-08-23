@@ -26,7 +26,8 @@ public extension KeyEvent {
 @DependencyClient
 struct KeyEventMonitorClient {
   var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
-  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> Void = { _ in }
+  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> UUID = { _ in UUID() }
+  var removeKeyEventHandler: @Sendable (UUID) -> Void = { _ in }
   var startMonitoring: @Sendable () async -> Void = {}
 }
 
@@ -39,6 +40,9 @@ extension KeyEventMonitorClient: DependencyKey {
       },
       handleKeyEvent: { handler in
         live.handleKeyEvent(handler)
+      },
+      removeKeyEventHandler: { uuid in
+        live.removeKeyEventHandler(uuid)
       },
       startMonitoring: {
         live.startMonitoring()
@@ -150,13 +154,25 @@ class KeyEventMonitorClientLive {
     logger.info("Started monitoring key events via CGEvent tap.")
   }
 
-  // TODO: Handle removing the handler from the continuations on deinit/cancellation
-  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) {
+  /// Register a key event handler and return a UUID for later removal
+  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) -> UUID {
     let uuid = UUID()
     continuations[uuid] = handler
 
     if continuations.count == 1 {
       startMonitoring()
+    }
+    
+    return uuid
+  }
+  
+  /// Remove a previously registered key event handler
+  func removeKeyEventHandler(_ uuid: UUID) {
+    continuations[uuid] = nil
+    
+    // Stop monitoring if no more listeners
+    if continuations.isEmpty {
+      stopMonitoring()
     }
   }
 
