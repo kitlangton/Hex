@@ -63,6 +63,9 @@ class KeyEventMonitorClientLive {
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: (KeyEvent) -> Bool] = [:]
   private var isMonitoring = false
+  
+  // Thread safety: All access to continuations and isMonitoring must be synchronized
+  private let lock = NSLock()
 
   init() {
     logger.info("Initializing HotKeyClient with CGEvent tap.")
@@ -76,13 +79,17 @@ class KeyEventMonitorClientLive {
   func listenForKeyPress() -> AsyncThrowingStream<KeyEvent, Error> {
     AsyncThrowingStream { continuation in
       let uuid = UUID()
+      
+      lock.lock()
       continuations[uuid] = { event in
         continuation.yield(event)
         return false
       }
+      let shouldStartMonitoring = continuations.count == 1
+      lock.unlock()
 
       // Start monitoring if this is the first subscription
-      if continuations.count == 1 {
+      if shouldStartMonitoring {
         startMonitoring()
       }
 
@@ -94,17 +101,25 @@ class KeyEventMonitorClientLive {
   }
 
   private func removeContinuation(uuid: UUID) {
+    lock.lock()
     continuations[uuid] = nil
+    let shouldStopMonitoring = continuations.isEmpty
+    lock.unlock()
 
     // Stop monitoring if no more listeners
-    if continuations.isEmpty {
+    if shouldStopMonitoring {
       stopMonitoring()
     }
   }
 
   func startMonitoring() {
-    guard !isMonitoring else { return }
+    lock.lock()
+    guard !isMonitoring else {
+      lock.unlock()
+      return
+    }
     isMonitoring = true
+    lock.unlock()
 
     // Create an event tap at the HID level to capture keyDown, keyUp, and flagsChanged
     let eventMask =
@@ -157,9 +172,13 @@ class KeyEventMonitorClientLive {
   /// Register a key event handler and return a UUID for later removal
   func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) -> UUID {
     let uuid = UUID()
+    
+    lock.lock()
     continuations[uuid] = handler
+    let shouldStartMonitoring = continuations.count == 1
+    lock.unlock()
 
-    if continuations.count == 1 {
+    if shouldStartMonitoring {
       startMonitoring()
     }
     
@@ -168,17 +187,25 @@ class KeyEventMonitorClientLive {
   
   /// Remove a previously registered key event handler
   func removeKeyEventHandler(_ uuid: UUID) {
+    lock.lock()
     continuations[uuid] = nil
+    let shouldStopMonitoring = continuations.isEmpty
+    lock.unlock()
     
     // Stop monitoring if no more listeners
-    if continuations.isEmpty {
+    if shouldStopMonitoring {
       stopMonitoring()
     }
   }
 
   private func stopMonitoring() {
-    guard isMonitoring else { return }
+    lock.lock()
+    guard isMonitoring else {
+      lock.unlock()
+      return
+    }
     isMonitoring = false
+    lock.unlock()
 
     if let runLoopSource = runLoopSource {
       CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
@@ -196,8 +223,14 @@ class KeyEventMonitorClientLive {
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
     var handled = false
 
-    for continuation in continuations.values {
-      if continuation(keyEvent) {
+    // Create a copy of handlers to avoid holding the lock while calling them
+    lock.lock()
+    let handlers = Array(continuations.values)
+    lock.unlock()
+    
+    // Process handlers outside the lock to avoid deadlocks
+    for handler in handlers {
+      if handler(keyEvent) {
         handled = true
       }
     }
