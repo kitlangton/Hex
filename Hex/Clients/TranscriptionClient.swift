@@ -280,6 +280,11 @@ actor TranscriptionClientLive {
     // Trim underscores and dots from ends
     interim = interim.trimmingCharacters(in: CharacterSet(charactersIn: "_."))
 
+    // Disallow special directory names after trimming
+    if interim == "." || interim == ".." {
+      interim = ""
+    }
+
     // Limit length to a reasonable size
     if interim.count > 64 { interim = String(interim.prefix(64)) }
 
