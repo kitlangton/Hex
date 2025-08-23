@@ -52,6 +52,7 @@ struct TranscriptionFeature {
     case delayedRecord
     case metering
     case transcription
+    case cancellationCleanup
   }
 
   @Dependency(\.transcription) var transcription
@@ -420,16 +421,33 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
+    // Store whether we were recording before clearing the flag
+    let wasRecording = state.isRecording
+    
+    // Clear all active state flags
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
+    
+    // Clear any stale state that could affect future operations
+    state.recordingStartTime = nil
+    state.error = nil
+    
+    // Release power management assertion if one exists
+    // This prevents system sleep leaks if we cancel during recording
+    reallowSystemSleep(&state)
 
     return .merge(
       .cancel(id: CancelID.transcription),
       .cancel(id: CancelID.delayedRecord),
       .run { _ in
+        // Stop the recording if we were in the middle of one
+        if wasRecording {
+          _ = await recording.stopRecording()
+        }
         await soundEffect.play(.cancel)
       }
+      .cancellable(id: CancelID.cancellationCleanup, cancelInFlight: true)
     )
   }
 }
