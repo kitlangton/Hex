@@ -105,23 +105,23 @@ private func isAppInstalled(bundleID: String) -> Bool {
 /// Get a list of installed media player apps we should control
 private func getInstalledMediaPlayers() -> [String: String] {
   var result: [String: String] = [:]
-  
+
   if isAppInstalled(bundleID: "com.apple.Music") {
     result["Music"] = "com.apple.Music"
   }
-  
+
   if isAppInstalled(bundleID: "com.apple.iTunes") {
     result["iTunes"] = "com.apple.iTunes"
   }
-  
+
   if isAppInstalled(bundleID: "com.spotify.client") {
     result["Spotify"] = "com.spotify.client"
   }
-  
+
   if isAppInstalled(bundleID: "org.videolan.vlc") {
     result["VLC"] = "org.videolan.vlc"
   }
-  
+
   return result
 }
 
@@ -133,7 +133,7 @@ func pauseAllMediaApplications() async -> [String] {
   }
 
   print("Installed media players: \(installedPlayers.keys.joined(separator: ", "))")
-  
+
   // Create AppleScript that only targets installed players
   var scriptParts: [String] = ["set pausedPlayers to {}"]
 
@@ -145,10 +145,10 @@ func pauseAllMediaApplications() async -> [String] {
         set appName to "VLC"
         if application appName is running then
           tell application appName to set isVLCplaying to playing
-            if isVLCplaying then
-              tell application appName to play
-              set end of pausedPlayers to appName
-            end if
+          if isVLCplaying then
+            tell application id "org.videolan.vlc" to pause
+            set end of pausedPlayers to appName
+          end if
         end if
       end try
       """)
@@ -167,10 +167,10 @@ func pauseAllMediaApplications() async -> [String] {
       """)
     }
   }
-  
+
   scriptParts.append("return pausedPlayers")
   let script = scriptParts.joined(separator: "\n\n")
-  
+
   let appleScript = NSAppleScript(source: script)
   var error: NSDictionary?
   guard let resultDescriptor = appleScript?.executeAndReturnError(&error) else {
@@ -179,37 +179,37 @@ func pauseAllMediaApplications() async -> [String] {
     }
     return []
   }
-  
+
   // Convert AppleScript list to Swift array
   var pausedPlayers: [String] = []
   let count = resultDescriptor.numberOfItems
-  
+
   for i in 1...count {
     if let item = resultDescriptor.atIndex(i)?.stringValue {
       pausedPlayers.append(item)
     }
   }
-    
+
   print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
-  
+
   return pausedPlayers
 }
 
 func resumeMediaApplications(_ players: [String]) async {
   guard !players.isEmpty else { return }
-  
+
   // First check which media players are actually installed
   let installedPlayers = getInstalledMediaPlayers()
-  
+
   // Only attempt to resume players that are installed
   let validPlayers = players.filter { installedPlayers.keys.contains($0) }
   if validPlayers.isEmpty {
     return
   }
-  
+
   // Create specific resume script for each player
   var scriptParts: [String] = []
-  
+
   for player in validPlayers {
     if player == "VLC" {
       // VLC has a different AppleScript interface
@@ -233,9 +233,9 @@ func resumeMediaApplications(_ players: [String]) async {
       """)
     }
   }
-  
+
   let script = scriptParts.joined(separator: "\n\n")
-  
+
   let appleScript = NSAppleScript(source: script)
   var error: NSDictionary?
   appleScript?.executeAndReturnError(&error)
@@ -275,19 +275,19 @@ actor RecordingClientLive {
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
-    
+
   @Shared(.hexSettings) var hexSettings: HexSettings
 
   /// Tracks whether media was paused using the media key when recording started.
   private var didPauseMedia: Bool = false
-  
+
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
-  
+
   // Cache to store already-processed device information
   private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
   private var lastDeviceCheck = Date(timeIntervalSince1970: 0)
-  
+
   /// Gets all available input devices on the system
   func getAvailableInputDevices() async -> [AudioInputDevice] {
     // Reset cache if it's been more than 5 minutes since last full refresh
@@ -296,16 +296,16 @@ actor RecordingClientLive {
       deviceCache.removeAll()
       lastDeviceCheck = now
     }
-    
+
     // Get all available audio devices
     let devices = getAllAudioDevices()
     var inputDevices: [AudioInputDevice] = []
-    
+
     // Filter to only input devices and convert to our model
     for device in devices {
       let hasInput: Bool
       let name: String?
-      
+
       // Check cache first to avoid expensive Core Audio calls
       if let cached = deviceCache[device] {
         hasInput = cached.hasInput
@@ -315,17 +315,17 @@ actor RecordingClientLive {
         name = hasInput ? getDeviceName(deviceID: device) : nil
         deviceCache[device] = (hasInput, name)
       }
-      
+
       if hasInput, let deviceName = name {
         inputDevices.append(AudioInputDevice(id: String(device), name: deviceName))
       }
     }
-    
+
     return inputDevices
   }
-  
+
   // MARK: - Core Audio Helpers
-  
+
   /// Get all available audio devices
   private func getAllAudioDevices() -> [AudioDeviceID] {
     var propertySize: UInt32 = 0
@@ -334,7 +334,7 @@ actor RecordingClientLive {
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
-    
+
     // Get the property data size
     var status = AudioObjectGetPropertyDataSize(
       AudioObjectID(kAudioObjectSystemObject),
@@ -343,16 +343,16 @@ actor RecordingClientLive {
       nil,
       &propertySize
     )
-    
+
     if status != 0 {
       print("Error getting audio devices property size: \(status)")
       return []
     }
-    
+
     // Calculate device count
     let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
     var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
-    
+
     // Get the device IDs
     status = AudioObjectGetPropertyData(
       AudioObjectID(kAudioObjectSystemObject),
@@ -362,15 +362,15 @@ actor RecordingClientLive {
       &propertySize,
       &deviceIDs
     )
-    
+
     if status != 0 {
       print("Error getting audio devices: \(status)")
       return []
     }
-    
+
     return deviceIDs
   }
-  
+
   /// Get device name for the given device ID
   private func getDeviceName(deviceID: AudioDeviceID) -> String? {
     var address = AudioObjectPropertyAddress(
@@ -378,12 +378,12 @@ actor RecordingClientLive {
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
-    
+
     var deviceName: CFString? = nil
     var size = UInt32(MemoryLayout<CFString?>.size)
     var deviceNamePtr: UnsafeMutableRawPointer = .allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
     defer { deviceNamePtr.deallocate() }
-    
+
     let status = AudioObjectGetPropertyData(
       deviceID,
       &address,
@@ -392,19 +392,19 @@ actor RecordingClientLive {
       &size,
       deviceNamePtr
     )
-    
+
     if status == 0 {
         deviceName = deviceNamePtr.load(as: CFString?.self)
     }
-    
+
     if status != 0 {
       print("Error getting device name: \(status)")
       return nil
     }
-    
+
     return deviceName as String?
   }
-  
+
   /// Check if device has input capabilities
   private func deviceHasInput(deviceID: AudioDeviceID) -> Bool {
     var address = AudioObjectPropertyAddress(
@@ -412,7 +412,7 @@ actor RecordingClientLive {
       mScope: kAudioDevicePropertyScopeInput,
       mElement: kAudioObjectPropertyElementMain
     )
-    
+
     var propertySize: UInt32 = 0
     let status = AudioObjectGetPropertyDataSize(
       deviceID,
@@ -421,11 +421,11 @@ actor RecordingClientLive {
       nil,
       &propertySize
     )
-    
+
     if status != 0 {
       return false
     }
-    
+
     // Allocate raw memory based on the actual byte size needed
     let rawBufferList = UnsafeMutableRawPointer.allocate(
       byteCount: Int(propertySize),
@@ -433,7 +433,7 @@ actor RecordingClientLive {
     )
     defer { rawBufferList.deallocate() }
     let bufferList = rawBufferList.bindMemory(to: AudioBufferList.self, capacity: 1)
-    
+
     let getStatus = AudioObjectGetPropertyData(
       deviceID,
       &address,
@@ -442,17 +442,17 @@ actor RecordingClientLive {
       &propertySize,
       bufferList
     )
-    
+
     if getStatus != 0 {
       return false
     }
-    
+
     // Check if we have any input channels
     // Check if we have any input channels
     let buffersPointer = UnsafeMutableAudioBufferListPointer(bufferList)
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
-  
+
   /// Set device as the default input device
   private func setInputDevice(deviceID: AudioDeviceID) {
     var device = deviceID
@@ -462,7 +462,7 @@ actor RecordingClientLive {
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
-    
+
     let status = AudioObjectSetPropertyData(
       AudioObjectID(kAudioObjectSystemObject),
       &address,
@@ -471,7 +471,7 @@ actor RecordingClientLive {
       size,
       &device
     )
-    
+
     if status != 0 {
       print("Error setting default input device: \(status)")
     } else {
@@ -502,7 +502,7 @@ actor RecordingClientLive {
         print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
       }
     }
-    
+
     // If user has selected a specific microphone, verify it exists and set it as the default input device
     if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
        let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
@@ -518,7 +518,7 @@ actor RecordingClientLive {
     } else {
       print("Using default system microphone")
     }
-      
+
     let settings: [String: Any] = [
       AVFormatIDKey: Int(kAudioFormatLinearPCM),
       AVSampleRateKey: 16000.0,

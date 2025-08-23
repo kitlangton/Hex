@@ -103,11 +103,11 @@ actor TranscriptionClientLive {
         ]
       )
     }
-    
+
     let overallProgress = Progress(totalUnitCount: 100)
     overallProgress.completedUnitCount = 0
     progressCallback(overallProgress)
-    
+
     print("[TranscriptionClientLive] Processing model: \(variant)")
 
     // 1) Model download phase (0-50% progress)
@@ -129,7 +129,7 @@ actor TranscriptionClientLive {
       overallProgress.completedUnitCount = Int64(fraction * 100)
       progressCallback(overallProgress)
     }
-    
+
     // Final progress update
     overallProgress.completedUnitCount = 100
     progressCallback(overallProgress)
@@ -138,21 +138,21 @@ actor TranscriptionClientLive {
   /// Deletes a model from disk if it exists
   func deleteModel(variant: String) async throws {
     let modelFolder = modelPath(for: variant)
-    
+
     // Check if the model exists
     guard FileManager.default.fileExists(atPath: modelFolder.path) else {
       // Model doesn't exist, nothing to delete
       return
     }
-    
+
     // If this is the currently loaded model, unload it first
     if currentModelName == variant {
       unloadCurrentModel()
     }
-    
+
     // Delete the model directory
     try FileManager.default.removeItem(at: modelFolder)
-    
+
     print("[TranscriptionClientLive] Deleted model: \(variant)")
   }
 
@@ -161,27 +161,27 @@ actor TranscriptionClientLive {
   func isModelDownloaded(_ modelName: String) async -> Bool {
     let modelFolderPath = modelPath(for: modelName).path
     let fileManager = FileManager.default
-    
+
     // First, check if the basic model directory exists
     guard fileManager.fileExists(atPath: modelFolderPath) else {
       // Don't print logs that would spam the console
       return false
     }
-    
+
     do {
       // Check if the directory has actual model files in it
       let contents = try fileManager.contentsOfDirectory(atPath: modelFolderPath)
-      
+
       // Model should have multiple files and certain key components
       guard !contents.isEmpty else {
         return false
       }
-      
+
       // Check for specific model structure - need both tokenizer and model files
       let hasModelFiles = contents.contains { $0.hasSuffix(".mlmodelc") || $0.contains("model") }
       let tokenizerFolderPath = tokenizerPath(for: modelName).path
       let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolderPath)
-      
+
       // Both conditions must be true for a model to be considered downloaded
       return hasModelFiles && hasTokenizer
     } catch {
@@ -239,10 +239,11 @@ actor TranscriptionClientLive {
 
   /// Creates or returns the local folder (on disk) for a given `variant` model.
   private func modelPath(for variant: String) -> URL {
-    // Remove any possible path traversal or invalid characters from variant name
-    let sanitizedVariant = variant.components(separatedBy: CharacterSet(charactersIn: "./\\")).joined(separator: "_")
-    
-    return modelsBaseFolder
+    // Sanitize variant using a strict whitelist and unicode normalization
+    let sanitizedVariant = sanitizeVariantName(variant)
+
+    let base = modelsBaseFolder.resolvingSymlinksInPath()
+    return base
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")
       .appendingPathComponent(sanitizedVariant, isDirectory: true)
@@ -259,6 +260,35 @@ actor TranscriptionClientLive {
     currentModelName = nil
   }
 
+  /// Strictly sanitize a model variant name to a safe directory component.
+  /// - Uses Unicode compatibility normalization, lowercases, and allows only [a-z0-9._-].
+  /// - Replaces other characters with `_`, collapses repeats, trims edges, and length-limits.
+  /// - Falls back to a UUID if the result is empty.
+  private func sanitizeVariantName(_ variant: String) -> String {
+    // Normalize (compatibility composition) and lowercase
+    let normalized = variant.precomposedStringWithCompatibilityMapping.lowercased()
+
+    // Allowed characters
+    let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789._-")
+
+    // Map scalars: keep allowed ASCII, replace the rest with '_'
+    var interim = String(normalized.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" })
+
+    // Collapse multiple underscores
+    while interim.contains("__") { interim = interim.replacingOccurrences(of: "__", with: "_") }
+
+    // Trim underscores and dots from ends
+    interim = interim.trimmingCharacters(in: CharacterSet(charactersIn: "_."))
+
+    // Limit length to a reasonable size
+    if interim.count > 64 { interim = String(interim.prefix(64)) }
+
+    // Ensure non-empty
+    if interim.isEmpty { interim = "model-" + UUID().uuidString.replacingOccurrences(of: "-", with: "") }
+
+    return interim
+  }
+
   /// Downloads the model to a temporary folder (if it isn't already on disk),
   /// then moves it into its final folder in `modelsBaseFolder`.
   private func downloadModelIfNeeded(
@@ -266,13 +296,13 @@ actor TranscriptionClientLive {
     progressCallback: @escaping (Progress) -> Void
   ) async throws {
     let modelFolder = modelPath(for: variant)
-    
+
     // If the model folder exists but isn't a complete model, clean it up
     let isDownloaded = await isModelDownloaded(variant)
     if FileManager.default.fileExists(atPath: modelFolder.path) && !isDownloaded {
       try FileManager.default.removeItem(at: modelFolder)
     }
-    
+
     // If model is already fully downloaded, we're done
     if isDownloaded {
       return
@@ -283,7 +313,7 @@ actor TranscriptionClientLive {
     // Create parent directories
     let parentDir = modelFolder.deletingLastPathComponent()
     try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-    
+
     do {
       // Download directly using the exact variant name provided
       let tempFolder = try await WhisperKit.download(
@@ -296,20 +326,20 @@ actor TranscriptionClientLive {
           progressCallback(progress)
         }
       )
-      
+
       // Ensure target folder exists
       try FileManager.default.createDirectory(at: modelFolder, withIntermediateDirectories: true)
-      
+
       // Move the downloaded snapshot to the final location
       try moveContents(of: tempFolder, to: modelFolder)
-      
+
       print("[TranscriptionClientLive] Downloaded model to: \(modelFolder.path)")
     } catch {
       // Clean up any partial download if an error occurred
       if FileManager.default.fileExists(atPath: modelFolder.path) {
         try? FileManager.default.removeItem(at: modelFolder)
       }
-      
+
       // Rethrow the original error
       print("[TranscriptionClientLive] Error downloading model: \(error.localizedDescription)")
       throw error

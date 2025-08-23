@@ -10,8 +10,23 @@ import Foundation
 @testable import Hex
 import Sauce
 import Testing
+import ComposableArchitecture
 
 struct HexTests {
+    // MARK: - ModelDownloadFeature Progress Gating
+    @Test
+    func modelDownload_progressIgnoredForStaleIDs() throws {
+        var feature = ModelDownloadFeature()
+        var state = ModelDownloadFeature.State()
+        let activeID = UUID()
+        state.activeDownloadID = activeID
+
+        _ = feature.reduce(into: &state, action: .downloadProgress(id: UUID(), progress: 0.5))
+        #expect(state.downloadProgress == 0)
+
+        _ = feature.reduce(into: &state, action: .downloadProgress(id: activeID, progress: 0.3))
+        #expect(state.downloadProgress == 0.3)
+    }
     // MARK: - Standard HotKey (key + modifiers) Tests
 
     // Tests a single key press that matches the hotkey
