@@ -139,22 +139,34 @@ func pauseAllMediaApplications() async -> [String] {
 
   for (appName, _) in installedPlayers {
     if appName == "VLC" {
-      // VLC: avoid querying properties; just pause if running
+      // VLC: only pause if actually playing; wrap in inner try to avoid script errors
       scriptParts.append("""
       try
         if application id "org.videolan.vlc" is running then
-          tell application id "org.videolan.vlc" to pause
-          set end of pausedPlayers to "VLC"
+          tell application id "org.videolan.vlc"
+            try
+              if playing is true then
+                pause
+                set end of pausedPlayers to "VLC"
+              end if
+            end try
+          end tell
         end if
       end try
       """)
     } else {
-      // Music / iTunes / Spotify: avoid property lookups; just pause if running
+      // Music / iTunes / Spotify: only pause if actually playing; guard with running check
       scriptParts.append("""
       try
         if application "\(appName)" is running then
-          tell application "\(appName)" to pause
-          set end of pausedPlayers to "\(appName)"
+          tell application "\(appName)"
+            try
+              if player state is playing then
+                pause
+                set end of pausedPlayers to "\(appName)"
+              end if
+            end try
+          end tell
         end if
       end try
       """)
