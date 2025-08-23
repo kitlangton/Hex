@@ -448,9 +448,8 @@ actor RecordingClientLive {
     }
     
     // Check if we have any input channels
-    // Cast the raw pointer to AudioBufferList pointer for safe access
-    let audioBufferList = bufferList.assumingMemoryBound(to: AudioBufferList.self)
-    let buffersPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+    // Check if we have any input channels
+    let buffersPointer = UnsafeMutableAudioBufferListPointer(bufferList)
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
   
