@@ -24,21 +24,24 @@ open Hex.xcodeproj
 The app uses **The Composable Architecture (TCA)** for state management. Key architectural components:
 
 ### Features (TCA Reducers)
+
 - `AppFeature`: Root feature coordinating the app lifecycle
 - `TranscriptionFeature`: Core recording and transcription logic
 - `SettingsFeature`: User preferences and configuration
 - `HistoryFeature`: Transcription history management
 
 ### Dependency Clients
+
 - `TranscriptionClient`: WhisperKit integration for ML transcription
 - `RecordingClient`: AVAudioRecorder wrapper for audio capture
 - `PasteboardClient`: Clipboard operations
 - `KeyEventMonitorClient`: Global hotkey monitoring via Sauce framework
 
 ### Key Dependencies
+
 - **WhisperKit**: Core ML transcription (tracking main branch)
 - **Sauce**: Keyboard event monitoring
-- **Sparkle**: Auto-updates (feed: https://hex-updates.s3.amazonaws.com/appcast.xml)
+- **Sparkle**: Auto-updates (feed: <https://hex-updates.s3.amazonaws.com/appcast.xml>)
 - **Swift Composable Architecture**: State management
 - **Inject** Hot Reloading for SwiftUI
 
