@@ -139,30 +139,23 @@ func pauseAllMediaApplications() async -> [String] {
 
   for (appName, _) in installedPlayers {
     if appName == "VLC" {
-      // VLC has a different AppleScript interface
+      // VLC: avoid querying properties; just pause if running
       scriptParts.append("""
       try
-        set appName to "VLC"
-        if application appName is running then
-          tell application appName to set isVLCplaying to playing
-          if isVLCplaying then
-            tell application id "org.videolan.vlc" to pause
-            set end of pausedPlayers to appName
-          end if
+        if application id "org.videolan.vlc" is running then
+          tell application id "org.videolan.vlc" to pause
+          set end of pausedPlayers to "VLC"
         end if
       end try
       """)
     } else {
-      // Standard interface for Music/iTunes/Spotify
+      // Music / iTunes / Spotify: avoid property lookups; just pause if running
       scriptParts.append("""
       try
-        set appName to "\(appName)"
-        tell application appName
-          if it is running and player state is playing then
-            pause
-            set end of pausedPlayers to appName
-          end if
-        end tell
+        if application "\(appName)" is running then
+          tell application "\(appName)" to pause
+          set end of pausedPlayers to "\(appName)"
+        end if
       end try
       """)
     }
@@ -183,10 +176,11 @@ func pauseAllMediaApplications() async -> [String] {
   // Convert AppleScript list to Swift array
   var pausedPlayers: [String] = []
   let count = resultDescriptor.numberOfItems
-
-  for i in 1...count {
-    if let item = resultDescriptor.atIndex(i)?.stringValue {
-      pausedPlayers.append(item)
+  if count > 0 {
+    for i in 1...count {
+      if let item = resultDescriptor.atIndex(i)?.stringValue {
+        pausedPlayers.append(item)
+      }
     }
   }
 
