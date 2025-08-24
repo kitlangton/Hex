@@ -132,10 +132,7 @@ private func isAppRunning(bundleID: String) -> Bool {
 
 /// Get a list of installed media player apps that are currently running
 private func getRunningMediaPlayers() -> [String: String] {
-  Dictionary(
-    uniqueKeysWithValues: getInstalledMediaPlayers()
-      .filter { isAppRunning(bundleID: $0.value) }
-  )
+  getInstalledMediaPlayers().filter { isAppRunning(bundleID: $0.value) }
 }
 
 func pauseAllMediaApplications() async -> [String] {
@@ -199,13 +196,8 @@ func pauseAllMediaApplications() async -> [String] {
   }
 
   // Convert AppleScript list to Swift array
-  var pausedPlayers: [String] = []
-  let count = resultDescriptor.numberOfItems
-  for i in 0..<count {
-    let oneBasedIndex = i + 1
-    if let item = resultDescriptor.atIndex(oneBasedIndex)?.stringValue {
-      pausedPlayers.append(item)
-    }
+  let pausedPlayers = (1...resultDescriptor.numberOfItems).compactMap {
+    resultDescriptor.atIndex($0)?.stringValue
   }
 
   print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
