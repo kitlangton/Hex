@@ -132,14 +132,10 @@ private func isAppRunning(bundleID: String) -> Bool {
 
 /// Get a list of installed media player apps that are currently running
 private func getRunningMediaPlayers() -> [String: String] {
-  let installed = getInstalledMediaPlayers()
-  var running: [String: String] = [:]
-  for (name, id) in installed {
-    if isAppRunning(bundleID: id) {
-      running[name] = id
-    }
-  }
-  return running
+  Dictionary(
+    uniqueKeysWithValues: getInstalledMediaPlayers()
+      .filter { isAppRunning(bundleID: $0.value) }
+  )
 }
 
 func pauseAllMediaApplications() async -> [String] {
