@@ -125,43 +125,54 @@ private func getInstalledMediaPlayers() -> [String: String] {
   return result
 }
 
+/// Check if an application is currently running by bundle identifier
+private func isAppRunning(bundleID: String) -> Bool {
+  NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
+}
+
+/// Get a list of installed media player apps that are currently running
+private func getRunningMediaPlayers() -> [String: String] {
+  getInstalledMediaPlayers().filter { isAppRunning(bundleID: $0.value) }
+}
+
 func pauseAllMediaApplications() async -> [String] {
-  // First check which media players are actually installed
-  let installedPlayers = getInstalledMediaPlayers()
-  if installedPlayers.isEmpty {
+  // Only target players that are currently running to avoid launching or prompting
+  let runningPlayers = getRunningMediaPlayers()
+  if runningPlayers.isEmpty {
     return []
   }
 
-  print("Installed media players: \(installedPlayers.keys.joined(separator: ", "))")
+  print("Running media players: \(runningPlayers.keys.joined(separator: ", "))")
 
   // Create AppleScript that only targets installed players
   var scriptParts: [String] = ["set pausedPlayers to {}"]
 
-  for (appName, _) in installedPlayers {
+  for (appName, _) in runningPlayers {
     if appName == "VLC" {
-      // VLC has a different AppleScript interface
+      // VLC: only pause if actually playing; wrap in inner try to avoid script errors
       scriptParts.append("""
       try
-        set appName to "VLC"
-        if application appName is running then
-          tell application appName to set isVLCplaying to playing
-          if isVLCplaying then
-            tell application id "org.videolan.vlc" to pause
-            set end of pausedPlayers to appName
-          end if
-        end if
+        tell application id "org.videolan.vlc"
+          try
+            if playing is true then
+              pause
+              set end of pausedPlayers to "VLC"
+            end if
+          end try
+        end tell
       end try
       """)
     } else {
-      // Standard interface for Music/iTunes/Spotify
+      // Music / iTunes / Spotify: only pause if actually playing
       scriptParts.append("""
       try
-        set appName to "\(appName)"
-        tell application appName
-          if it is running and player state is playing then
-            pause
-            set end of pausedPlayers to appName
-          end if
+        tell application "\(appName)"
+          try
+            if player state is playing then
+              pause
+              set end of pausedPlayers to "\(appName)"
+            end if
+          end try
         end tell
       end try
       """)
@@ -181,13 +192,8 @@ func pauseAllMediaApplications() async -> [String] {
   }
 
   // Convert AppleScript list to Swift array
-  var pausedPlayers: [String] = []
-  let count = resultDescriptor.numberOfItems
-
-  for i in 1...count {
-    if let item = resultDescriptor.atIndex(i)?.stringValue {
-      pausedPlayers.append(item)
-    }
+  let pausedPlayers = (1...resultDescriptor.numberOfItems).compactMap {
+    resultDescriptor.atIndex($0)?.stringValue
   }
 
   print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
