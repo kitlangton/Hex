@@ -125,19 +125,36 @@ private func getInstalledMediaPlayers() -> [String: String] {
   return result
 }
 
+/// Check if an application is currently running by bundle identifier
+private func isAppRunning(bundleID: String) -> Bool {
+  NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
+}
+
+/// Get a list of installed media player apps that are currently running
+private func getRunningMediaPlayers() -> [String: String] {
+  let installed = getInstalledMediaPlayers()
+  var running: [String: String] = [:]
+  for (name, id) in installed {
+    if isAppRunning(bundleID: id) {
+      running[name] = id
+    }
+  }
+  return running
+}
+
 func pauseAllMediaApplications() async -> [String] {
-  // First check which media players are actually installed
-  let installedPlayers = getInstalledMediaPlayers()
-  if installedPlayers.isEmpty {
+  // Only target players that are currently running to avoid launching or prompting
+  let runningPlayers = getRunningMediaPlayers()
+  if runningPlayers.isEmpty {
     return []
   }
 
-  print("Installed media players: \(installedPlayers.keys.joined(separator: ", "))")
+  print("Running media players: \(runningPlayers.keys.joined(separator: ", "))")
 
   // Create AppleScript that only targets installed players
   var scriptParts: [String] = ["set pausedPlayers to {}"]
 
-  for (appName, _) in installedPlayers {
+  for (appName, _) in runningPlayers {
     if appName == "VLC" {
       // VLC: only pause if actually playing; wrap in inner try to avoid script errors
       scriptParts.append("""
