@@ -201,11 +201,10 @@ func pauseAllMediaApplications() async -> [String] {
   // Convert AppleScript list to Swift array
   var pausedPlayers: [String] = []
   let count = resultDescriptor.numberOfItems
-  if count > 0 {
-    for i in 1...count {
-      if let item = resultDescriptor.atIndex(i)?.stringValue {
-        pausedPlayers.append(item)
-      }
+  for i in 0..<count {
+    let oneBasedIndex = i + 1
+    if let item = resultDescriptor.atIndex(oneBasedIndex)?.stringValue {
+      pausedPlayers.append(item)
     }
   }
 
