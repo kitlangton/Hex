@@ -20,6 +20,7 @@ struct TranscriptionFeature {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
+    var needsModel: Bool = false
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
@@ -39,6 +40,8 @@ struct TranscriptionFeature {
     // Recording flow
     case startRecording
     case stopRecording
+    case modelCheckResult(Bool)
+    case hideNeedsModelIndicator
 
     // Cancel entire flow
     case cancel
@@ -95,7 +98,33 @@ struct TranscriptionFeature {
       // MARK: - Recording Flow
 
       case .startRecording:
-        return handleStartRecording(&state)
+        // First check if model is available
+        let model = state.hexSettings.selectedModel
+        return .run { send in
+          let isModelAvailable = await transcription.isModelDownloaded(model)
+          await send(.modelCheckResult(isModelAvailable))
+        }
+        
+      case let .modelCheckResult(isAvailable):
+        if isAvailable {
+          return handleStartRecording(&state)
+        } else {
+          // Show "needs model" indicator
+          state.needsModel = true
+          return .merge(
+            .run { _ in
+              await soundEffect.play(.cancel)
+            },
+            .run { send in
+              try? await Task.sleep(for: .seconds(2))
+              await send(.hideNeedsModelIndicator)
+            }
+          )
+        }
+        
+      case .hideNeedsModelIndicator:
+        state.needsModel = false
+        return .none
 
       case .stopRecording:
         return handleStopRecording(&state)
@@ -231,6 +260,7 @@ private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
     state.isRecording = true
     state.recordingStartTime = Date()
+    state.needsModel = false
 
     // Prevent system sleep during recording
     if state.hexSettings.preventSystemSleep {
@@ -460,7 +490,9 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing {
+    if store.needsModel {
+      return .needsModel
+    } else if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording

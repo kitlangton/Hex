@@ -361,6 +361,17 @@
     "Model prewarming..." : {
 
     },
+    "Needs model" : {
+      "comment" : "Indicator shown when user tries to transcribe without a downloaded model",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell benötigt"
+          }
+        }
+      }
+    },
     "No models found." : {
       "comment" : "Replacement text in transcription model section when no available models are found",
       "extractionState" : "stale",
