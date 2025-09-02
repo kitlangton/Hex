@@ -296,7 +296,7 @@ actor TranscriptionClientLive {
       // Load audio and convert to 16 kHz mono float32 samples
       let norm = try loadAudioAs16kMonoFloats(url: url)
       let result = try await parakeetManager.transcribe(norm)
-      // Prefer a `text` property if exposed; otherwise fall back to description
+      // The result object contains the transcribed text.
       return result.text
       #else
       throw NSError(
