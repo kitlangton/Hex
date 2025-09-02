@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Build Release
 xcodebuild -project Hex.xcodeproj -scheme Hex -configuration Release -derivedDataPath build clean build | cat
