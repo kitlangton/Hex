@@ -254,8 +254,9 @@ private extension TranscriptionFeature {
     }
 
     return .run { _ in
-      await recording.startRecording()
+      // Play the start sound before the mic begins to avoid capturing it.
       await soundEffect.play(.startRecording)
+      await recording.startRecording()
     }
   }
 
@@ -292,8 +293,9 @@ private extension TranscriptionFeature {
 
     return .run { send in
       do {
-        await soundEffect.play(.stopRecording)
+        // Stop recording first so we don't capture the stop sound in the audio file.
         let audioURL = await recording.stopRecording()
+        await soundEffect.play(.stopRecording)
         await send(.setLastRecordingURL(audioURL))
 
         // Create transcription options with the selected language
