@@ -10,6 +10,9 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import WhisperKit
+#if canImport(FluidAudio)
+import FluidAudio
+#endif
 
 /// A client that downloads and loads WhisperKit models, then transcribes audio files using the loaded model.
 /// Exposes progress callbacks to report overall download-and-load percentage and transcription progress.
@@ -65,6 +68,11 @@ actor TranscriptionClientLive {
   /// The current in-memory `WhisperKit` instance, if any.
   private var whisperKit: WhisperKit?
 
+  #if canImport(FluidAudio)
+  /// Parakeet ASR manager (FluidAudio) when using Parakeet models.
+  private var parakeetManager: AsrManager?
+  #endif
+
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
 
@@ -115,24 +123,45 @@ actor TranscriptionClientLive {
 
     print("[TranscriptionClientLive] Processing model: \(variant)")
 
-    // 1) Model download phase (0-50% progress)
-    if !(await isModelDownloaded(variant)) {
-      try await downloadModelIfNeeded(variant: variant) { downloadProgress in
-        let fraction = downloadProgress.fractionCompleted * 0.5
+    if isParakeet(variant) {
+      // Parakeet path (uses FluidAudio when available). We treat download+load as a single phase.
+      #if canImport(FluidAudio)
+      overallProgress.completedUnitCount = 10
+      progressCallback(overallProgress)
+      try await loadParakeetModel(variant) { step in
+        // Map coarse steps (0..1) to 10..100 range to keep UI moving.
+        let fraction = max(0.1, min(1.0, step))
         overallProgress.completedUnitCount = Int64(fraction * 100)
         progressCallback(overallProgress)
       }
+      #else
+      throw NSError(
+        domain: "TranscriptionClient",
+        code: -7,
+        userInfo: [NSLocalizedDescriptionKey: "Parakeet selected (\(variant)), but FluidAudio is not linked. Add the FluidAudio Swift package to build Parakeet support."]
+      )
+      #endif
     } else {
-      // Skip download phase if already downloaded
-      overallProgress.completedUnitCount = 50
-      progressCallback(overallProgress)
-    }
+      // Whisper path
+      // 1) Model download phase (0-50% progress)
+      if !(await isModelDownloaded(variant)) {
+        try await downloadModelIfNeeded(variant: variant) { downloadProgress in
+          let fraction = downloadProgress.fractionCompleted * 0.5
+          overallProgress.completedUnitCount = Int64(fraction * 100)
+          progressCallback(overallProgress)
+        }
+      } else {
+        // Skip download phase if already downloaded
+        overallProgress.completedUnitCount = 50
+        progressCallback(overallProgress)
+      }
 
-    // 2) Model loading phase (50-100% progress)
-    try await loadWhisperKitModel(variant) { loadingProgress in
-      let fraction = 0.5 + (loadingProgress.fractionCompleted * 0.5)
-      overallProgress.completedUnitCount = Int64(fraction * 100)
-      progressCallback(overallProgress)
+      // 2) Model loading phase (50-100% progress)
+      try await loadWhisperKitModel(variant) { loadingProgress in
+        let fraction = 0.5 + (loadingProgress.fractionCompleted * 0.5)
+        overallProgress.completedUnitCount = Int64(fraction * 100)
+        progressCallback(overallProgress)
+      }
     }
 
     // Final progress update
@@ -172,6 +201,32 @@ actor TranscriptionClientLive {
     }
     if let cached = modelPresenceCache[modelName] {
       return cached
+    }
+
+    // Parakeet models may be managed by a different runtime; check for local presence first,
+    // then allow runtime-managed models to report available when loaded once.
+    if isParakeet(modelName) {
+      // Check our conventional folder layout for Parakeet Core ML bundles
+      let modelFolderPath = modelPath(for: modelName).path
+      let fm = FileManager.default
+      if fm.fileExists(atPath: modelFolderPath) {
+        do {
+          let contents = try fm.contentsOfDirectory(atPath: modelFolderPath)
+          let hasParakeetCoreML =
+            contents.contains { $0.hasSuffix("ParakeetEncoder.mlmodelc") } &&
+            contents.contains { $0.hasSuffix("ParakeetDecoder.mlmodelc") } &&
+            contents.contains { $0.hasSuffix("RNNTJoint.mlmodelc") }
+          modelPresenceCache[modelName] = hasParakeetCoreML
+          return hasParakeetCoreML
+        } catch {
+          modelPresenceCache[modelName] = false
+          return false
+        }
+      }
+      // If not found locally, we conservatively report "not downloaded"; the Parakeet runtime
+      // may fetch on first use.
+      modelPresenceCache[modelName] = false
+      return false
     }
 
     let modelFolderPath = modelPath(for: modelName).path
@@ -214,7 +269,10 @@ actor TranscriptionClientLive {
 
   /// Lists all model variants available in the `argmaxinc/whisperkit-coreml` repository.
   func getAvailableModels() async throws -> [String] {
-    try await WhisperKit.fetchAvailableModels()
+    var names = try await WhisperKit.fetchAvailableModels()
+    // Also advertise Parakeet Core ML variants supported by our runtime.
+    names.append(contentsOf: parakeetVariants)
+    return names
   }
 
   /// Transcribes the audio file at `url` using a `model` name.
@@ -226,31 +284,55 @@ actor TranscriptionClientLive {
     options: DecodingOptions,
     progressCallback: @escaping (Progress) -> Void
   ) async throws -> String {
-    // Load or switch to the required model if needed.
-    if whisperKit == nil || model != currentModelName {
+    if isParakeet(model) {
+      #if canImport(FluidAudio)
       unloadCurrentModel()
-      try await downloadAndLoadModel(variant: model) { p in
-        // Debug logging, or scale as desired:
-        progressCallback(p)
+      try await downloadAndLoadModel(variant: model) { p in progressCallback(p) }
+      // Ensure engine exists
+      guard let parakeetManager else {
+        throw NSError(domain: "TranscriptionClient", code: -8, userInfo: [NSLocalizedDescriptionKey: "Parakeet manager not initialized"])
       }
-    }
 
-    guard let whisperKit = whisperKit else {
+      // Load audio and convert to 16 kHz mono float32 samples
+      let norm = try loadAudioAs16kMonoFloats(url: url)
+      let result = try await parakeetManager.transcribe(norm)
+      // Prefer a `text` property if exposed; otherwise fall back to description
+      return result.text
+      #else
       throw NSError(
         domain: "TranscriptionClient",
-        code: -1,
-        userInfo: [
-          NSLocalizedDescriptionKey: "Failed to initialize WhisperKit for model: \(model)",
-        ]
+        code: -7,
+        userInfo: [NSLocalizedDescriptionKey: "Parakeet selected (\(model)), but FluidAudio is not linked. Add the FluidAudio Swift package to enable Parakeet."]
       )
+      #endif
+    } else {
+      // Whisper path
+      // Load or switch to the required model if needed.
+      if whisperKit == nil || model != currentModelName {
+        unloadCurrentModel()
+        try await downloadAndLoadModel(variant: model) { p in
+          // Debug logging, or scale as desired:
+          progressCallback(p)
+        }
+      }
+
+      guard let whisperKit = whisperKit else {
+        throw NSError(
+          domain: "TranscriptionClient",
+          code: -1,
+          userInfo: [
+            NSLocalizedDescriptionKey: "Failed to initialize WhisperKit for model: \(model)",
+          ]
+        )
+      }
+
+      // Perform the transcription.
+      let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
+
+      // Concatenate results from all segments.
+      let text = results.map(\.text).joined(separator: " ")
+      return text
     }
-
-    // Perform the transcription.
-    let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
-
-    // Concatenate results from all segments.
-    let text = results.map(\.text).joined(separator: " ")
-    return text
   }
 
   // MARK: - Private Helpers
@@ -261,10 +343,16 @@ actor TranscriptionClientLive {
     let sanitizedVariant = sanitizeVariantName(variant)
 
     let base = modelsBaseFolder.resolvingSymlinksInPath()
-    return base
-      .appendingPathComponent("argmaxinc")
-      .appendingPathComponent("whisperkit-coreml")
-      .appendingPathComponent(sanitizedVariant, isDirectory: true)
+    if isParakeet(variant) {
+      return base
+        .appendingPathComponent("parakeet", isDirectory: true)
+        .appendingPathComponent(sanitizedVariant, isDirectory: true)
+    } else {
+      return base
+        .appendingPathComponent("argmaxinc")
+        .appendingPathComponent("whisperkit-coreml")
+        .appendingPathComponent(sanitizedVariant, isDirectory: true)
+    }
   }
 
   /// Creates or returns the local folder for the tokenizer files of a given `variant`.
@@ -318,6 +406,26 @@ actor TranscriptionClientLive {
     variant: String,
     progressCallback: @escaping (Progress) -> Void
   ) async throws {
+    if isParakeet(variant) {
+      // Parakeet models are handled by the Parakeet runtime (FluidAudio) which downloads
+      // artifacts as needed. We provide a best-effort attempt to initialize and let the
+      // runtime fetch. This keeps the UI responsive without duplicating model hosting logic.
+      #if canImport(FluidAudio)
+      _ = try await loadParakeetModel(variant) { fraction in
+        let p = Progress(totalUnitCount: 100)
+        p.completedUnitCount = Int64(max(0.0, min(1.0, fraction)) * 100)
+        progressCallback(p)
+      }
+      return
+      #else
+      throw NSError(
+        domain: "TranscriptionClient",
+        code: -7,
+        userInfo: [NSLocalizedDescriptionKey: "Parakeet selected (\(variant)), but FluidAudio is not linked. Add the FluidAudio Swift package to enable Parakeet downloads."]
+      )
+      #endif
+    }
+
     let modelFolder = modelPath(for: variant)
 
     // If the model folder exists but isn't a complete model, clean it up
@@ -412,5 +520,116 @@ actor TranscriptionClientLive {
       let dst = destFolder.appendingPathComponent(item)
       try fileManager.moveItem(at: src, to: dst)
     }
+  }
+}
+
+// MARK: - Parakeet helpers
+
+private extension TranscriptionClientLive {
+  func isParakeet(_ name: String) -> Bool {
+    name.lowercased().hasPrefix("parakeet-")
+  }
+
+  var parakeetVariants: [String] {
+    [
+      "parakeet-tdt-0.6b-v2-coreml", // English
+      "parakeet-tdt-0.6b-v3-coreml", // Multilingual
+    ]
+  }
+
+  #if canImport(FluidAudio)
+  @discardableResult
+  func loadParakeetModel(_ variant: String, progress: @escaping (Double) -> Void) async throws -> Bool {
+    // Initialize manager once
+    if parakeetManager == nil { parakeetManager = AsrManager() }
+    progress(0.1)
+    // For now, let FluidAudio manage model selection based on default or preferred locale.
+    // If future versions add explicit selection, map variant here.
+    let models = try await AsrModels.downloadAndLoad()
+    progress(0.7)
+    try await parakeetManager!.initialize(models: models)
+    progress(1.0)
+    currentModelName = variant
+    return true
+  }
+  #endif
+
+  /// Read an audio file and return 16 kHz mono Float32 samples suitable for Parakeet.
+  func loadAudioAs16kMonoFloats(url: URL) throws -> [Float] {
+    let file = try AVAudioFile(forReading: url)
+    let inputFormat = file.processingFormat
+    guard let targetFormat = AVAudioFormat(
+      commonFormat: .pcmFormatFloat32,
+      sampleRate: 16_000,
+      channels: 1,
+      interleaved: false
+    ) else {
+      throw NSError(domain: "TranscriptionClient", code: -9, userInfo: [NSLocalizedDescriptionKey: "Failed to create target audio format"])
+    }
+
+    // Fast path: already 16 kHz mono float32
+    if inputFormat.sampleRate == 16_000,
+       inputFormat.channelCount == 1,
+       inputFormat.commonFormat == .pcmFormatFloat32
+    {
+      let frameCount = AVAudioFrameCount(file.length)
+      guard let buf = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
+        throw NSError(domain: "TranscriptionClient", code: -10, userInfo: [NSLocalizedDescriptionKey: "Failed to allocate audio buffer"])
+      }
+      try file.read(into: buf)
+      guard let ch = buf.floatChannelData?[0] else { return [] }
+      return Array(UnsafeBufferPointer(start: ch, count: Int(buf.frameLength)))
+    }
+
+    // Convert using AVAudioConverter
+    guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+      throw NSError(domain: "TranscriptionClient", code: -11, userInfo: [NSLocalizedDescriptionKey: "Unsupported audio conversion path"])
+    }
+
+    var output: [Float] = []
+    let inputCapacity: AVAudioFrameCount = 8192
+    var inputDone = false
+
+    while true {
+      guard let outBuf = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: inputCapacity) else { break }
+
+      let status = converter.convert(to: outBuf, error: nil) { inNumPackets, outStatus in
+        if inputDone {
+          outStatus.pointee = .endOfStream
+          return nil
+        }
+        guard let inBuf = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: inputCapacity) else {
+          outStatus.pointee = .noDataNow
+          return nil
+        }
+        do {
+          try file.read(into: inBuf, frameCount: inputCapacity)
+        } catch {
+          outStatus.pointee = .endOfStream
+          inputDone = true
+          return nil
+        }
+        if inBuf.frameLength == 0 {
+          outStatus.pointee = .endOfStream
+          inputDone = true
+          return nil
+        }
+        outStatus.pointee = .haveData
+        return inBuf
+      }
+
+      if status == .haveData || outBuf.frameLength > 0 {
+        let frames = Int(outBuf.frameLength)
+        if let ch = outBuf.floatChannelData?[0] {
+          output.append(contentsOf: UnsafeBufferPointer(start: ch, count: frames))
+        }
+      }
+
+      if status == .endOfStream || inputDone {
+        break
+      }
+    }
+
+    return output
   }
 }

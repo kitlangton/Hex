@@ -22,5 +22,21 @@
         "accuracyStars": 4,
         "speedStars": 2,
         "storageSize": "1.5GB"
+    },
+    {
+        "displayName": "Parakeet TDT 0.6B (EN)",
+        "internalName": "parakeet-tdt-0.6b-v2-coreml",
+        "size": "Medium",
+        "accuracyStars": 4,
+        "speedStars": 5,
+        "storageSize": "~600MB"
+    },
+    {
+        "displayName": "Parakeet TDT 0.6B (Multilingual)",
+        "internalName": "parakeet-tdt-0.6b-v3-coreml",
+        "size": "Medium",
+        "accuracyStars": 4,
+        "speedStars": 5,
+        "storageSize": "~700MB"
     }
 ]

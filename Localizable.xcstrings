@@ -408,6 +408,9 @@
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
 
     },
+    "Parakeet downloads on first use (no manual step)" : {
+
+    },
     "Pause Media while Recording" : {
       "comment" : "Label for general setting whether to pause media while recording.",
       "localizations" : {
