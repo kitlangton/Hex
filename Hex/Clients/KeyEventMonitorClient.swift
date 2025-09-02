@@ -132,6 +132,19 @@ class KeyEventMonitorClientLive {
         options: .defaultTap,
         eventsOfInterest: CGEventMask(eventMask),
         callback: { _, type, cgEvent, userInfo in
+          // If the tap is disabled by timeout or by user input, re-enable it to keep
+          // the app responsive over long uptimes.
+          if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let live = Unmanaged<KeyEventMonitorClientLive>.fromOpaque(userInfo!)
+              .takeUnretainedValue() as KeyEventMonitorClientLive?
+            {
+              if let port = live.eventTapPort {
+                CGEvent.tapEnable(tap: port, enable: true)
+                logger.info("CGEvent tap was disabled; re-enabled.")
+              }
+            }
+            return Unmanaged.passUnretained(cgEvent)
+          }
           guard
             let hotKeyClientLive = Unmanaged<KeyEventMonitorClientLive>
             .fromOpaque(userInfo!)
