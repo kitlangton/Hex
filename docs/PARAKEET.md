@@ -1,7 +1,7 @@
 Parakeet (NVIDIA) – Core ML integration
 
 Overview
-- This app can now run Parakeet TDT models on‑device using a Parakeet‑aware runtime.
+- This app can now run Parakeet TDT models on-device using a Parakeet-aware runtime.
 - Integration is conditional: it activates when the FluidAudio Swift package is linked.
 
 Setup (once)
