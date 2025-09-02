@@ -114,10 +114,8 @@ extension HotKeyProcessor {
         switch state {
         case .idle:
             // If doubleTapOnly mode is enabled and the hotkey has a key component,
-            // we want to delay starting recording until we see the double-tap
+            // do not start on first press; wait for the second quick release.
             if useDoubleTapOnly && hotkey.key != nil {
-                // Record the timestamp but don't start recording
-                lastTapAt = now
                 return nil
             } else {
                 // Normal press => .pressAndHold => .startRecording
@@ -140,21 +138,16 @@ extension HotKeyProcessor {
     private mutating func handleNonmatchingChord(_ e: KeyEvent) -> Output? {
         switch state {
         case .idle:
-            // Handle double-tap detection for key+modifier combinations
-            if useDoubleTapOnly && hotkey.key != nil && 
-               chordIsFullyReleased(e) && 
-               lastTapAt != nil {
-                // If we've seen a tap recently, and now we see a full release, and we're in idle state
-                // Check if the time between taps is within the threshold
-                if let prevTapTime = lastTapAt,
-                   now.timeIntervalSince(prevTapTime) < Self.doubleTapThreshold {
-                    // This is the second tap - activate recording in double-tap lock mode
+            // Double‑tap‑only detection for key+modifier hotkeys is based on RELEASE times.
+            if useDoubleTapOnly && hotkey.key != nil && (isReleaseForActiveHotkey(e) || chordIsFullyReleased(e)) {
+                if let prevTap = lastTapAt, now.timeIntervalSince(prevTap) < Self.doubleTapThreshold {
                     state = .doubleTapLock
+                    // Emit start so caller can begin recording immediately.
                     return .startRecording
+                } else {
+                    // First tap release: record time.
+                    lastTapAt = now
                 }
-                
-                // Reset the tap timer as we've fully released
-                lastTapAt = nil
             }
             return nil
 

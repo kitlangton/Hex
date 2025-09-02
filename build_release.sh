@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Build Release
-cd /Users/mitchfultz/Projects/Hex
 xcodebuild -project Hex.xcodeproj -scheme Hex -configuration Release -derivedDataPath build clean build | cat
 
 # Replace the app

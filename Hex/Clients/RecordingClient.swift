@@ -278,7 +278,9 @@ private func sendMediaKey() {
 
 actor RecordingClientLive {
   private var recorder: AVAudioRecorder?
-  private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
+  // Use a unique file per session to avoid races when a new recording starts
+  // while a previous transcription is still reading the last file.
+  private var currentRecordingURL: URL?
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
 
@@ -387,7 +389,7 @@ actor RecordingClientLive {
 
     var deviceName: CFString? = nil
     var size = UInt32(MemoryLayout<CFString?>.size)
-    var deviceNamePtr: UnsafeMutableRawPointer = .allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
+    let deviceNamePtr: UnsafeMutableRawPointer = .allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
     defer { deviceNamePtr.deallocate() }
 
     let status = AudioObjectGetPropertyData(
@@ -536,7 +538,11 @@ actor RecordingClientLive {
     ]
 
     do {
-      recorder = try AVAudioRecorder(url: recordingURL, settings: settings)
+      // Create a unique temp file for this session
+      let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("hex-\(UUID().uuidString).wav")
+      currentRecordingURL = url
+      recorder = try AVAudioRecorder(url: url, settings: settings)
       recorder?.isMeteringEnabled = true
       recorder?.record()
       startMeterTask()
@@ -566,7 +572,11 @@ actor RecordingClientLive {
       didPauseMedia = false
       print("Resuming previously paused media.")
     }
-    return recordingURL
+    // Return the specific URL used for this session (fallback to a temp path)
+    let url = currentRecordingURL ?? FileManager.default.temporaryDirectory
+      .appendingPathComponent("hex-missing-session.wav")
+    currentRecordingURL = nil
+    return url
   }
 
   func startMeterTask() {

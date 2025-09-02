@@ -362,6 +362,38 @@ struct HexTests {
     }
 }
 
+// MARK: - Double‑Tap‑Only Mode Tests (key + modifiers)
+
+extension HexTests {
+    @Test
+    func doubleTapOnly_keyAndModifiers_requiresSecondReleaseToStart() throws {
+        var currentTime: TimeInterval = 0
+        var processor = withDependencies {
+            $0.date.now = Date(timeIntervalSince1970: currentTime)
+        } operation: {
+            HotKeyProcessor(hotkey: HotKey(key: .a, modifiers: [.command]), useDoubleTapOnly: true)
+        }
+
+        func step(_ t: TimeInterval, key: Key?, mods: Modifiers) -> HotKeyProcessor.Output? {
+            currentTime = t
+            return withDependencies { $0.date.now = Date(timeIntervalSince1970: currentTime) } operation: {
+                processor.process(keyEvent: KeyEvent(key: key, modifiers: mods))
+            }
+        }
+
+        // First press => no start in double‑tap‑only mode
+        #expect(step(0.0, key: .a, mods: [.command]) == nil)
+        // Release to neutral
+        #expect(step(0.05, key: nil, mods: []) == nil)
+        // Second press within threshold
+        #expect(step(0.1, key: .a, mods: [.command]) == nil)
+        // Second release within threshold => lock and start
+        #expect(step(0.2, key: nil, mods: [.command]) == .startRecording)
+        // Now we should be in double‑tap lock
+        #expect(processor.state == .doubleTapLock)
+    }
+}
+
 struct ScenarioStep {
     /// The time offset (in seconds) relative to the scenario start.
     let time: TimeInterval

@@ -283,15 +283,24 @@ private extension SettingsFeature {
   func deviceNotificationsEffect() -> Effect<Action> {
     .run { send in
       @Dependency(\.continuousClock) var clock
-      // Debounce helper
-      var deviceUpdateTask: Task<Void, Never>?
+      // Debounce helper using an actor to avoid Swift 6 concurrent capture issues
+      actor DeviceUpdateTaskBox {
+        private var task: Task<Void, Never>?
+        func set(_ newTask: Task<Void, Never>?) {
+          task?.cancel()
+          task = newTask
+        }
+        func cancel() { task?.cancel(); task = nil }
+      }
+      let taskBox = DeviceUpdateTaskBox()
       func debounceDeviceUpdate() {
-        deviceUpdateTask?.cancel()
-        deviceUpdateTask = Task {
-          try? await Task.sleep(nanoseconds: 500_000_000)
-          if !Task.isCancelled {
-            await send(.loadAvailableInputDevices)
-          }
+        Task {
+          await taskBox.set(Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if !Task.isCancelled {
+              await MainActor.run { send(.loadAvailableInputDevices) }
+            }
+          })
         }
       }
 
@@ -314,7 +323,7 @@ private extension SettingsFeature {
       await withTaskCancellationHandler {
         for await _ in AsyncStream<Never>.never {}
       } onCancel: {
-        deviceUpdateTask?.cancel()
+        Task { await taskBox.cancel() }
         NotificationCenter.default.removeObserver(deviceConnectionObserver)
         NotificationCenter.default.removeObserver(deviceDisconnectionObserver)
       }
