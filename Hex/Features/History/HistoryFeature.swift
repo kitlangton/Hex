@@ -142,6 +142,7 @@ struct HistoryFeature {
 		case playbackFinished
 		case navigateToSettings
 		case deleteAllFailed(transcripts: [Transcript], message: String)
+		case deleteTranscriptFailed(transcript: Transcript, index: Int, message: String)
 	}
 
 	@Dependency(\.pasteboard) var pasteboard
@@ -280,13 +281,16 @@ struct HistoryFeature {
 					history.history.remove(at: index)
 				}
 
-				// Persist history, then delete the audio file (if any) via HistoryStorageClient
-                return .run { [sharedHistory = state.$transcriptionHistory, transcript] _ in
+				// Persist history, then delete the audio file (if any) via HistoryStorageClient.
+				// On failure, revert the in-memory state by re-inserting the transcript.
+				return .run { [sharedHistory = state.$transcriptionHistory, transcript, index] send in
                     do {
                         let files = transcript.audioPath.map { [$0] } ?? []
                         try await historyStorage.persistHistoryAndDeleteFiles(sharedHistory, files)
                     } catch {
-                        print("Failed to persist transcript deletion: \(error.localizedDescription)")
+						let message = "Failed to persist transcript deletion: \(error.localizedDescription)"
+						print("HistoryFeature: \(message)")
+						await send(.deleteTranscriptFailed(transcript: transcript, index: index, message: message))
                     }
                 }
 
@@ -318,12 +322,21 @@ struct HistoryFeature {
                     }
                 }
 
+			case let .deleteTranscriptFailed(transcript, index, message):
+				print("HistoryFeature.deleteTranscriptFailed: \(message)")
+				state.$transcriptionHistory.withLock { history in
+					let insertIndex = min(max(index, 0), history.history.count)
+					history.history.insert(transcript, at: insertIndex)
+				}
+				return .none
+
 			case let .deleteAllFailed(transcripts, message):
 				print("HistoryFeature.deleteAllFailed: \(message)")
 				state.$transcriptionHistory.withLock { history in
 					history.history = transcripts
 				}
 				return .none
+
 
 			case .navigateToSettings:
 				// This will be handled by the parent reducer
