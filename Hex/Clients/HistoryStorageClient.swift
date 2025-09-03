@@ -24,40 +24,16 @@ extension HistoryStorageClient: DependencyKey {
         // Save first; if this throws, do not delete any files.
         try await sharedHistory.save()
 
-        // Delete associated audio files on background threads via FileClient.
-        @Dependency(\.fileClient) var fileClient
+        // Delete associated audio files via helper.
         let urls = transcripts.compactMap(\.audioPath)
-        await withTaskGroup(of: Void.self) { group in
-          for url in urls {
-            group.addTask {
-              do {
-                try await fileClient.removeItem(url)
-              } catch {
-                // Ignore deletion errors to avoid surfacing non-critical cleanup failures.
-              }
-            }
-          }
-          await group.waitForAll()
-        }
+        await Self.deleteFiles(urls)
       },
       persistHistoryAndDeleteFiles: { sharedHistory, files in
         // Save first; if this throws, do not delete any files.
         try await sharedHistory.save()
 
-        // Delete provided files after a successful save.
-        @Dependency(\.fileClient) var fileClient
-        await withTaskGroup(of: Void.self) { group in
-          for url in files {
-            group.addTask {
-              do {
-                try await fileClient.removeItem(url)
-              } catch {
-                // Ignore deletion errors to avoid surfacing non-critical cleanup failures.
-              }
-            }
-          }
-          await group.waitForAll()
-        }
+        // Delete provided files after a successful save via helper.
+        await Self.deleteFiles(files)
       }
     )
   }
@@ -86,6 +62,24 @@ extension HistoryStorageClient: TestDependencyKey {
         XCTFail("Unimplemented: HistoryStorageClient.persistHistoryAndDeleteFiles")
       }
     )
+  }
+}
+
+private extension HistoryStorageClient {
+  static func deleteFiles(_ urls: [URL]) async {
+    @Dependency(\.fileClient) var fileClient
+    await withTaskGroup(of: Void.self) { group in
+      for url in urls {
+        group.addTask {
+          do {
+            try await fileClient.removeItem(url)
+          } catch {
+            // Ignore deletion errors to avoid surfacing non-critical cleanup failures.
+          }
+        }
+      }
+      await group.waitForAll()
+    }
   }
 }
 

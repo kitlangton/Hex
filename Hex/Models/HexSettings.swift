@@ -56,6 +56,7 @@ struct HexSettings: Codable, Equatable {
 		case historyStorageMode
 		case maxHistoryEntries
 		case didCompleteFirstRun
+		case saveTranscriptionHistory // legacy key for migration
 	}
 
 	init(
@@ -125,21 +126,35 @@ struct HexSettings: Codable, Equatable {
 		if let mode = try container.decodeIfPresent(HistoryStorageMode.self, forKey: .historyStorageMode) {
 			historyStorageMode = mode
 		} else {
-			// Decode legacy "saveTranscriptionHistory" without adding it to CodingKeys
-			struct LegacyKey: CodingKey {
-				var stringValue: String
-				var intValue: Int?
-				init?(stringValue: String) { self.stringValue = stringValue }
-				init?(intValue: Int) { self.intValue = intValue; self.stringValue = "\(intValue)" }
-			}
-			let legacyContainer = try decoder.container(keyedBy: LegacyKey.self)
-			let legacy = try legacyContainer.decodeIfPresent(Bool.self, forKey: LegacyKey(stringValue: "saveTranscriptionHistory")!) ?? true
+			let legacy = try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
 			historyStorageMode = legacy ? .textAndAudio : .off
 		}
 
 		maxHistoryEntries = try container.decodeIfPresent(Int.self, forKey: .maxHistoryEntries)
 		didCompleteFirstRun =
 			try container.decodeIfPresent(Bool.self, forKey: .didCompleteFirstRun) ?? false
+	}
+
+	// Custom encoder that omits legacy key
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(soundEffectsEnabled, forKey: .soundEffectsEnabled)
+		try container.encode(hotkey, forKey: .hotkey)
+		try container.encode(openOnLogin, forKey: .openOnLogin)
+		try container.encode(showDockIcon, forKey: .showDockIcon)
+		try container.encode(selectedModel, forKey: .selectedModel)
+		try container.encode(useClipboardPaste, forKey: .useClipboardPaste)
+		try container.encode(preventSystemSleep, forKey: .preventSystemSleep)
+		try container.encode(pauseMediaOnRecord, forKey: .pauseMediaOnRecord)
+		try container.encode(minimumKeyTime, forKey: .minimumKeyTime)
+		try container.encode(copyToClipboard, forKey: .copyToClipboard)
+		try container.encode(useDoubleTapOnly, forKey: .useDoubleTapOnly)
+		try container.encodeIfPresent(outputLanguage, forKey: .outputLanguage)
+		try container.encodeIfPresent(selectedMicrophoneID, forKey: .selectedMicrophoneID)
+		try container.encode(historyStorageMode, forKey: .historyStorageMode)
+		try container.encodeIfPresent(maxHistoryEntries, forKey: .maxHistoryEntries)
+		try container.encode(didCompleteFirstRun, forKey: .didCompleteFirstRun)
+		// Intentionally do not encode .saveTranscriptionHistory (legacy key)
 	}
 }
 
