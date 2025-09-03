@@ -22,11 +22,7 @@ extension HistoryStorageClient: DependencyKey {
     Self(
       persistClearedHistoryAndDeleteFiles: { sharedHistory, transcripts in
         // Save first; if this throws, do not delete any files.
-        do {
-          try await sharedHistory.save()
-        } catch {
-          throw error
-        }
+        try await sharedHistory.save()
 
         // Delete associated audio files on background threads via FileClient.
         @Dependency(\.fileClient) var fileClient
@@ -46,11 +42,7 @@ extension HistoryStorageClient: DependencyKey {
       },
       persistHistoryAndDeleteFiles: { sharedHistory, files in
         // Save first; if this throws, do not delete any files.
-        do {
-          try await sharedHistory.save()
-        } catch {
-          throw error
-        }
+        try await sharedHistory.save()
 
         // Delete provided files after a successful save.
         @Dependency(\.fileClient) var fileClient
