@@ -54,6 +54,9 @@ struct AppFeature {
         return .none
       case .transcription:
         return .none
+      case .settings(.modelDownload(.selectModel(_))):
+        // Cancel any ongoing prewarm when the selected model changes
+        return .send(.transcription(.cancelPrewarm))
       case .settings:
         return .none
       case .history(.navigateToSettings):

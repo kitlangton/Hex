@@ -93,7 +93,7 @@ private let mediaRemoteController = MediaRemoteController()
 
 func isAudioPlayingOnDefaultOutput() async -> Bool {
   // Refresh the state before checking
-  await mediaRemoteController?.isMediaPlaying() ?? false
+  return await mediaRemoteController?.isMediaPlaying() ?? false
 }
 
 /// Check if an application is installed by looking for its bundle
@@ -292,6 +292,9 @@ actor RecordingClientLive {
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
 
+  /// Stores the system's previous default input device so we can restore it after recording
+  private var previousDefaultInputDevice: AudioDeviceID?
+
   // Cache to store already-processed device information
   private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
   private var lastDeviceCheck = Date(timeIntervalSince1970: 0)
@@ -461,6 +464,34 @@ actor RecordingClientLive {
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
 
+  /// Get the current default input device ID
+  private func getDefaultInputDeviceID() -> AudioDeviceID? {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    var deviceID = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+    let status = AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject),
+      &address,
+      0,
+      nil,
+      &size,
+      &deviceID
+    )
+
+    if status != 0 {
+      print("Error getting default input device: \(status)")
+      return nil
+    }
+
+    return deviceID
+  }
+
   /// Set device as the default input device
   private func setInputDevice(deviceID: AudioDeviceID) {
     var device = deviceID
@@ -494,20 +525,23 @@ actor RecordingClientLive {
   func startRecording() async {
     // If audio is playing on the default output, pause it.
     if hexSettings.pauseMediaOnRecord {
-      // First, pause all media applications using their AppleScript interface.
+      // First, pause all media applications using their AppleScript interface for precise control.
       pausedPlayers = await pauseAllMediaApplications()
-      // If no specific players were paused, pause generic media using the media key.
-      if pausedPlayers.isEmpty {
-        if await isAudioPlayingOnDefaultOutput() {
-          print("Audio is playing on the default output; pausing it for recording.")
-          await MainActor.run {
-            sendMediaKey()
-          }
-          didPauseMedia = true
-          print("Media was playing; pausing it for recording.")
-        }
-      } else {
+      if !pausedPlayers.isEmpty {
         print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
+      }
+
+      // Conditionally send the media key only if media is currently playing (e.g., browser playback)
+      let isPlaying = await isAudioPlayingOnDefaultOutput()
+      if isPlaying {
+        await MainActor.run {
+          sendMediaKey()
+        }
+        didPauseMedia = true
+        print("Sent media key to pause generic/browser media for recording.")
+      } else {
+        didPauseMedia = false
+        print("No generic media playing; did not send media key.")
       }
     }
 
@@ -517,8 +551,17 @@ actor RecordingClientLive {
       // Check if the selected device is still available
       let devices = getAllAudioDevices()
       if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
-        print("Setting selected input device: \(selectedDeviceID)")
-        setInputDevice(deviceID: selectedDeviceID)
+        let currentDefault = getDefaultInputDeviceID()
+        // Only switch if different, and remember the previous default exactly once
+        if currentDefault != selectedDeviceID {
+          if previousDefaultInputDevice == nil, let currentDefault {
+            previousDefaultInputDevice = currentDefault
+          }
+          print("Setting selected input device: \(selectedDeviceID)")
+          setInputDevice(deviceID: selectedDeviceID)
+        } else {
+          print("Selected input device is already the default; no change needed.")
+        }
       } else {
         // Device no longer available, fall back to system default
         print("Selected device \(selectedDeviceID) is no longer available, using system default")
@@ -558,20 +601,32 @@ actor RecordingClientLive {
     stopMeterTask()
     print("Recording stopped.")
 
-    // Resume media if we previously paused specific players
+    // First, resume generic/browser media if we toggled it with the media key
+    if didPauseMedia {
+      await MainActor.run {
+        sendMediaKey()
+      }
+      didPauseMedia = false
+      print("Resuming previously paused media via media key.")
+    }
+
+    // Then resume any specific media players we paused via AppleScript
     if !pausedPlayers.isEmpty {
       print("Resuming previously paused players: \(pausedPlayers.joined(separator: ", "))")
       await resumeMediaApplications(pausedPlayers)
       pausedPlayers = []
     }
-    // Resume generic media if we paused it with the media key
-    else if didPauseMedia {
-      await MainActor.run {
-        sendMediaKey()
+
+    // Restore the previous default input device if we changed it
+    if let prevDevice = previousDefaultInputDevice {
+      let currentDefault = getDefaultInputDeviceID()
+      if currentDefault != prevDevice {
+        print("Restoring previous default input device: \(prevDevice)")
+        setInputDevice(deviceID: prevDevice)
       }
-      didPauseMedia = false
-      print("Resuming previously paused media.")
+      previousDefaultInputDevice = nil
     }
+
     // Return the specific URL used for this session (fallback to a temp path)
     let url = currentRecordingURL ?? FileManager.default.temporaryDirectory
       .appendingPathComponent("hex-missing-session.wav")

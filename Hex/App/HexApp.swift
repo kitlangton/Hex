@@ -25,13 +25,10 @@ struct HexApp: App {
 				NSApplication.shared.terminate(nil)
 			}.keyboardShortcut("q")
 		} label: {
-			let image: NSImage = {
-				let ratio = $0.size.height / $0.size.width
-				$0.size.height = 18
-				$0.size.width = 18 / ratio
-				return $0
-			}(NSImage(named: "HexIcon")!)
-			Image(nsImage: image)
+			Image("HexIcon")
+				.resizable()
+				.aspectRatio(contentMode: .fit)
+				.frame(width: 18, height: 18)
 		}
 
 

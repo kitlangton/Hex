@@ -19,6 +19,7 @@ struct HexSettings: Codable, Equatable {
 	var selectedMicrophoneID: String? = nil
 	var saveTranscriptionHistory: Bool = true
 	var maxHistoryEntries: Int? = nil
+	var didCompleteFirstRun: Bool = false
 
 	// Define coding keys to match struct properties
 	enum CodingKeys: String, CodingKey {
@@ -37,6 +38,7 @@ struct HexSettings: Codable, Equatable {
 		case selectedMicrophoneID
 		case saveTranscriptionHistory
 		case maxHistoryEntries
+		case didCompleteFirstRun
 	}
 
 	init(
@@ -104,6 +106,8 @@ struct HexSettings: Codable, Equatable {
 		saveTranscriptionHistory =
 			try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
 		maxHistoryEntries = try container.decodeIfPresent(Int.self, forKey: .maxHistoryEntries)
+		didCompleteFirstRun =
+			try container.decodeIfPresent(Bool.self, forKey: .didCompleteFirstRun) ?? false
 	}
 }
 
