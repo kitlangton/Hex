@@ -8,7 +8,7 @@ struct HexSettings: Codable, Equatable {
 	var hotkey: HotKey = .init(key: nil, modifiers: [.option])
 	var openOnLogin: Bool = false
 	var showDockIcon: Bool = true
-	var selectedModel: String = "openai_whisper-large-v3-v20240930"
+    var selectedModel: String = "parakeet-tdt-0.6b-v3-coreml"
 	var useClipboardPaste: Bool = true
 	var preventSystemSleep: Bool = true
 	var pauseMediaOnRecord: Bool = true
@@ -44,7 +44,7 @@ struct HexSettings: Codable, Equatable {
 		hotkey: HotKey = .init(key: nil, modifiers: [.option]),
 		openOnLogin: Bool = false,
 		showDockIcon: Bool = true,
-		selectedModel: String = "openai_whisper-large-v3-v20240930",
+        selectedModel: String = "parakeet-tdt-0.6b-v3-coreml",
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
 		pauseMediaOnRecord: Bool = true,
@@ -85,9 +85,9 @@ struct HexSettings: Codable, Equatable {
 				?? .init(key: nil, modifiers: [.option])
 		openOnLogin = try container.decodeIfPresent(Bool.self, forKey: .openOnLogin) ?? false
 		showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? true
-		selectedModel =
-			try container.decodeIfPresent(String.self, forKey: .selectedModel)
-				?? "openai_whisper-large-v3-v20240930"
+        selectedModel =
+            try container.decodeIfPresent(String.self, forKey: .selectedModel)
+                ?? "parakeet-tdt-0.6b-v3-coreml"
 		useClipboardPaste = try container.decodeIfPresent(Bool.self, forKey: .useClipboardPaste) ?? true
 		preventSystemSleep =
 			try container.decodeIfPresent(Bool.self, forKey: .preventSystemSleep) ?? true

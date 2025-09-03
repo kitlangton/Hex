@@ -441,14 +441,22 @@ private struct CuratedRow: View {
 			action: { store.send(.selectModel(model.internalName)) }
 		) {
 			HStack {
-				HStack {
-					Text(model.displayName)
-						.font(.headline)
-					if model.isDownloaded {
-						Image(systemName: "checkmark.circle.fill")
-							.foregroundColor(.green)
-					}
-					if isSelected {
+            HStack(spacing: 6) {
+                Text(model.displayName)
+                    .font(.headline)
+                if model.internalName.lowercased().hasPrefix("parakeet-") {
+                    Text("RNNT")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.blue.opacity(0.15)))
+                        .foregroundStyle(.blue)
+                }
+                if model.isDownloaded {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                }
+                if isSelected {
 						Image(systemName: "checkmark")
 							.foregroundColor(.blue)
 					}
@@ -484,11 +492,14 @@ private struct CuratedRow: View {
 	}
 }
 
-private struct FooterView: View {
-	@Bindable var store: StoreOf<ModelDownloadFeature>
+  private struct FooterView: View {
+  	@Bindable var store: StoreOf<ModelDownloadFeature>
 
-	var body: some View {
-		if store.isDownloading, store.downloadingModelName == store.hexSettings.selectedModel {
+  	var body: some View {
+		let selected = store.hexSettings.selectedModel
+		let isParakeet = selected.lowercased().hasPrefix("parakeet-")
+
+		if store.isDownloading, store.downloadingModelName == selected {
 			VStack(alignment: .leading) {
 				Text("Downloading model...")
 					.font(.caption)
@@ -497,8 +508,8 @@ private struct FooterView: View {
 			}
 		} else {
 			HStack {
-				if let selected = store.curatedModels.first(where: { $0.internalName == store.hexSettings.selectedModel }) {
-					Text("Selected: \(selected.displayName)")
+				if let sel = store.curatedModels.first(where: { $0.internalName == selected }) {
+					Text("Selected: \(sel.displayName)")
 						.font(.caption)
 				}
 				Spacer()
@@ -510,14 +521,18 @@ private struct FooterView: View {
 					.buttonStyle(.plain)
 					.foregroundStyle(.secondary)
 				}
-				if store.selectedModelIsDownloaded {
+				if isParakeet {
+					Text("Parakeet downloads on first use (no manual step)")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				} else if store.selectedModelIsDownloaded {
 					Button("Delete", role: .destructive) {
 						store.send(.deleteSelectedModel)
 					}
 					.font(.caption)
 					.buttonStyle(.plain)
 					.foregroundStyle(.secondary)
-				} else if !store.selectedModel.isEmpty {
+				} else if !selected.isEmpty {
 					Button("Download") {
 						store.send(.downloadSelectedModel)
 					}
