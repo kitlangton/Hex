@@ -65,6 +65,7 @@ struct SettingsFeature {
     // History Management
     case setHistoryStorageMode(HexSettings.HistoryStorageMode)
     case toggleSaveTranscriptionHistory(Bool)
+    case historyClearFailed(previousMode: HexSettings.HistoryStorageMode, transcripts: [Transcript], message: String)
   }
 
   enum CancelID {
@@ -252,20 +253,28 @@ struct SettingsFeature {
         return .none
 
       case let .setHistoryStorageMode(mode):
+        let previousMode = state.hexSettings.historyStorageMode
         state.$hexSettings.withLock { $0.historyStorageMode = mode }
 
         // When turning history off, clear all entries and delete audio files.
         if mode == .off {
           let transcripts = state.transcriptionHistory.history
 
-          // Clear the history list
+          // Clear the history list (optimistically)
           state.$transcriptionHistory.withLock { history in
             history.history.removeAll()
           }
 
-          // Persist cleared history, then delete all audio files associated with existing transcripts
-          return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
-            try? await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
+          // Persist cleared history, then delete all audio files associated with existing transcripts.
+          // If this fails, log and revert the UI state.
+          return .run { [sharedHistory = state.$transcriptionHistory, transcripts, previousMode] send in
+            do {
+              try await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
+            } catch {
+              let message = "Failed to persist cleared history and delete files: \(error.localizedDescription)"
+              print("SettingsFeature: \(message)")
+              await send(.historyClearFailed(previousMode: previousMode, transcripts: transcripts, message: message))
+            }
           }
         }
 
@@ -275,6 +284,15 @@ struct SettingsFeature {
       // Legacy toggle: map to new mode (true => .textAndAudio, false => .off)
       case let .toggleSaveTranscriptionHistory(enabled):
         return .send(.setHistoryStorageMode(enabled ? .textAndAudio : .off))
+      case let .historyClearFailed(previousMode, transcripts, message):
+        print("SettingsFeature.historyClearFailed: \(message)")
+        // Revert the setting so the UI reflects that history is still enabled
+        state.$hexSettings.withLock { $0.historyStorageMode = previousMode }
+        // Restore the in-memory history so the user still sees their items
+        state.$transcriptionHistory.withLock { history in
+          history.history = transcripts
+        }
+        return .none
       }
     }
   }

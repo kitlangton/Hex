@@ -141,6 +141,7 @@ struct HistoryFeature {
 		case confirmDeleteAll
 		case playbackFinished
 		case navigateToSettings
+		case deleteAllFailed(transcripts: [Transcript], message: String)
 	}
 
 	@Dependency(\.pasteboard) var pasteboard
@@ -307,13 +308,22 @@ struct HistoryFeature {
 				}
 
 				// Delete files after ensuring state persistence completes
-                return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
+				return .run { [sharedHistory = state.$transcriptionHistory, transcripts] send in
                     do {
                         try await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
                     } catch {
-                        print("Failed to persist deletion of all transcripts: \(error.localizedDescription)")
+						let message = "Failed to persist deletion of all transcripts: \(error.localizedDescription)"
+						print("HistoryFeature: \(message)")
+						await send(.deleteAllFailed(transcripts: transcripts, message: message))
                     }
                 }
+
+			case let .deleteAllFailed(transcripts, message):
+				print("HistoryFeature.deleteAllFailed: \(message)")
+				state.$transcriptionHistory.withLock { history in
+					history.history = transcripts
+				}
+				return .none
 
 			case .navigateToSettings:
 				// This will be handled by the parent reducer
