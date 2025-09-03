@@ -384,8 +384,10 @@ private struct AllModelsPicker: View {
 							: info.name
 					)
 					Spacer()
-					if info.isDownloaded {
-						Image(systemName: "checkmark.circle.fill")
+					// Show a download indicator for models already on disk,
+					// but avoid a second checkmark-style icon on the selected item.
+					if info.isDownloaded && info.name != store.hexSettings.selectedModel {
+						Image(systemName: "arrow.down.circle.fill")
 							.foregroundColor(.green)
 					}
 				}
@@ -452,14 +454,15 @@ private struct CuratedRow: View {
                         .background(Capsule().fill(Color.blue.opacity(0.15)))
                         .foregroundStyle(.blue)
                 }
-                if model.isDownloaded {
+				// Consistent selection indicator
+				if isSelected {
                     Image(systemName: "checkmark.circle.fill")
+						.foregroundColor(.blue)
+				} else if model.isDownloaded {
+					// Non-checkmark icon for download status to avoid confusion
+					Image(systemName: "arrow.down.circle.fill")
                         .foregroundColor(.green)
                 }
-                if isSelected {
-						Image(systemName: "checkmark")
-							.foregroundColor(.blue)
-					}
 				}
 				.frame(minWidth: 80, alignment: .leading)
 				Spacer()

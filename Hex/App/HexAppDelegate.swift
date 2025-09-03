@@ -33,7 +33,10 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 		// Then present main views
 		presentMainView()
-		presentSettingsView()
+		if !hexSettings.didCompleteFirstRun {
+			presentSettingsView()
+			$hexSettings.withLock { $0.didCompleteFirstRun = true }
+		}
 		NSApp.activate(ignoringOtherApps: true)
 	}
 
@@ -42,7 +45,8 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 		let transcriptionStore = HexApp.appStore.scope(state: \.transcription, action: \.transcription)
-		let transcriptionView = TranscriptionView(store: transcriptionStore).padding().padding(.top).padding(.top)
+		let transcriptionView = TranscriptionView(store: transcriptionStore)
+			.padding(EdgeInsets(top: 48, leading: 16, bottom: 16, trailing: 16))
 			.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 		invisibleWindow = InvisibleWindow.fromView(transcriptionView)
 		invisibleWindow?.makeKeyAndOrderFront(nil)

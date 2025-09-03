@@ -292,6 +292,9 @@ actor RecordingClientLive {
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
 
+  /// Stores the system's previous default input device so we can restore it after recording
+  private var previousDefaultInputDevice: AudioDeviceID?
+
   // Cache to store already-processed device information
   private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
   private var lastDeviceCheck = Date(timeIntervalSince1970: 0)
@@ -461,6 +464,34 @@ actor RecordingClientLive {
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
 
+  /// Get the current default input device ID
+  private func getDefaultInputDeviceID() -> AudioDeviceID? {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    var deviceID = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+    let status = AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject),
+      &address,
+      0,
+      nil,
+      &size,
+      &deviceID
+    )
+
+    if status != 0 {
+      print("Error getting default input device: \(status)")
+      return nil
+    }
+
+    return deviceID
+  }
+
   /// Set device as the default input device
   private func setInputDevice(deviceID: AudioDeviceID) {
     var device = deviceID
@@ -517,8 +548,17 @@ actor RecordingClientLive {
       // Check if the selected device is still available
       let devices = getAllAudioDevices()
       if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
-        print("Setting selected input device: \(selectedDeviceID)")
-        setInputDevice(deviceID: selectedDeviceID)
+        let currentDefault = getDefaultInputDeviceID()
+        // Only switch if different, and remember the previous default exactly once
+        if currentDefault != selectedDeviceID {
+          if previousDefaultInputDevice == nil, let currentDefault {
+            previousDefaultInputDevice = currentDefault
+          }
+          print("Setting selected input device: \(selectedDeviceID)")
+          setInputDevice(deviceID: selectedDeviceID)
+        } else {
+          print("Selected input device is already the default; no change needed.")
+        }
       } else {
         // Device no longer available, fall back to system default
         print("Selected device \(selectedDeviceID) is no longer available, using system default")
@@ -572,6 +612,17 @@ actor RecordingClientLive {
       didPauseMedia = false
       print("Resuming previously paused media.")
     }
+
+    // Restore the previous default input device if we changed it
+    if let prevDevice = previousDefaultInputDevice {
+      let currentDefault = getDefaultInputDeviceID()
+      if currentDefault != prevDevice {
+        print("Restoring previous default input device: \(prevDevice)")
+        setInputDevice(deviceID: prevDevice)
+      }
+      previousDefaultInputDevice = nil
+    }
+
     // Return the specific URL used for this session (fallback to a temp path)
     let url = currentRecordingURL ?? FileManager.default.temporaryDirectory
       .appendingPathComponent("hex-missing-session.wav")

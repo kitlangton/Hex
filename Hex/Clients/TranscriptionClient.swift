@@ -286,8 +286,10 @@ actor TranscriptionClientLive {
   ) async throws -> String {
     if isParakeet(model) {
       #if canImport(FluidAudio)
-      unloadCurrentModel()
-      try await downloadAndLoadModel(variant: model) { p in progressCallback(p) }
+      // Reuse existing Parakeet engine if the same variant is already loaded.
+      if currentModelName != model || parakeetManager == nil {
+        try await downloadAndLoadModel(variant: model) { p in progressCallback(p) }
+      }
       // Ensure engine exists
       guard let parakeetManager else {
         throw NSError(domain: "TranscriptionClient", code: -8, userInfo: [NSLocalizedDescriptionKey: "Parakeet manager not initialized"])
@@ -538,17 +540,48 @@ private extension TranscriptionClientLive {
   }
 
   #if canImport(FluidAudio)
+  /// Load and initialize the selected Parakeet variant.
+  ///
+  /// Mapping:
+  /// - v2 => English-only model (parakeet-tdt-0.6b-v2-coreml)
+  /// - v3 => Multilingual model (parakeet-tdt-0.6b-v3-coreml)
+  ///
+  /// Notes:
+  /// - We avoid re-initialization when the same variant is already loaded.
+  /// - The FluidAudio API currently used here (AsrModels.downloadAndLoad + AsrManager.initialize)
+  ///   does not expose an explicit per-flavor selection in this codebase. The mapping is documented
+  ///   and ready to apply when/if the API provides a flavor-specific initializer.
   @discardableResult
   func loadParakeetModel(_ variant: String, progress: @escaping (Double) -> Void) async throws -> Bool {
     // Initialize manager once
     if parakeetManager == nil { parakeetManager = AsrManager() }
+
+    // Early exit if the same Parakeet variant is already active
+    if currentModelName == variant, parakeetManager != nil {
+      progress(1.0)
+      return true
+    }
+
+    // Determine the flavor from the variant name
+    enum ParakeetFlavor { case english, multilingual }
+    func parakeetFlavor(for variant: String) -> ParakeetFlavor {
+      let lower = variant.lowercased()
+      // v2 => English; v3 => Multilingual
+      return lower.contains("-v2-") ? .english : .multilingual
+    }
+    let _ = parakeetFlavor(for: variant)
+
     progress(0.1)
-    // For now, let FluidAudio manage model selection based on default or preferred locale.
-    // If future versions add explicit selection, map variant here.
+
+    // Load (and download if necessary) Parakeet models using the FluidAudio runtime.
+    // When the API supports explicit flavor choice, apply it here based on `parakeetFlavor(for:)`.
     let models = try await AsrModels.downloadAndLoad()
     progress(0.7)
+
     try await parakeetManager!.initialize(models: models)
     progress(1.0)
+
+    // Track the active Parakeet variant
     currentModelName = variant
     return true
   }

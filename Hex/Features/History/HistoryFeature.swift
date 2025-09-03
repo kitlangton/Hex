@@ -73,7 +73,7 @@ class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
 @Reducer
 struct HistoryFeature {
 	@ObservableState
-	struct State: Equatable {
+	struct State {
 		@Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
 		var playingTranscriptID: UUID?
 		var audioPlayer: AVAudioPlayer?

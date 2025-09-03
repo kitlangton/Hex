@@ -44,6 +44,7 @@ struct TranscriptionFeature {
 
     // Cancel entire flow
     case cancel
+    case cancelPrewarm
 
     // Transcription result flow
     case transcriptionResult(String)
@@ -58,6 +59,7 @@ struct TranscriptionFeature {
     case metering
     case transcription
     case cancellationCleanup
+    case prewarm
   }
 
   @Dependency(\.transcription) var transcription
@@ -131,6 +133,10 @@ struct TranscriptionFeature {
       case let .setPrewarming(flag):
         state.isPrewarming = flag
         return .none
+
+      case .cancelPrewarm:
+        state.isPrewarming = false
+        return .cancel(id: CancelID.prewarm)
 
       // MARK: - Cancel Entire Flow
 
@@ -310,8 +316,6 @@ private extension TranscriptionFeature {
       return Date().timeIntervalSince(startTime)
     }()
 
-    state.isPrewarming = true
-
     return .run { send in
       do {
         // Stop recording first so we don't capture the stop sound in the audio file.
@@ -351,15 +355,38 @@ private extension TranscriptionFeature {
 private extension TranscriptionFeature {
   func prewarmSelectedModelEffect(_ state: inout State) -> Effect<Action> {
     let model = state.hexSettings.selectedModel
-    state.isPrewarming = true
     return .run { send in
-      do {
-        try await transcription.downloadModel(model) { _ in }
-      } catch {
-        // Ignore prewarm errors; normal flow will handle on demand
+      await withTaskCancellationHandler {
+        let lowercased = model.lowercased()
+
+        // Skip Parakeet prewarm entirely to avoid network operations
+        guard !lowercased.hasPrefix("parakeet-") else {
+          await send(.setPrewarming(false))
+          return
+        }
+
+        // Only prewarm if already downloaded locally to avoid surprise downloads
+        if await transcription.isModelDownloaded(model) {
+          await send(.setPrewarming(true))
+          do {
+            // This will only load from disk when the model is already present.
+            try await transcription.downloadModel(model) { _ in }
+          } catch {
+            // Ignore prewarm errors; normal flow will handle on demand
+          }
+          await send(.setPrewarming(false))
+        } else {
+          // Ensure indicator is off if nothing to prewarm
+          await send(.setPrewarming(false))
+        }
+      } onCancel: {
+        // Synchronous onCancel; no async calls allowed here.
+        #if DEBUG
+        print("Prewarm cancelled")
+        #endif
       }
-      await send(.setPrewarming(false))
     }
+    .cancellable(id: CancelID.prewarm, cancelInFlight: true)
   }
   func handleTranscriptionResult(
     _ state: inout State,
@@ -509,6 +536,7 @@ private extension TranscriptionFeature {
     return .merge(
       .cancel(id: CancelID.transcription),
       .cancel(id: CancelID.delayedRecord),
+      .cancel(id: CancelID.prewarm),
       .run { _ in
         // Stop the recording if we were in the middle of one
         if wasRecording {
