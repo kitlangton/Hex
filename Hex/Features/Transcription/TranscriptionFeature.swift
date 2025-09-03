@@ -457,43 +457,19 @@ private extension TranscriptionFeature {
             duration: duration
           )
 
-          // Append and trim if needed; collect files to delete post-persistence.
-          var filesToDelete: [URL] = []
-          transcriptionHistory.withLock { history in
-            history.history.insert(transcript, at: 0)
-
-            if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
-              while history.history.count > maxEntries {
-                if let removedTranscript = history.history.popLast() {
-                  if let url = removedTranscript.audioPath {
-                    filesToDelete.append(url)
-                  }
-                }
-              }
-            }
-          }
-
-          if !filesToDelete.isEmpty {
-            Task {
-              try? await transcriptionHistory.save()
-              for fileURL in filesToDelete {
-                try? fm.removeItem(at: fileURL)
-              }
-            }
-          }
+          let filesToDelete = appendTranscriptAndTrimHistory(
+            transcript: transcript,
+            transcriptionHistory: transcriptionHistory,
+            maxEntries: hexSettings.maxHistoryEntries
+          )
+          persistHistoryThenDeleteFiles(
+            transcriptionHistory: transcriptionHistory,
+            filesToDelete: filesToDelete
+          )
 
         case .textAndAudio:
           // Move audio to a permanent location and save transcript with audio path.
-          let supportDir = try fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-          )
-          let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-          let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-          try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
-
+          let recordingsFolder = try ensureRecordingsDirectory()
           let filename = "\(Date().timeIntervalSince1970).wav"
           let finalURL = recordingsFolder.appendingPathComponent(filename)
 
@@ -506,30 +482,15 @@ private extension TranscriptionFeature {
             duration: duration
           )
 
-          // Append and trim if needed; collect files to delete post-persistence.
-          var filesToDelete: [URL] = []
-          transcriptionHistory.withLock { history in
-            history.history.insert(transcript, at: 0)
-
-            if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
-              while history.history.count > maxEntries {
-                if let removedTranscript = history.history.popLast() {
-                  if let url = removedTranscript.audioPath {
-                    filesToDelete.append(url)
-                  }
-                }
-              }
-            }
-          }
-
-          if !filesToDelete.isEmpty {
-            Task {
-              try? await transcriptionHistory.save()
-              for fileURL in filesToDelete {
-                try? fm.removeItem(at: fileURL)
-              }
-            }
-          }
+          let filesToDelete = appendTranscriptAndTrimHistory(
+            transcript: transcript,
+            transcriptionHistory: transcriptionHistory,
+            maxEntries: hexSettings.maxHistoryEntries
+          )
+          persistHistoryThenDeleteFiles(
+            transcriptionHistory: transcriptionHistory,
+            filesToDelete: filesToDelete
+          )
         }
 
         // Paste text (and copy if enabled via pasteWithClipboard)
@@ -539,6 +500,61 @@ private extension TranscriptionFeature {
         await send(.transcriptionError(error))
       }
     }
+  }
+
+  // MARK: - History Helpers
+
+  /// Append a transcript to history, trim to maxEntries if provided, and return any audio files to delete.
+  private func appendTranscriptAndTrimHistory(
+    transcript: Transcript,
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    maxEntries: Int?
+  ) -> [URL] {
+    var filesToDelete: [URL] = []
+    transcriptionHistory.withLock { history in
+      history.history.insert(transcript, at: 0)
+
+      if let max = maxEntries, max > 0 {
+        while history.history.count > max {
+          if let removedTranscript = history.history.popLast(),
+             let url = removedTranscript.audioPath
+          {
+            filesToDelete.append(url)
+          }
+        }
+      }
+    }
+    return filesToDelete
+  }
+
+  /// Persist history, then delete files. Performed in a background Task to avoid blocking UI.
+  private func persistHistoryThenDeleteFiles(
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    filesToDelete: [URL],
+    fileManager: FileManager = .default
+  ) {
+    guard !filesToDelete.isEmpty else { return }
+    Task {
+      try? await transcriptionHistory.save()
+      for fileURL in filesToDelete {
+        try? fileManager.removeItem(at: fileURL)
+      }
+    }
+  }
+
+  /// Ensure the permanent recordings directory exists and return its URL.
+  private func ensureRecordingsDirectory() throws -> URL {
+    let fm = FileManager.default
+    let supportDir = try fm.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: true
+    )
+    let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
+    let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
+    try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
+    return recordingsFolder
   }
 }
 

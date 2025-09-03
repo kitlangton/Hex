@@ -262,8 +262,10 @@ struct SettingsFeature {
             history.history.removeAll()
           }
 
-          // Delete all audio files associated with existing transcripts
-          return .run { _ in
+          // Persist cleared history, then delete all audio files associated with existing transcripts
+          return .run { [sharedHistory = state.$transcriptionHistory] _ in
+            // Explicitly save the state and wait for completion before deleting files
+            try? await sharedHistory.save()
             for transcript in transcripts {
               if let url = transcript.audioPath {
                 try? FileManager.default.removeItem(at: url)
