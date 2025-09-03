@@ -441,14 +441,22 @@ private struct CuratedRow: View {
 			action: { store.send(.selectModel(model.internalName)) }
 		) {
 			HStack {
-				HStack {
-					Text(model.displayName)
-						.font(.headline)
-					if model.isDownloaded {
-						Image(systemName: "checkmark.circle.fill")
-							.foregroundColor(.green)
-					}
-					if isSelected {
+            HStack(spacing: 6) {
+                Text(model.displayName)
+                    .font(.headline)
+                if model.internalName.lowercased().hasPrefix("parakeet-") {
+                    Text("RNNT")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.blue.opacity(0.15)))
+                        .foregroundStyle(.blue)
+                }
+                if model.isDownloaded {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                }
+                if isSelected {
 						Image(systemName: "checkmark")
 							.foregroundColor(.blue)
 					}

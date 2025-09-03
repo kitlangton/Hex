@@ -25,6 +25,7 @@ struct TranscriptionFeature {
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
     var assertionID: IOPMAssertionID?
     var lastRecordingURL: URL?
+    var perfBadgeText: String?
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
   }
@@ -48,6 +49,8 @@ struct TranscriptionFeature {
     case transcriptionResult(String)
     case transcriptionError(Error)
     case setLastRecordingURL(URL)
+    case setPerfBadge(String?)
+    case setPrewarming(Bool)
   }
 
   enum CancelID {
@@ -62,6 +65,7 @@ struct TranscriptionFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.soundEffects) var soundEffect
+  @Dependency(\.continuousClock) var clock
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -74,7 +78,8 @@ struct TranscriptionFeature {
         // 2) Monitoring hot key events
         return .merge(
           startMeteringEffect(),
-          startHotKeyMonitoringEffect()
+          startHotKeyMonitoringEffect(),
+          prewarmSelectedModelEffect(&state)
         )
 
       // MARK: - Metering
@@ -113,6 +118,18 @@ struct TranscriptionFeature {
 
       case let .setLastRecordingURL(url):
         state.lastRecordingURL = url
+        return .none
+
+      case let .setPerfBadge(text):
+        state.perfBadgeText = text
+        guard text != nil else { return .none }
+        return .run { send in
+          try await clock.sleep(for: .seconds(3))
+          await send(.setPerfBadge(nil))
+        }
+
+      case let .setPrewarming(flag):
+        state.isPrewarming = flag
         return .none
 
       // MARK: - Cancel Entire Flow
@@ -288,6 +305,10 @@ private extension TranscriptionFeature {
     state.error = nil
     let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
+    let recordingDuration: TimeInterval = {
+      guard let startTime = state.recordingStartTime else { return 0 }
+      return Date().timeIntervalSince(startTime)
+    }()
 
     state.isPrewarming = true
 
@@ -304,8 +325,15 @@ private extension TranscriptionFeature {
           detectLanguage: language == nil, // Only auto-detect if no language specified
           chunkingStrategy: .vad
         )
-
+        let t0 = Date()
         let result = try await transcription.transcribe(audioURL, model, decodeOptions) { _ in }
+        let latency = Date().timeIntervalSince(t0)
+        if recordingDuration > 0, latency > 0 {
+          let rtf = recordingDuration / latency
+          let ms = Int((latency * 1000).rounded())
+          let badge = String(format: "RTF %.0fx • %d ms", rtf, ms)
+          await send(.setPerfBadge(badge))
+        }
 
         print("Transcribed audio from URL: \(audioURL) to text: \(result)")
         await send(.transcriptionResult(result))
@@ -321,6 +349,18 @@ private extension TranscriptionFeature {
 // MARK: - Transcription Handlers
 
 private extension TranscriptionFeature {
+  func prewarmSelectedModelEffect(_ state: inout State) -> Effect<Action> {
+    let model = state.hexSettings.selectedModel
+    state.isPrewarming = true
+    return .run { send in
+      do {
+        try await transcription.downloadModel(model) { _ in }
+      } catch {
+        // Ignore prewarm errors; normal flow will handle on demand
+      }
+      await send(.setPrewarming(false))
+    }
+  }
   func handleTranscriptionResult(
     _ state: inout State,
     result: String
@@ -528,10 +568,23 @@ struct TranscriptionView: View {
   }
 
   var body: some View {
-    TranscriptionIndicatorView(
-      status: status,
-      meter: store.meter
-    )
+    ZStack(alignment: .topTrailing) {
+      TranscriptionIndicatorView(
+        status: status,
+        meter: store.meter
+      )
+      if let badge = store.perfBadgeText {
+        Text(badge)
+          .font(.caption2)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(
+            Capsule().fill(Color.black.opacity(0.7))
+          )
+          .foregroundColor(.white)
+          .padding(8)
+      }
+    }
     .task {
       await store.send(.task).finish()
     }
