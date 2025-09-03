@@ -563,13 +563,8 @@ private extension TranscriptionClientLive {
     }
 
     // Determine the flavor from the variant name
-    enum ParakeetFlavor { case english, multilingual }
-    func parakeetFlavor(for variant: String) -> ParakeetFlavor {
-      let lower = variant.lowercased()
-      // v2 => English; v3 => Multilingual
-      return lower.contains("-v2-") ? .english : .multilingual
-    }
-    let _ = parakeetFlavor(for: variant)
+    // Future: When the underlying Parakeet API exposes explicit flavor selection,
+    // map variant strings to model flavors (e.g., v2 => English, v3 => Multilingual).
 
     progress(0.1)
 
