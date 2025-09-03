@@ -238,12 +238,12 @@ struct HistoryFeature {
 					}
 				} catch {
 					print("Error playing audio: \(error)")
-		// Surface error to user via alert
-		return .run { _ in
-			await MainActor.run {
-			_ = NSApp.presentError(error as NSError)
-			}
-		}
+				// Surface error to user via alert
+				return .run { _ in
+					await MainActor.run {
+						_ = NSApp.presentError(error as NSError)
+					}
+				}
 				}
 
 			case .stopPlayback, .playbackFinished:
