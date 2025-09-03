@@ -251,18 +251,23 @@ struct SettingsView: View {
 			// --- History Section ---
 			Section {
 				Label {
-					Toggle("Save Transcription History", isOn: Binding(
-						get: { store.hexSettings.saveTranscriptionHistory },
-						set: { store.send(.toggleSaveTranscriptionHistory($0)) }
-					))
-					Text("Save transcriptions and audio recordings for later access")
-						.font(.caption)
-						.foregroundColor(.secondary)
+					Picker(
+						"History Storage",
+						selection: Binding(
+							get: { store.hexSettings.historyStorageMode },
+							set: { store.send(.setHistoryStorageMode($0)) }
+						)
+					) {
+						Text("Off").tag(HexSettings.HistoryStorageMode.off)
+						Text("Text only").tag(HexSettings.HistoryStorageMode.textOnly)
+						Text("Text + Audio").tag(HexSettings.HistoryStorageMode.textAndAudio)
+					}
+					.pickerStyle(.segmented)
 				} icon: {
 					Image(systemName: "clock.arrow.circlepath")
 				}
 
-				if store.hexSettings.saveTranscriptionHistory {
+				if store.hexSettings.historyStorageMode != .off {
 					Label {
 						HStack {
 							Text("Maximum History Entries")
@@ -297,8 +302,17 @@ struct SettingsView: View {
 			} header: {
 				Text("History")
 			} footer: {
-				if !store.hexSettings.saveTranscriptionHistory {
-					Text("When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription.")
+				switch store.hexSettings.historyStorageMode {
+				case .off:
+					Text("Transcriptions are not saved. Audio files are deleted immediately after transcription.")
+						.font(.footnote)
+						.foregroundColor(.secondary)
+				case .textOnly:
+					Text("Only transcript text and metadata are saved. Audio recordings are discarded after transcription.")
+						.font(.footnote)
+						.foregroundColor(.secondary)
+				case .textAndAudio:
+					Text("Transcripts and audio recordings are saved for later access.")
 						.font(.footnote)
 						.foregroundColor(.secondary)
 				}

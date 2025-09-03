@@ -428,7 +428,8 @@ private extension TranscriptionFeature {
     }
   }
 
-  /// Move file to permanent location, create a transcript record, paste text, and play sound.
+  /// Persist the transcription according to the selected history storage mode,
+  /// optionally moving audio to a permanent location, then paste text and play a sound.
   func finalizeRecordingAndStoreTranscript(
     result: String,
     duration: TimeInterval,
@@ -440,27 +441,64 @@ private extension TranscriptionFeature {
         @Shared(.hexSettings) var hexSettings: HexSettings
         let fm = FileManager.default
 
-        // Compute application support paths up front
-        let supportDir = try fm.url(
-          for: .applicationSupportDirectory,
-          in: .userDomainMask,
-          appropriateFor: nil,
-          create: true
-        )
-        let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-        let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-        try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
+        switch hexSettings.historyStorageMode {
+        case .off:
+          // Do not save transcript; just delete the temporary audio file.
+          try? fm.removeItem(at: originalURL)
 
-        // Check if we should save to history
-        if hexSettings.saveTranscriptionHistory {
-          // Create a unique file name
+        case .textOnly:
+          // Delete the temporary audio file and save a text-only transcript.
+          try? fm.removeItem(at: originalURL)
+
+          let transcript = Transcript(
+            timestamp: Date(),
+            text: result,
+            audioPath: nil,
+            duration: duration
+          )
+
+          // Append and trim if needed; collect files to delete post-persistence.
+          var filesToDelete: [URL] = []
+          transcriptionHistory.withLock { history in
+            history.history.insert(transcript, at: 0)
+
+            if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
+              while history.history.count > maxEntries {
+                if let removedTranscript = history.history.popLast() {
+                  if let url = removedTranscript.audioPath {
+                    filesToDelete.append(url)
+                  }
+                }
+              }
+            }
+          }
+
+          if !filesToDelete.isEmpty {
+            Task {
+              try? await transcriptionHistory.save()
+              for fileURL in filesToDelete {
+                try? fm.removeItem(at: fileURL)
+              }
+            }
+          }
+
+        case .textAndAudio:
+          // Move audio to a permanent location and save transcript with audio path.
+          let supportDir = try fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+          )
+          let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
+          let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
+          try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
+
           let filename = "\(Date().timeIntervalSince1970).wav"
           let finalURL = recordingsFolder.appendingPathComponent(filename)
 
-          // Move temp => final
           try fm.moveItem(at: originalURL, to: finalURL)
 
-          // Build a transcript object
           let transcript = Transcript(
             timestamp: Date(),
             text: result,
@@ -468,39 +506,30 @@ private extension TranscriptionFeature {
             duration: duration
           )
 
-          // Append to the in-memory shared history
-          // Collect files to delete after state persistence
+          // Append and trim if needed; collect files to delete post-persistence.
           var filesToDelete: [URL] = []
-
           transcriptionHistory.withLock { history in
             history.history.insert(transcript, at: 0)
 
-            // Trim history if max entries is set
             if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
               while history.history.count > maxEntries {
                 if let removedTranscript = history.history.popLast() {
-                  // Queue file for deletion after state is persisted
-                  filesToDelete.append(removedTranscript.audioPath)
+                  if let url = removedTranscript.audioPath {
+                    filesToDelete.append(url)
+                  }
                 }
               }
             }
           }
 
-          // Ensure state is persisted before deleting files
           if !filesToDelete.isEmpty {
-            // Create a task to handle persistence and deletion
             Task {
-              // Explicitly save the state and wait for completion
               try? await transcriptionHistory.save()
-              // Now safe to delete the files
               for fileURL in filesToDelete {
-                try? FileManager.default.removeItem(at: fileURL)
+                try? fm.removeItem(at: fileURL)
               }
             }
           }
-        } else {
-          // If not saving history, just delete the temp audio file
-          try? FileManager.default.removeItem(at: originalURL)
         }
 
         // Paste text (and copy if enabled via pasteWithClipboard)

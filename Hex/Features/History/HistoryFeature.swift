@@ -10,10 +10,18 @@ struct Transcript: Codable, Equatable, Identifiable {
 	var id: UUID
 	var timestamp: Date
 	var text: String
-	var audioPath: URL
+	var audioPath: URL?
 	var duration: TimeInterval
 
-	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL, duration: TimeInterval) {
+	// Computed property indicating whether an audio file exists for this transcript
+	var hasAudio: Bool {
+		if let url = audioPath {
+			return FileManager.default.fileExists(atPath: url.path)
+		}
+		return false
+	}
+
+	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL?, duration: TimeInterval) {
 		self.id = id
 		self.timestamp = timestamp
 		self.text = text
@@ -115,10 +123,14 @@ struct HistoryFeature {
 				guard let transcript = state.transcriptionHistory.history.first(where: { $0.id == id }) else {
 					return .none
 				}
+				// Ensure audio exists
+				guard let url = transcript.audioPath, FileManager.default.fileExists(atPath: url.path) else {
+					return .none
+				}
 
 				do {
 					let controller = AudioPlayerController()
-					let player = try controller.play(url: transcript.audioPath)
+					let player = try controller.play(url: url)
 
 					state.audioPlayer = player
 					state.audioPlayerController = controller
@@ -183,8 +195,10 @@ struct HistoryFeature {
 				return .run { [sharedHistory = state.$transcriptionHistory] _ in
 					// Explicitly save the state and wait for completion
 					try? await sharedHistory.save()
-					// Now safe to delete the file
-					try? FileManager.default.removeItem(at: transcript.audioPath)
+					// Now safe to delete the file (if it exists)
+					if let url = transcript.audioPath {
+						try? FileManager.default.removeItem(at: url)
+					}
 				}
 
 			case .deleteAllTranscripts:
@@ -210,7 +224,9 @@ struct HistoryFeature {
 					try? await sharedHistory.save()
 					// Now safe to delete all files
 					for transcript in transcripts {
-						try? FileManager.default.removeItem(at: transcript.audioPath)
+						if let url = transcript.audioPath {
+							try? FileManager.default.removeItem(at: url)
+						}
 					}
 				}
 
@@ -246,6 +262,10 @@ struct TranscriptView: View {
 					Text(transcript.timestamp.formatted(date: .numeric, time: .shortened))
 					Text("•")
 					Text(String(format: "%.1fs", transcript.duration))
+					if !transcript.hasAudio {
+						Text("•")
+						Label("Text only", systemImage: "text.alignleft")
+					}
 				}
 				.font(.subheadline)
 				.foregroundStyle(.secondary)
@@ -268,12 +288,14 @@ struct TranscriptView: View {
 					.foregroundStyle(showCopied ? .green : .secondary)
 					.help("Copy to clipboard")
 
-					Button(action: onPlay) {
-						Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+					if transcript.hasAudio {
+						Button(action: onPlay) {
+							Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+						}
+						.buttonStyle(.plain)
+						.foregroundStyle(isPlaying ? .blue : .secondary)
+						.help(isPlaying ? "Stop playback" : "Play audio")
 					}
-					.buttonStyle(.plain)
-					.foregroundStyle(isPlaying ? .blue : .secondary)
-					.help(isPlaying ? "Stop playback" : "Play audio")
 
 					Button(action: onDelete) {
 						Image(systemName: "trash.fill")
@@ -340,7 +362,7 @@ struct HistoryView: View {
 
 	var body: some View {
       Group {
-        if !hexSettings.saveTranscriptionHistory {
+		if hexSettings.historyStorageMode == .off {
           ContentUnavailableView {
             Label("History Disabled", systemImage: "clock.arrow.circlepath")
           } description: {

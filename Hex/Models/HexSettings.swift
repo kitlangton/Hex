@@ -4,6 +4,13 @@ import Foundation
 
 // To add a new setting, add a new property to the struct, the CodingKeys enum, and the custom decoder
 struct HexSettings: Codable, Equatable {
+	// History storage mode
+	enum HistoryStorageMode: String, Codable, Equatable, CaseIterable {
+		case off
+		case textOnly
+		case textAndAudio
+	}
+
 	var soundEffectsEnabled: Bool = true
 	var hotkey: HotKey = .init(key: nil, modifiers: [.option])
 	var openOnLogin: Bool = false
@@ -17,9 +24,19 @@ struct HexSettings: Codable, Equatable {
 	var useDoubleTapOnly: Bool = false
 	var outputLanguage: String? = nil
 	var selectedMicrophoneID: String? = nil
-	var saveTranscriptionHistory: Bool = true
+
+	// New setting replacing the old boolean flag
+	var historyStorageMode: HistoryStorageMode = .textAndAudio
+
 	var maxHistoryEntries: Int? = nil
 	var didCompleteFirstRun: Bool = false
+
+	// Backward-compatibility bridge for existing codepaths referencing the old boolean.
+	// Not encoded; maps to the new enum internally.
+	var saveTranscriptionHistory: Bool {
+		get { historyStorageMode != .off }
+		set { historyStorageMode = newValue ? .textAndAudio : .off }
+	}
 
 	// Define coding keys to match struct properties
 	enum CodingKeys: String, CodingKey {
@@ -36,7 +53,7 @@ struct HexSettings: Codable, Equatable {
 		case useDoubleTapOnly
 		case outputLanguage
 		case selectedMicrophoneID
-		case saveTranscriptionHistory
+		case historyStorageMode
 		case maxHistoryEntries
 		case didCompleteFirstRun
 	}
@@ -55,7 +72,7 @@ struct HexSettings: Codable, Equatable {
 		useDoubleTapOnly: Bool = false,
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
-		saveTranscriptionHistory: Bool = true,
+		historyStorageMode: HistoryStorageMode = .textAndAudio,
 		maxHistoryEntries: Int? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
@@ -71,11 +88,11 @@ struct HexSettings: Codable, Equatable {
 		self.useDoubleTapOnly = useDoubleTapOnly
 		self.outputLanguage = outputLanguage
 		self.selectedMicrophoneID = selectedMicrophoneID
-		self.saveTranscriptionHistory = saveTranscriptionHistory
+		self.historyStorageMode = historyStorageMode
 		self.maxHistoryEntries = maxHistoryEntries
 	}
 
-	// Custom decoder that handles missing fields
+	// Custom decoder that handles missing fields and migrates legacy settings
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 
@@ -103,8 +120,23 @@ struct HexSettings: Codable, Equatable {
 			try container.decodeIfPresent(Bool.self, forKey: .useDoubleTapOnly) ?? false
 		outputLanguage = try container.decodeIfPresent(String.self, forKey: .outputLanguage)
 		selectedMicrophoneID = try container.decodeIfPresent(String.self, forKey: .selectedMicrophoneID)
-		saveTranscriptionHistory =
-			try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
+
+		// Migration: prefer new enum, else map legacy boolean (defaulting to true)
+		if let mode = try container.decodeIfPresent(HistoryStorageMode.self, forKey: .historyStorageMode) {
+			historyStorageMode = mode
+		} else {
+			// Decode legacy "saveTranscriptionHistory" without adding it to CodingKeys
+			struct LegacyKey: CodingKey {
+				var stringValue: String
+				var intValue: Int?
+				init?(stringValue: String) { self.stringValue = stringValue }
+				init?(intValue: Int) { self.intValue = intValue; self.stringValue = "\(intValue)" }
+			}
+			let legacyContainer = try decoder.container(keyedBy: LegacyKey.self)
+			let legacy = try legacyContainer.decodeIfPresent(Bool.self, forKey: LegacyKey(stringValue: "saveTranscriptionHistory")!) ?? true
+			historyStorageMode = legacy ? .textAndAudio : .off
+		}
+
 		maxHistoryEntries = try container.decodeIfPresent(Int.self, forKey: .maxHistoryEntries)
 		didCompleteFirstRun =
 			try container.decodeIfPresent(Bool.self, forKey: .didCompleteFirstRun) ?? false

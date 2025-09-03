@@ -63,6 +63,7 @@ struct SettingsFeature {
     case modelDownload(ModelDownloadFeature.Action)
 
     // History Management
+    case setHistoryStorageMode(HexSettings.HistoryStorageMode)
     case toggleSaveTranscriptionHistory(Bool)
   }
 
@@ -249,27 +250,34 @@ struct SettingsFeature {
         state.availableInputDevices = devices
         return .none
 
-      case let .toggleSaveTranscriptionHistory(enabled):
-        state.$hexSettings.withLock { $0.saveTranscriptionHistory = enabled }
+      case let .setHistoryStorageMode(mode):
+        state.$hexSettings.withLock { $0.historyStorageMode = mode }
 
-        // If disabling history, delete all existing entries
-        if !enabled {
+        // When turning history off, clear all entries and delete audio files.
+        if mode == .off {
           let transcripts = state.transcriptionHistory.history
 
-          // Clear the history
+          // Clear the history list
           state.$transcriptionHistory.withLock { history in
             history.history.removeAll()
           }
 
-          // Delete all audio files
+          // Delete all audio files associated with existing transcripts
           return .run { _ in
             for transcript in transcripts {
-              try? FileManager.default.removeItem(at: transcript.audioPath)
+              if let url = transcript.audioPath {
+                try? FileManager.default.removeItem(at: url)
+              }
             }
           }
         }
 
+        // Switching between .textOnly and .textAndAudio should not touch existing entries
         return .none
+
+      // Legacy toggle: map to new mode (true => .textAndAudio, false => .off)
+      case let .toggleSaveTranscriptionHistory(enabled):
+        return .send(.setHistoryStorageMode(enabled ? .textAndAudio : .off))
       }
     }
   }
