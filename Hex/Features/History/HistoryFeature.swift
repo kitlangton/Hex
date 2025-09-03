@@ -307,9 +307,13 @@ struct HistoryFeature {
 				}
 
 				// Delete files after ensuring state persistence completes
-				return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
-					try? await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
-				}
+                return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
+                    do {
+                        try await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
+                    } catch {
+                        print("Failed to persist deletion of all transcripts: \(error.localizedDescription)")
+                    }
+                }
 
 			case .navigateToSettings:
 				// This will be handled by the parent reducer
