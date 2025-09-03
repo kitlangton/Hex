@@ -310,6 +310,9 @@
     "History Disabled" : {
 
     },
+    "History Storage" : {
+
+    },
     "Hot Key" : {
       "comment" : "hotkey section in settings.",
       "localizations" : {
@@ -380,7 +383,13 @@
         }
       }
     },
+    "Off" : {
+
+    },
     "Oldest entries will be automatically deleted when limit is reached" : {
+
+    },
+    "Only transcript text and metadata are saved. Audio recordings are discarded after transcription." : {
 
     },
     "Open on Login" : {
@@ -476,12 +485,6 @@
       }
     },
     "RNNT" : {
-
-    },
-    "Save Transcription History" : {
-
-    },
-    "Save transcriptions and audio recordings for later access" : {
 
     },
     "Selected device not connected. System default will be used." : {
@@ -604,6 +607,12 @@
     "System Default" : {
 
     },
+    "Text + Audio" : {
+
+    },
+    "Text only" : {
+
+    },
     "Transcription history is currently disabled." : {
 
     },
@@ -617,6 +626,12 @@
           }
         }
       }
+    },
+    "Transcriptions are not saved. Audio files are deleted immediately after transcription." : {
+
+    },
+    "Transcripts and audio recordings are saved for later access." : {
+
     },
     "Unlimited" : {
 
@@ -667,9 +682,6 @@
           }
         }
       }
-    },
-    "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
-
     },
     "You're using a full keyboard shortcut. Double-tap is recommended." : {
 

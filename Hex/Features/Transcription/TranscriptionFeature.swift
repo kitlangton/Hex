@@ -68,6 +68,8 @@ struct TranscriptionFeature {
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.soundEffects) var soundEffect
   @Dependency(\.continuousClock) var clock
+  @Dependency(\.fileClient) var fileClient
+  @Dependency(\.historyStorage) var historyStorage
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -428,7 +430,8 @@ private extension TranscriptionFeature {
     }
   }
 
-  /// Move file to permanent location, create a transcript record, paste text, and play sound.
+  /// Persist the transcription according to the selected history storage mode,
+  /// optionally moving audio to a permanent location, then paste text and play a sound.
   func finalizeRecordingAndStoreTranscript(
     result: String,
     duration: TimeInterval,
@@ -438,69 +441,40 @@ private extension TranscriptionFeature {
     .run { send in
       do {
         @Shared(.hexSettings) var hexSettings: HexSettings
-        let fm = FileManager.default
 
-        // Compute application support paths up front
-        let supportDir = try fm.url(
-          for: .applicationSupportDirectory,
-          in: .userDomainMask,
-          appropriateFor: nil,
-          create: true
-        )
-        let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-        let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-        try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
+        // First, determine the final audio path based on storage mode
+        let finalAudioURL: URL?
+        switch hexSettings.historyStorageMode {
+        case .off, .textOnly:
+          // Delete the temporary audio file; no audio is stored.
+          try? await fileClient.removeItem(originalURL)
+          finalAudioURL = nil
 
-        // Check if we should save to history
-        if hexSettings.saveTranscriptionHistory {
-          // Create a unique file name
+        case .textAndAudio:
+          // Move audio to a permanent location and reference it in the transcript.
+          let recordingsFolder = try await ensureRecordingsDirectory()
           let filename = "\(Date().timeIntervalSince1970).wav"
-          let finalURL = recordingsFolder.appendingPathComponent(filename)
+          let destinationURL = recordingsFolder.appendingPathComponent(filename)
+          try await fileClient.moveItem(originalURL, destinationURL)
+          finalAudioURL = destinationURL
+        }
 
-          // Move temp => final
-          try fm.moveItem(at: originalURL, to: finalURL)
-
-          // Build a transcript object
+        // Then, only when history is enabled, create the transcript and persist history
+        if hexSettings.historyStorageMode != .off {
           let transcript = Transcript(
             timestamp: Date(),
             text: result,
-            audioPath: finalURL,
+            audioPath: finalAudioURL,
             duration: duration
           )
 
-          // Append to the in-memory shared history
-          // Collect files to delete after state persistence
-          var filesToDelete: [URL] = []
-
-          transcriptionHistory.withLock { history in
-            history.history.insert(transcript, at: 0)
-
-            // Trim history if max entries is set
-            if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
-              while history.history.count > maxEntries {
-                if let removedTranscript = history.history.popLast() {
-                  // Queue file for deletion after state is persisted
-                  filesToDelete.append(removedTranscript.audioPath)
-                }
-              }
-            }
-          }
-
-          // Ensure state is persisted before deleting files
-          if !filesToDelete.isEmpty {
-            // Create a task to handle persistence and deletion
-            Task {
-              // Explicitly save the state and wait for completion
-              try? await transcriptionHistory.save()
-              // Now safe to delete the files
-              for fileURL in filesToDelete {
-                try? FileManager.default.removeItem(at: fileURL)
-              }
-            }
-          }
-        } else {
-          // If not saving history, just delete the temp audio file
-          try? FileManager.default.removeItem(at: originalURL)
+          let filesToDelete = appendTranscriptAndTrimHistory(
+            transcript: transcript,
+            transcriptionHistory: transcriptionHistory,
+            maxEntries: hexSettings.maxHistoryEntries
+          )
+          // Persist history first, then delete any trimmed files. Persist even if nothing to delete.
+          try await historyStorage.persistHistoryAndDeleteFiles(transcriptionHistory, filesToDelete)
         }
 
         // Paste text (and copy if enabled via pasteWithClipboard)
@@ -510,6 +484,46 @@ private extension TranscriptionFeature {
         await send(.transcriptionError(error))
       }
     }
+  }
+
+  // MARK: - History Helpers
+
+  /// Append a transcript to history, trim to maxEntries if provided, and return any audio files to delete.
+  private func appendTranscriptAndTrimHistory(
+    transcript: Transcript,
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    maxEntries: Int?
+  ) -> [URL] {
+    var filesToDelete: [URL] = []
+    transcriptionHistory.withLock { history in
+      history.history.insert(transcript, at: 0)
+
+      if let max = maxEntries, max > 0 {
+        while history.history.count > max {
+          if let removedTranscript = history.history.popLast(),
+             let url = removedTranscript.audioPath
+          {
+            filesToDelete.append(url)
+          }
+        }
+      }
+    }
+    return filesToDelete
+  }
+
+
+  /// Ensure the permanent recordings directory exists and return its URL.
+  private func ensureRecordingsDirectory() async throws -> URL {
+    let supportDir = try FileManager.default.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: false
+    )
+    let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
+    let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
+    try await fileClient.createDirectory(recordingsFolder, true)
+    return recordingsFolder
   }
 }
 

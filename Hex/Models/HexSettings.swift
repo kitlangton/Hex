@@ -4,6 +4,13 @@ import Foundation
 
 // To add a new setting, add a new property to the struct, the CodingKeys enum, and the custom decoder
 struct HexSettings: Codable, Equatable {
+	// History storage mode
+	enum HistoryStorageMode: String, Codable, Equatable, CaseIterable {
+		case off
+		case textOnly
+		case textAndAudio
+	}
+
 	var soundEffectsEnabled: Bool = true
 	var hotkey: HotKey = .init(key: nil, modifiers: [.option])
 	var openOnLogin: Bool = false
@@ -17,9 +24,19 @@ struct HexSettings: Codable, Equatable {
 	var useDoubleTapOnly: Bool = false
 	var outputLanguage: String? = nil
 	var selectedMicrophoneID: String? = nil
-	var saveTranscriptionHistory: Bool = true
+
+	// New setting replacing the old boolean flag
+	var historyStorageMode: HistoryStorageMode = .textAndAudio
+
 	var maxHistoryEntries: Int? = nil
 	var didCompleteFirstRun: Bool = false
+
+	// Backward-compatibility bridge for existing codepaths referencing the old boolean.
+	// Not encoded; maps to the new enum internally.
+	var saveTranscriptionHistory: Bool {
+		get { historyStorageMode != .off }
+		set { historyStorageMode = newValue ? .textAndAudio : .off }
+	}
 
 	// Define coding keys to match struct properties
 	enum CodingKeys: String, CodingKey {
@@ -36,9 +53,10 @@ struct HexSettings: Codable, Equatable {
 		case useDoubleTapOnly
 		case outputLanguage
 		case selectedMicrophoneID
-		case saveTranscriptionHistory
+		case historyStorageMode
 		case maxHistoryEntries
 		case didCompleteFirstRun
+		case saveTranscriptionHistory // legacy key for migration
 	}
 
 	init(
@@ -55,7 +73,7 @@ struct HexSettings: Codable, Equatable {
 		useDoubleTapOnly: Bool = false,
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
-		saveTranscriptionHistory: Bool = true,
+		historyStorageMode: HistoryStorageMode = .textAndAudio,
 		maxHistoryEntries: Int? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
@@ -71,11 +89,11 @@ struct HexSettings: Codable, Equatable {
 		self.useDoubleTapOnly = useDoubleTapOnly
 		self.outputLanguage = outputLanguage
 		self.selectedMicrophoneID = selectedMicrophoneID
-		self.saveTranscriptionHistory = saveTranscriptionHistory
+		self.historyStorageMode = historyStorageMode
 		self.maxHistoryEntries = maxHistoryEntries
 	}
 
-	// Custom decoder that handles missing fields
+	// Custom decoder that handles missing fields and migrates legacy settings
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 
@@ -103,11 +121,40 @@ struct HexSettings: Codable, Equatable {
 			try container.decodeIfPresent(Bool.self, forKey: .useDoubleTapOnly) ?? false
 		outputLanguage = try container.decodeIfPresent(String.self, forKey: .outputLanguage)
 		selectedMicrophoneID = try container.decodeIfPresent(String.self, forKey: .selectedMicrophoneID)
-		saveTranscriptionHistory =
-			try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
+
+		// Migration: prefer new enum, else map legacy boolean (defaulting to true)
+		if let mode = try container.decodeIfPresent(HistoryStorageMode.self, forKey: .historyStorageMode) {
+			historyStorageMode = mode
+		} else {
+			let legacy = try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
+			historyStorageMode = legacy ? .textAndAudio : .off
+		}
+
 		maxHistoryEntries = try container.decodeIfPresent(Int.self, forKey: .maxHistoryEntries)
 		didCompleteFirstRun =
 			try container.decodeIfPresent(Bool.self, forKey: .didCompleteFirstRun) ?? false
+	}
+
+	// Custom encoder that omits legacy key
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(soundEffectsEnabled, forKey: .soundEffectsEnabled)
+		try container.encode(hotkey, forKey: .hotkey)
+		try container.encode(openOnLogin, forKey: .openOnLogin)
+		try container.encode(showDockIcon, forKey: .showDockIcon)
+		try container.encode(selectedModel, forKey: .selectedModel)
+		try container.encode(useClipboardPaste, forKey: .useClipboardPaste)
+		try container.encode(preventSystemSleep, forKey: .preventSystemSleep)
+		try container.encode(pauseMediaOnRecord, forKey: .pauseMediaOnRecord)
+		try container.encode(minimumKeyTime, forKey: .minimumKeyTime)
+		try container.encode(copyToClipboard, forKey: .copyToClipboard)
+		try container.encode(useDoubleTapOnly, forKey: .useDoubleTapOnly)
+		try container.encodeIfPresent(outputLanguage, forKey: .outputLanguage)
+		try container.encodeIfPresent(selectedMicrophoneID, forKey: .selectedMicrophoneID)
+		try container.encode(historyStorageMode, forKey: .historyStorageMode)
+		try container.encodeIfPresent(maxHistoryEntries, forKey: .maxHistoryEntries)
+		try container.encode(didCompleteFirstRun, forKey: .didCompleteFirstRun)
+		// Intentionally do not encode .saveTranscriptionHistory (legacy key)
 	}
 }
 

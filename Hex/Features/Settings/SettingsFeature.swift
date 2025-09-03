@@ -63,7 +63,9 @@ struct SettingsFeature {
     case modelDownload(ModelDownloadFeature.Action)
 
     // History Management
+    case setHistoryStorageMode(HexSettings.HistoryStorageMode)
     case toggleSaveTranscriptionHistory(Bool)
+    case historyClearFailed(previousMode: HexSettings.HistoryStorageMode, transcripts: [Transcript], message: String)
   }
 
   enum CancelID {
@@ -75,6 +77,7 @@ struct SettingsFeature {
   @Dependency(\.continuousClock) var clock
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
+  @Dependency(\.historyStorage) var historyStorage
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -249,26 +252,46 @@ struct SettingsFeature {
         state.availableInputDevices = devices
         return .none
 
-      case let .toggleSaveTranscriptionHistory(enabled):
-        state.$hexSettings.withLock { $0.saveTranscriptionHistory = enabled }
+      case let .setHistoryStorageMode(mode):
+        let previousMode = state.hexSettings.historyStorageMode
+        state.$hexSettings.withLock { $0.historyStorageMode = mode }
 
-        // If disabling history, delete all existing entries
-        if !enabled {
+        // When turning history off, clear all entries and delete audio files.
+        if mode == .off {
           let transcripts = state.transcriptionHistory.history
 
-          // Clear the history
+          // Clear the history list (optimistically)
           state.$transcriptionHistory.withLock { history in
             history.history.removeAll()
           }
 
-          // Delete all audio files
-          return .run { _ in
-            for transcript in transcripts {
-              try? FileManager.default.removeItem(at: transcript.audioPath)
+          // Persist cleared history, then delete all audio files associated with existing transcripts.
+          // If this fails, log and revert the UI state.
+          return .run { [sharedHistory = state.$transcriptionHistory, transcripts, previousMode] send in
+            do {
+              try await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
+            } catch {
+              let message = "Failed to persist cleared history and delete files: \(error.localizedDescription)"
+              print("SettingsFeature: \(message)")
+              await send(.historyClearFailed(previousMode: previousMode, transcripts: transcripts, message: message))
             }
           }
         }
 
+        // Switching between .textOnly and .textAndAudio should not touch existing entries
+        return .none
+
+      // Legacy toggle: map to new mode (true => .textAndAudio, false => .off)
+      case let .toggleSaveTranscriptionHistory(enabled):
+        return .send(.setHistoryStorageMode(enabled ? .textAndAudio : .off))
+      case let .historyClearFailed(previousMode, transcripts, message):
+        print("SettingsFeature.historyClearFailed: \(message)")
+        // Revert the setting so the UI reflects that history is still enabled
+        state.$hexSettings.withLock { $0.historyStorageMode = previousMode }
+        // Restore the in-memory history so the user still sees their items
+        state.$transcriptionHistory.withLock { history in
+          history.history = transcripts
+        }
         return .none
       }
     }
