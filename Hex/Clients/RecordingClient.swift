@@ -93,7 +93,7 @@ private let mediaRemoteController = MediaRemoteController()
 
 func isAudioPlayingOnDefaultOutput() async -> Bool {
   // Refresh the state before checking
-  await mediaRemoteController?.isMediaPlaying() ?? false
+  return await mediaRemoteController?.isMediaPlaying() ?? false
 }
 
 /// Check if an application is installed by looking for its bundle
@@ -525,20 +525,23 @@ actor RecordingClientLive {
   func startRecording() async {
     // If audio is playing on the default output, pause it.
     if hexSettings.pauseMediaOnRecord {
-      // First, pause all media applications using their AppleScript interface.
+      // First, pause all media applications using their AppleScript interface for precise control.
       pausedPlayers = await pauseAllMediaApplications()
-      // If no specific players were paused, pause generic media using the media key.
-      if pausedPlayers.isEmpty {
-        if await isAudioPlayingOnDefaultOutput() {
-          print("Audio is playing on the default output; pausing it for recording.")
-          await MainActor.run {
-            sendMediaKey()
-          }
-          didPauseMedia = true
-          print("Media was playing; pausing it for recording.")
-        }
-      } else {
+      if !pausedPlayers.isEmpty {
         print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
+      }
+
+      // Conditionally send the media key only if media is currently playing (e.g., browser playback)
+      let isPlaying = await isAudioPlayingOnDefaultOutput()
+      if isPlaying {
+        await MainActor.run {
+          sendMediaKey()
+        }
+        didPauseMedia = true
+        print("Sent media key to pause generic/browser media for recording.")
+      } else {
+        didPauseMedia = false
+        print("No generic media playing; did not send media key.")
       }
     }
 
@@ -598,19 +601,20 @@ actor RecordingClientLive {
     stopMeterTask()
     print("Recording stopped.")
 
-    // Resume media if we previously paused specific players
-    if !pausedPlayers.isEmpty {
-      print("Resuming previously paused players: \(pausedPlayers.joined(separator: ", "))")
-      await resumeMediaApplications(pausedPlayers)
-      pausedPlayers = []
-    }
-    // Resume generic media if we paused it with the media key
-    else if didPauseMedia {
+    // First, resume generic/browser media if we toggled it with the media key
+    if didPauseMedia {
       await MainActor.run {
         sendMediaKey()
       }
       didPauseMedia = false
-      print("Resuming previously paused media.")
+      print("Resuming previously paused media via media key.")
+    }
+
+    // Then resume any specific media players we paused via AppleScript
+    if !pausedPlayers.isEmpty {
+      print("Resuming previously paused players: \(pausedPlayers.joined(separator: ", "))")
+      await resumeMediaApplications(pausedPlayers)
+      pausedPlayers = []
     }
 
     // Restore the previous default input device if we changed it
