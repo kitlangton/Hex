@@ -444,12 +444,7 @@ private extension TranscriptionFeature {
         // First, determine the final audio path based on storage mode
         let finalAudioURL: URL?
         switch hexSettings.historyStorageMode {
-        case .off:
-          // Do not save transcript; just delete the temporary audio file.
-          try? fm.removeItem(at: originalURL)
-          finalAudioURL = nil
-
-        case .textOnly:
+        case .off, .textOnly:
           // Delete the temporary audio file; no audio is stored.
           try? fm.removeItem(at: originalURL)
           finalAudioURL = nil

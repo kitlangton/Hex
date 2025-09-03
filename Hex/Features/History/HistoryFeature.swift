@@ -13,17 +13,61 @@ struct Transcript: Codable, Equatable, Identifiable {
 	var audioPath: URL?
 	var duration: TimeInterval
 
-	// Computed property indicating whether an audio file exists for this transcript
+	// Persisted cache indicating whether audio is expected to be available for this transcript.
+	// This avoids synchronous file system checks during UI rendering.
+	var audioAvailable: Bool
+
+	// Cheap computed property that uses the cached flag.
 	var hasAudio: Bool {
-		audioPath.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+		audioAvailable && audioPath != nil
 	}
 
-	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL?, duration: TimeInterval) {
+	init(
+		id: UUID = UUID(),
+		timestamp: Date,
+		text: String,
+		audioPath: URL?,
+		duration: TimeInterval,
+		audioAvailable: Bool? = nil
+	) {
 		self.id = id
 		self.timestamp = timestamp
 		self.text = text
 		self.audioPath = audioPath
 		self.duration = duration
+		// Default to true only when an audioPath exists; remains false otherwise.
+		self.audioAvailable = audioAvailable ?? (audioPath != nil)
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case id
+		case timestamp
+		case text
+		case audioPath
+		case duration
+		case audioAvailable
+	}
+
+	// Custom decoding for backward compatibility: if audioAvailable is absent,
+	// infer it from whether audioPath is present.
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		self.id = try container.decode(UUID.self, forKey: .id)
+		self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+		self.text = try container.decode(String.self, forKey: .text)
+		self.audioPath = try container.decodeIfPresent(URL.self, forKey: .audioPath)
+		self.duration = try container.decode(TimeInterval.self, forKey: .duration)
+		self.audioAvailable = try container.decodeIfPresent(Bool.self, forKey: .audioAvailable) ?? (self.audioPath != nil)
+	}
+
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(self.id, forKey: .id)
+		try container.encode(self.timestamp, forKey: .timestamp)
+		try container.encode(self.text, forKey: .text)
+		try container.encodeIfPresent(self.audioPath, forKey: .audioPath)
+		try container.encode(self.duration, forKey: .duration)
+		try container.encode(self.audioAvailable, forKey: .audioAvailable)
 	}
 }
 
@@ -120,8 +164,19 @@ struct HistoryFeature {
 				guard let transcript = state.transcriptionHistory.history.first(where: { $0.id == id }) else {
 					return .none
 				}
-				// Ensure audio exists
-				guard transcript.hasAudio, let url = transcript.audioPath else {
+				// Ensure audio exists: require both a URL and an actual file on disk.
+				// If the file is missing but we previously believed it was available, correct the cache and persist so the UI updates.
+				guard let url = transcript.audioPath, FileManager.default.fileExists(atPath: url.path) else {
+					if transcript.audioAvailable {
+						state.$transcriptionHistory.withLock { history in
+							if let idx = history.history.firstIndex(where: { $0.id == id }) {
+								history.history[idx].audioAvailable = false
+							}
+						}
+						return .run { [sharedHistory = state.$transcriptionHistory] _ in
+							try? await sharedHistory.save()
+						}
+					}
 					return .none
 				}
 
