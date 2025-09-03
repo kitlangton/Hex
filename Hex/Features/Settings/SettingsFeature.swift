@@ -266,11 +266,8 @@ struct SettingsFeature {
           return .run { [sharedHistory = state.$transcriptionHistory] _ in
             // Explicitly save the state and wait for completion before deleting files
             try? await sharedHistory.save()
-            for transcript in transcripts {
-              if let url = transcript.audioPath {
-                try? FileManager.default.removeItem(at: url)
-              }
-            }
+            let fm = FileManager.default
+            transcripts.compactMap(\.audioPath).forEach { try? fm.removeItem(at: $0) }
           }
         }
 

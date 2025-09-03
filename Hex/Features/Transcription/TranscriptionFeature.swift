@@ -441,44 +441,34 @@ private extension TranscriptionFeature {
         @Shared(.hexSettings) var hexSettings: HexSettings
         let fm = FileManager.default
 
+        // First, determine the final audio path based on storage mode
+        let finalAudioURL: URL?
         switch hexSettings.historyStorageMode {
         case .off:
           // Do not save transcript; just delete the temporary audio file.
           try? fm.removeItem(at: originalURL)
+          finalAudioURL = nil
 
         case .textOnly:
-          // Delete the temporary audio file and save a text-only transcript.
+          // Delete the temporary audio file; no audio is stored.
           try? fm.removeItem(at: originalURL)
-
-          let transcript = Transcript(
-            timestamp: Date(),
-            text: result,
-            audioPath: nil,
-            duration: duration
-          )
-
-          let filesToDelete = appendTranscriptAndTrimHistory(
-            transcript: transcript,
-            transcriptionHistory: transcriptionHistory,
-            maxEntries: hexSettings.maxHistoryEntries
-          )
-          persistHistoryThenDeleteFiles(
-            transcriptionHistory: transcriptionHistory,
-            filesToDelete: filesToDelete
-          )
+          finalAudioURL = nil
 
         case .textAndAudio:
-          // Move audio to a permanent location and save transcript with audio path.
+          // Move audio to a permanent location and reference it in the transcript.
           let recordingsFolder = try ensureRecordingsDirectory()
           let filename = "\(Date().timeIntervalSince1970).wav"
-          let finalURL = recordingsFolder.appendingPathComponent(filename)
+          let destinationURL = recordingsFolder.appendingPathComponent(filename)
+          try fm.moveItem(at: originalURL, to: destinationURL)
+          finalAudioURL = destinationURL
+        }
 
-          try fm.moveItem(at: originalURL, to: finalURL)
-
+        // Then, only when history is enabled, create the transcript and persist history
+        if hexSettings.historyStorageMode != .off {
           let transcript = Transcript(
             timestamp: Date(),
             text: result,
-            audioPath: finalURL,
+            audioPath: finalAudioURL,
             duration: duration
           )
 

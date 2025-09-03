@@ -15,10 +15,7 @@ struct Transcript: Codable, Equatable, Identifiable {
 
 	// Computed property indicating whether an audio file exists for this transcript
 	var hasAudio: Bool {
-		if let url = audioPath {
-			return FileManager.default.fileExists(atPath: url.path)
-		}
-		return false
+		audioPath.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
 	}
 
 	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL?, duration: TimeInterval) {
@@ -124,7 +121,7 @@ struct HistoryFeature {
 					return .none
 				}
 				// Ensure audio exists
-				guard let url = transcript.audioPath, FileManager.default.fileExists(atPath: url.path) else {
+				guard transcript.hasAudio, let url = transcript.audioPath else {
 					return .none
 				}
 
