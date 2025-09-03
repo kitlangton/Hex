@@ -147,6 +147,21 @@ struct HistoryFeature {
 	@Dependency(\.historyStorage) var historyStorage
 	@Dependency(\.fileClient) var fileClient
 
+	private func markAudioMissingIfNeeded(id: UUID, state: inout State) -> Effect<Action> {
+		var needsSave = false
+		state.$transcriptionHistory.withLock { history in
+			if let idx = history.history.firstIndex(where: { $0.id == id }),
+					history.history[idx].audioAvailable {
+				history.history[idx].audioAvailable = false
+				needsSave = true
+			}
+		}
+		guard needsSave else { return .none }
+		return .run { [sharedHistory = state.$transcriptionHistory] _ in
+			try? await sharedHistory.save()
+		}
+	}
+
 	var body: some ReducerOf<Self> {
 		Reduce { state, action in
 			switch action {
@@ -172,17 +187,7 @@ struct HistoryFeature {
 				}
 				// If there is no URL, ensure audioAvailable is corrected and bail
 				guard let url = transcript.audioPath else {
-					if transcript.audioAvailable {
-						state.$transcriptionHistory.withLock { history in
-							if let idx = history.history.firstIndex(where: { $0.id == id }) {
-								history.history[idx].audioAvailable = false
-							}
-						}
-						return .run { [sharedHistory = state.$transcriptionHistory] _ in
-							try? await sharedHistory.save()
-						}
-					}
-					return .none
+					return markAudioMissingIfNeeded(id: id, state: &state)
 				}
 
 				// Kick off an async existence check to avoid blocking the main thread
@@ -199,25 +204,14 @@ struct HistoryFeature {
 				}
 
 				// Ensure transcript still exists
-				guard let transcriptIndex = state.transcriptionHistory.history.firstIndex(where: { $0.id == id }) else {
+				guard let _ = state.transcriptionHistory.history.firstIndex(where: { $0.id == id }) else {
 					state.pendingPlaybackID = nil
 					return .none
 				}
-				let transcript = state.transcriptionHistory.history[transcriptIndex]
 
 				guard exists else {
 					state.pendingPlaybackID = nil
-					if transcript.audioAvailable {
-						state.$transcriptionHistory.withLock { history in
-							if let idx = history.history.firstIndex(where: { $0.id == id }) {
-								history.history[idx].audioAvailable = false
-							}
-						}
-						return .run { [sharedHistory = state.$transcriptionHistory] _ in
-							try? await sharedHistory.save()
-						}
-					}
-					return .none
+					return markAudioMissingIfNeeded(id: id, state: &state)
 				}
 
 				do {
@@ -285,14 +279,10 @@ struct HistoryFeature {
 					history.history.remove(at: index)
 				}
 
-				// Delete file after ensuring state persistence completes
-				return .run { [sharedHistory = state.$transcriptionHistory] _ in
-					// Explicitly save the state and wait for completion
-					try? await sharedHistory.save()
-					// Now safe to delete the file (if it exists)
-					if let url = transcript.audioPath {
-						try? await fileClient.removeItem(url)
-					}
+				// Persist history, then delete the audio file (if any) via HistoryStorageClient
+				return .run { [sharedHistory = state.$transcriptionHistory, transcript] _ in
+					let files = transcript.audioPath.map { [$0] } ?? []
+					try? await historyStorage.persistHistoryAndDeleteFiles(sharedHistory, files)
 				}
 
 			case .deleteAllTranscripts:
@@ -314,7 +304,7 @@ struct HistoryFeature {
 
 				// Delete files after ensuring state persistence completes
 				return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
-					await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
+					try? await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
 				}
 
 			case .navigateToSettings:

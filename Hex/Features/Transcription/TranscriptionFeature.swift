@@ -68,6 +68,8 @@ struct TranscriptionFeature {
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.soundEffects) var soundEffect
   @Dependency(\.continuousClock) var clock
+  @Dependency(\.fileClient) var fileClient
+  @Dependency(\.historyStorage) var historyStorage
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -439,22 +441,21 @@ private extension TranscriptionFeature {
     .run { send in
       do {
         @Shared(.hexSettings) var hexSettings: HexSettings
-        let fm = FileManager.default
 
         // First, determine the final audio path based on storage mode
         let finalAudioURL: URL?
         switch hexSettings.historyStorageMode {
         case .off, .textOnly:
           // Delete the temporary audio file; no audio is stored.
-          try? fm.removeItem(at: originalURL)
+          try? await fileClient.removeItem(originalURL)
           finalAudioURL = nil
 
         case .textAndAudio:
           // Move audio to a permanent location and reference it in the transcript.
-          let recordingsFolder = try ensureRecordingsDirectory()
+          let recordingsFolder = try await ensureRecordingsDirectory()
           let filename = "\(Date().timeIntervalSince1970).wav"
           let destinationURL = recordingsFolder.appendingPathComponent(filename)
-          try fm.moveItem(at: originalURL, to: destinationURL)
+          try await fileClient.moveItem(originalURL, destinationURL)
           finalAudioURL = destinationURL
         }
 
@@ -472,10 +473,8 @@ private extension TranscriptionFeature {
             transcriptionHistory: transcriptionHistory,
             maxEntries: hexSettings.maxHistoryEntries
           )
-          persistHistoryThenDeleteFiles(
-            transcriptionHistory: transcriptionHistory,
-            filesToDelete: filesToDelete
-          )
+          // Persist history first, then delete any trimmed files. Persist even if nothing to delete.
+          try? await historyStorage.persistHistoryAndDeleteFiles(transcriptionHistory, filesToDelete)
         }
 
         // Paste text (and copy if enabled via pasteWithClipboard)
@@ -512,33 +511,18 @@ private extension TranscriptionFeature {
     return filesToDelete
   }
 
-  /// Persist history, then delete files. Performed in a background Task to avoid blocking UI.
-  private func persistHistoryThenDeleteFiles(
-    transcriptionHistory: Shared<TranscriptionHistory>,
-    filesToDelete: [URL],
-    fileManager: FileManager = .default
-  ) {
-    guard !filesToDelete.isEmpty else { return }
-    Task {
-      try? await transcriptionHistory.save()
-      for fileURL in filesToDelete {
-        try? fileManager.removeItem(at: fileURL)
-      }
-    }
-  }
 
   /// Ensure the permanent recordings directory exists and return its URL.
-  private func ensureRecordingsDirectory() throws -> URL {
-    let fm = FileManager.default
-    let supportDir = try fm.url(
+  private func ensureRecordingsDirectory() async throws -> URL {
+    let supportDir = try FileManager.default.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
       appropriateFor: nil,
-      create: true
+      create: false
     )
     let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
     let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-    try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
+    try await fileClient.createDirectory(recordingsFolder, true)
     return recordingsFolder
   }
 }

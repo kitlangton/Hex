@@ -8,15 +8,25 @@ struct HistoryStorageClient: Sendable {
   /// - Parameters:
   ///   - sharedHistory: The shared TranscriptionHistory storage to persist after clearing its contents.
   ///   - transcripts: The transcripts whose audio files should be deleted (if any).
-  var persistClearedHistoryAndDeleteFiles: @Sendable (_ sharedHistory: Shared<TranscriptionHistory>, _ transcripts: [Transcript]) async -> Void
+  var persistClearedHistoryAndDeleteFiles: @Sendable (_ sharedHistory: Shared<TranscriptionHistory>, _ transcripts: [Transcript]) async throws -> Void
+
+  /// Persists the current history, then deletes the provided files (if any).
+  /// - Parameters:
+  ///   - sharedHistory: The shared TranscriptionHistory storage to persist.
+  ///   - files: The files to delete after a successful save.
+  var persistHistoryAndDeleteFiles: @Sendable (_ sharedHistory: Shared<TranscriptionHistory>, _ files: [URL]) async throws -> Void
 }
 
 extension HistoryStorageClient: DependencyKey {
   static var liveValue: HistoryStorageClient {
     Self(
       persistClearedHistoryAndDeleteFiles: { sharedHistory, transcripts in
-        // Persist the cleared history first.
-        try? await sharedHistory.save()
+        // Save first; if this throws, do not delete any files.
+        do {
+          try await sharedHistory.save()
+        } catch {
+          throw error
+        }
 
         // Delete associated audio files on background threads via FileClient.
         @Dependency(\.fileClient) var fileClient
@@ -24,7 +34,34 @@ extension HistoryStorageClient: DependencyKey {
         await withTaskGroup(of: Void.self) { group in
           for url in urls {
             group.addTask {
-              try? await fileClient.removeItem(url)
+              do {
+                try await fileClient.removeItem(url)
+              } catch {
+                // Ignore deletion errors to avoid surfacing non-critical cleanup failures.
+              }
+            }
+          }
+          await group.waitForAll()
+        }
+      },
+      persistHistoryAndDeleteFiles: { sharedHistory, files in
+        // Save first; if this throws, do not delete any files.
+        do {
+          try await sharedHistory.save()
+        } catch {
+          throw error
+        }
+
+        // Delete provided files after a successful save.
+        @Dependency(\.fileClient) var fileClient
+        await withTaskGroup(of: Void.self) { group in
+          for url in files {
+            group.addTask {
+              do {
+                try await fileClient.removeItem(url)
+              } catch {
+                // Ignore deletion errors to avoid surfacing non-critical cleanup failures.
+              }
             }
           }
           await group.waitForAll()
@@ -39,7 +76,11 @@ extension HistoryStorageClient: TestDependencyKey {
     Self(
       persistClearedHistoryAndDeleteFiles: { sharedHistory, _ in
         // Preview: persist only, do not delete files
-        try? await sharedHistory.save()
+        try await sharedHistory.save()
+      },
+      persistHistoryAndDeleteFiles: { sharedHistory, _ in
+        // Preview: persist only, do not delete files
+        try await sharedHistory.save()
       }
     )
   }
@@ -48,6 +89,9 @@ extension HistoryStorageClient: TestDependencyKey {
     Self(
       persistClearedHistoryAndDeleteFiles: { _, _ in
         XCTFail("Unimplemented: HistoryStorageClient.persistClearedHistoryAndDeleteFiles")
+      },
+      persistHistoryAndDeleteFiles: { _, _ in
+        XCTFail("Unimplemented: HistoryStorageClient.persistHistoryAndDeleteFiles")
       }
     )
   }

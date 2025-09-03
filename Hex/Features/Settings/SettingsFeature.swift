@@ -265,7 +265,7 @@ struct SettingsFeature {
 
           // Persist cleared history, then delete all audio files associated with existing transcripts
           return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
-            await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
+            try? await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
           }
         }
 

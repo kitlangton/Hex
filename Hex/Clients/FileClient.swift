@@ -12,6 +12,14 @@ struct FileClient: Sendable {
   /// Removes the item at the given URL if it exists.
   /// Executed on a background-priority detached task.
   var removeItem: @Sendable (_ url: URL) async throws -> Void
+
+  /// Creates a directory at the given URL.
+  /// Executed on a background-priority detached task.
+  var createDirectory: @Sendable (_ at: URL, _ withIntermediateDirectories: Bool) async throws -> Void
+
+  /// Moves an item from one URL to another.
+  /// Executed on a background-priority detached task.
+  var moveItem: @Sendable (_ from: URL, _ to: URL) async throws -> Void
 }
 
 extension FileClient {
@@ -26,6 +34,20 @@ extension FileClient {
       try await Task.detached(priority: .background) {
         try FileManager.default.removeItem(at: url)
       }.value
+    },
+    createDirectory: { url, withIntermediateDirectories in
+      try await Task.detached(priority: .background) {
+        try FileManager.default.createDirectory(
+          at: url,
+          withIntermediateDirectories: withIntermediateDirectories,
+          attributes: nil
+        )
+      }.value
+    },
+    moveItem: { from, to in
+      try await Task.detached(priority: .background) {
+        try FileManager.default.moveItem(at: from, to: to)
+      }.value
     }
   )
 }
@@ -39,7 +61,9 @@ extension FileClient: TestDependencyKey {
   static var previewValue: FileClient {
     Self(
       existsAtPath: { _ in false },
-      removeItem: { _ in }
+      removeItem: { _ in },
+      createDirectory: { _, _ in },
+      moveItem: { _, _ in }
     )
   }
 
@@ -52,6 +76,12 @@ extension FileClient: TestDependencyKey {
       },
       removeItem: { _ in
         XCTFail("Unimplemented: FileClient.removeItem")
+      },
+      createDirectory: { _, _ in
+        XCTFail("Unimplemented: FileClient.createDirectory")
+      },
+      moveItem: { _, _ in
+        XCTFail("Unimplemented: FileClient.moveItem")
       }
     )
   }
