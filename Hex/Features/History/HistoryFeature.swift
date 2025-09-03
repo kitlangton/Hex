@@ -280,10 +280,14 @@ struct HistoryFeature {
 				}
 
 				// Persist history, then delete the audio file (if any) via HistoryStorageClient
-				return .run { [sharedHistory = state.$transcriptionHistory, transcript] _ in
-					let files = transcript.audioPath.map { [$0] } ?? []
-					try? await historyStorage.persistHistoryAndDeleteFiles(sharedHistory, files)
-				}
+                return .run { [sharedHistory = state.$transcriptionHistory, transcript] _ in
+                    do {
+                        let files = transcript.audioPath.map { [$0] } ?? []
+                        try await historyStorage.persistHistoryAndDeleteFiles(sharedHistory, files)
+                    } catch {
+                        print("Failed to persist transcript deletion: \(error.localizedDescription)")
+                    }
+                }
 
 			case .deleteAllTranscripts:
 				return .send(.confirmDeleteAll)
