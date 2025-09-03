@@ -76,6 +76,7 @@ struct SettingsFeature {
   @Dependency(\.continuousClock) var clock
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
+  @Dependency(\.historyStorage) var historyStorage
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -263,11 +264,8 @@ struct SettingsFeature {
           }
 
           // Persist cleared history, then delete all audio files associated with existing transcripts
-          return .run { [sharedHistory = state.$transcriptionHistory] _ in
-            // Explicitly save the state and wait for completion before deleting files
-            try? await sharedHistory.save()
-            let fm = FileManager.default
-            transcripts.compactMap(\.audioPath).forEach { try? fm.removeItem(at: $0) }
+          return .run { [sharedHistory = state.$transcriptionHistory, transcripts] _ in
+            await historyStorage.persistClearedHistoryAndDeleteFiles(sharedHistory, transcripts)
           }
         }
 
