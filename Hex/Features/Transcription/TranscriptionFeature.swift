@@ -474,7 +474,7 @@ private extension TranscriptionFeature {
             maxEntries: hexSettings.maxHistoryEntries
           )
           // Persist history first, then delete any trimmed files. Persist even if nothing to delete.
-          try? await historyStorage.persistHistoryAndDeleteFiles(transcriptionHistory, filesToDelete)
+          try await historyStorage.persistHistoryAndDeleteFiles(transcriptionHistory, filesToDelete)
         }
 
         // Paste text (and copy if enabled via pasteWithClipboard)
