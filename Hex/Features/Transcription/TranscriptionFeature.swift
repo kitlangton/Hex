@@ -84,8 +84,8 @@ struct TranscriptionFeature {
 
       case .hotKeyPressed:
         // If we're transcribing, send a cancel first. Then queue up a
-        // "startRecording" in 200ms if the user keeps holding the hotkey.
-        return handleHotKeyPressed(isTranscribing: state.isTranscribing)
+        // "startRecording" after minimumKeyTime if the user keeps holding the hotkey.
+        return handleHotKeyPressed(isTranscribing: state.isTranscribing, minimumKeyTime: state.hexSettings.minimumKeyTime)
 
       case .hotKeyReleased:
         // If we’re currently recording, then stop. Otherwise, just cancel
@@ -199,14 +199,14 @@ private extension TranscriptionFeature {
 // MARK: - HotKey Press/Release Handlers
 
 private extension TranscriptionFeature {
-  func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
+  func handleHotKeyPressed(isTranscribing: Bool, minimumKeyTime: Double) -> Effect<Action> {
     let maybeCancel = isTranscribing ? Effect.send(Action.cancel) : .none
 
-    // We wait 200ms before actually sending `.startRecording`
+    // We wait minimumKeyTime before actually sending `.startRecording`
     // so the user can do a quick press => do something else
     // (like a double-tap).
     let delayedStart = Effect.run { send in
-      try await Task.sleep(for: .milliseconds(200))
+      try await Task.sleep(for: .seconds(minimumKeyTime))
       await send(Action.startRecording)
     }
     .cancellable(id: CancelID.delayedRecord, cancelInFlight: true)
