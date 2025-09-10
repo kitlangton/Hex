@@ -7,6 +7,7 @@
 
 import ComposableArchitecture
 import CoreGraphics
+import HexCore
 import Inject
 import SwiftUI
 import WhisperKit

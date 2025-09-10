@@ -4,6 +4,9 @@
     "" : {
       "shouldTranslate" : false
     },
+    "(%@)" : {
+
+    },
     "•" : {
       "shouldTranslate" : false
     },
@@ -134,6 +137,9 @@
           }
         }
       }
+    },
+    "Copy Last Transcript" : {
+
     },
     "Copy to clipboard" : {
       "comment" : "copy transcription from history.",
@@ -339,7 +345,6 @@
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -350,9 +355,6 @@
       }
     },
     "Microphone Selection" : {
-
-    },
-    "Microphone!" : {
 
     },
     "Model" : {

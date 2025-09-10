@@ -381,7 +381,7 @@ actor RecordingClientLive {
     
     var deviceName: CFString? = nil
     var size = UInt32(MemoryLayout<CFString?>.size)
-    var deviceNamePtr: UnsafeMutableRawPointer = .allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
+    let deviceNamePtr: UnsafeMutableRawPointer = .allocate(byteCount: Int(size), alignment: MemoryLayout<CFString?>.alignment)
     defer { deviceNamePtr.deallocate() }
     
     let status = AudioObjectGetPropertyData(

@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import Inject
 import Sparkle
+import AppKit
 import SwiftUI
 
 @main
@@ -11,13 +12,16 @@ struct HexApp: App {
 
 	@NSApplicationDelegateAdaptor(HexAppDelegate.self) var appDelegate
   
-	var body: some Scene {
-		MenuBarExtra {
-			CheckForUpdatesView()
+    var body: some Scene {
+        MenuBarExtra {
+            CheckForUpdatesView()
 
-			Button("Settings...") {
-				appDelegate.presentSettingsView()
-			}.keyboardShortcut(",")
+            // Copy last transcript to clipboard
+            MenuBarCopyLastTranscriptButton()
+
+            Button("Settings...") {
+                appDelegate.presentSettingsView()
+            }.keyboardShortcut(",")
 			
 			Divider()
 			
