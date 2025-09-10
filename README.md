@@ -1,9 +1,3 @@
-## Important Note
-
-[![Status: Unmaintained](https://img.shields.io/badge/status-unmaintained-red.svg)](#)
-
-I'm a very busy new father and have no time to put into this in the foreseeable future, as it works well enough for my purposes (and hopefully this will be solved at the system level in the near future). However, feel free fork it! If a community fork gains steam, I'll happily redirect to it.
-
 # Hex — Voice → Text
 
 Press-and-hold a hotkey to transcribe your voice and paste the result wherever you're typing.
