@@ -154,20 +154,18 @@ struct SettingsView: View {
 					}
 				}
 
-				// Double-tap toggle (for key+modifier combinations)
-				if hotKey.key != nil {
-					Label {
-						Toggle("Use double-tap only", isOn: $store.hexSettings.useDoubleTapOnly)
-						Text("Recommended for custom hotkeys to avoid interfering with normal usage")
-							.font(.caption)
-							.foregroundColor(.secondary)
-					} icon: {
-						Image(systemName: "hand.tap")
-					}
+				// Double-tap toggle
+				Label {
+					Toggle("Use double-tap only", isOn: $store.hexSettings.useDoubleTapOnly)
+					Text("Recommended for custom hotkeys to avoid interfering with normal usage")
+						.font(.caption)
+						.foregroundColor(.secondary)
+				} icon: {
+					Image(systemName: "hand.tap")
 				}
 
 				// Minimum key time (for modifier-only shortcuts)
-				if store.hexSettings.hotkey.key == nil {
+				if store.hexSettings.hotkey.key == nil, !store.hexSettings.useDoubleTapOnly {
 					Label {
 						Slider(value: $store.hexSettings.minimumKeyTime, in: 0.0 ... 2.0, step: 0.1) {
 							Text("Ignore below \(store.hexSettings.minimumKeyTime, specifier: "%.1f")s")
