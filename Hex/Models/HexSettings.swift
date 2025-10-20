@@ -5,7 +5,7 @@ import Foundation
 // To add a new setting, add a new property to the struct, the CodingKeys enum, and the custom decoder
 struct HexSettings: Codable, Equatable {
 	var soundEffectsEnabled: Bool = true
-	var hotkey: HotKey = .init(key: nil, modifiers: [.option])
+	var hotkey: HotKey = .init(key: nil, modifiers: [.option()])
 	var openOnLogin: Bool = false
 	var showDockIcon: Bool = true
 	var selectedModel: String = "openai_whisper-large-v3-v20240930"
@@ -41,7 +41,7 @@ struct HexSettings: Codable, Equatable {
 
 	init(
 		soundEffectsEnabled: Bool = true,
-		hotkey: HotKey = .init(key: nil, modifiers: [.option]),
+		hotkey: HotKey = .init(key: nil, modifiers: [.option()]),
 		openOnLogin: Bool = false,
 		showDockIcon: Bool = true,
 		selectedModel: String = "openai_whisper-large-v3-v20240930",
@@ -82,7 +82,7 @@ struct HexSettings: Codable, Equatable {
 			try container.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? true
 		hotkey =
 			try container.decodeIfPresent(HotKey.self, forKey: .hotkey)
-				?? .init(key: nil, modifiers: [.option])
+				?? .init(key: nil, modifiers: [.option()])
 		openOnLogin = try container.decodeIfPresent(Bool.self, forKey: .openOnLogin) ?? false
 		showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? true
 		selectedModel =

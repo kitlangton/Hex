@@ -61,9 +61,12 @@ struct SettingsFeature {
 
     // Model Management
     case modelDownload(ModelDownloadFeature.Action)
-    
+
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
+
+    // Modifier Side Selection
+    case updateModifierSide(Modifier.ModifierType, ModifierSide)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -108,8 +111,8 @@ struct SettingsFeature {
           let deviceRefreshTask = Task { @MainActor in
             for await _ in clock.timer(interval: .seconds(120)) {
               // Only refresh when the app is active to save resources
-              if await NSApplication.shared.isActive {
-                await send(.loadAvailableInputDevices)
+              if NSApplication.shared.isActive {
+                send(.loadAvailableInputDevices)
               }
             }
           }
@@ -297,16 +300,16 @@ struct SettingsFeature {
         
       case let .toggleSaveTranscriptionHistory(enabled):
         state.$hexSettings.withLock { $0.saveTranscriptionHistory = enabled }
-        
+
         // If disabling history, delete all existing entries
         if !enabled {
           let transcripts = state.transcriptionHistory.history
-          
+
           // Clear the history
           state.$transcriptionHistory.withLock { history in
             history.history.removeAll()
           }
-          
+
           // Delete all audio files
           return .run { _ in
             for transcript in transcripts {
@@ -314,7 +317,40 @@ struct SettingsFeature {
             }
           }
         }
-        
+
+        return .none
+
+      case let .updateModifierSide(modifierType, newSide):
+        state.$hexSettings.withLock { settings in
+          // Update the modifier with the new side
+          var updatedModifiers: Set<Modifier> = []
+          var foundModifier = false
+
+          for modifier in settings.hotkey.modifiers.modifiers {
+            if modifier.baseType == modifierType {
+              // Replace with the same type but new side
+              foundModifier = true
+              switch modifierType {
+              case .command:
+                updatedModifiers.insert(.command(newSide))
+              case .option:
+                updatedModifiers.insert(.option(newSide))
+              case .shift:
+                updatedModifiers.insert(.shift(newSide))
+              case .control:
+                updatedModifiers.insert(.control(newSide))
+              case .fn:
+                updatedModifiers.insert(.fn)
+              }
+            } else {
+              updatedModifiers.insert(modifier)
+            }
+          }
+
+          if foundModifier {
+            settings.hotkey.modifiers = Modifiers(modifiers: updatedModifiers)
+          }
+        }
         return .none
       }
     }

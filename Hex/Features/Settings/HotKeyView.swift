@@ -69,7 +69,8 @@ struct KeyView: View {
     Text(text)
       .font(.title.weight(.bold))
       .foregroundColor(.white)
-      .frame(width: 48, height: 48)
+      .frame(minWidth: 48, minHeight: 48, maxHeight: 48)
+      .padding(.horizontal, text.count > 2 ? 8 : 0)  // Add padding for L/R prefix
       .background(
         RoundedRectangle(cornerRadius: 8)
           .fill(
@@ -84,10 +85,87 @@ struct KeyView: View {
   }
 }
 
-#Preview {
+// MARK: - Modifier Side Controls
+
+struct ModifierSideControls: View {
+  @ObserveInjection var inject
+  let modifiers: Modifiers
+  let onUpdateSide: (Modifier.ModifierType, ModifierSide) -> Void
+
+  var body: some View {
+    VStack(spacing: 8) {
+      ForEach(sortedModifiersWithSides, id: \.type) { modifierInfo in
+        HStack(spacing: 12) {
+          // Modifier label
+          Text(modifierInfo.displayName)
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .frame(width: 60, alignment: .trailing)
+
+          // Side picker
+          Picker("", selection: Binding(
+            get: { modifierInfo.currentSide },
+            set: { newSide in
+              onUpdateSide(modifierInfo.type, newSide)
+            }
+          )) {
+            Text("Either").tag(ModifierSide.either)
+            Text("Left").tag(ModifierSide.left)
+            Text("Right").tag(ModifierSide.right)
+          }
+          .pickerStyle(.segmented)
+          .frame(width: 200)
+        }
+      }
+    }
+    .padding(.vertical, 8)
+    .enableInjection()
+  }
+
+  private struct ModifierInfo {
+    let type: Modifier.ModifierType
+    let currentSide: ModifierSide
+    let displayName: String
+  }
+
+  private var sortedModifiersWithSides: [ModifierInfo] {
+    let modifiersWithSides: [Modifier.ModifierType] = [.control, .option, .shift, .command]
+
+    return modifiersWithSides.compactMap { type in
+      // Find if this modifier type exists in the current modifiers
+      guard let modifier = modifiers.modifiers.first(where: { $0.baseType == type }),
+            let side = modifier.side else {
+        return nil
+      }
+
+      let displayName: String
+      switch type {
+      case .command: displayName = "⌘ Command"
+      case .option: displayName = "⌥ Option"
+      case .shift: displayName = "⇧ Shift"
+      case .control: displayName = "⌃ Control"
+      case .fn: displayName = "fn"
+      }
+
+      return ModifierInfo(type: type, currentSide: side, displayName: displayName)
+    }
+  }
+}
+
+#Preview("HotKey View") {
   HotKeyView(
-    modifiers: .init(modifiers: [.command, .shift]),
+    modifiers: .init(modifiers: [.command(.left), .shift(.right)]),
     key: .a,
     isActive: true
   )
+}
+
+#Preview("Modifier Side Controls") {
+  ModifierSideControls(
+    modifiers: .init(modifiers: [.command(.left), .option(.either), .shift(.right)]),
+    onUpdateSide: { type, side in
+      print("Update \(type) to \(side)")
+    }
+  )
+  .padding()
 }

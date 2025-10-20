@@ -18,9 +18,9 @@ struct HexTests {
     @Test
     func pressAndHold_startsRecordingOnHotkey_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
             ]
         )
     }
@@ -28,9 +28,9 @@ struct HexTests {
     @Test
     func pressAndHold_startsRecordingOnHotkey_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
             ]
         )
     }
@@ -39,10 +39,10 @@ struct HexTests {
     @Test
     func pressAndHold_stopsRecordingOnHotkeyRelease_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.command()], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
     }
@@ -50,9 +50,9 @@ struct HexTests {
     @Test
     func pressAndHold_stopsRecordingOnHotkeyRelease_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
@@ -61,10 +61,10 @@ struct HexTests {
     @Test
     func pressAndHold_stopsRecordingOnHotkeyRelease_multipleModifiers() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            hotkey: HotKey(key: nil, modifiers: [.option(), .command()]),
             steps: [
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
-                ScenarioStep(time: 0.1, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.option(), .command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
@@ -74,12 +74,12 @@ struct HexTests {
     @Test
     func pressAndHold_cancelsOnOtherKeyPress_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
                 // Initial hotkey press
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Different key press within cancel threshold
-                ScenarioStep(time: 0.5, key: .b, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.5, key: .b, modifiers: [.command()], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
     }
@@ -88,12 +88,12 @@ struct HexTests {
     @Test
     func pressAndHold_cancelsOnOtherModifierPress_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // Initial hotkey press (option)
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Press a different modifier within cancel threshold
-                ScenarioStep(time: 0.5, key: nil, modifiers: [.option, .command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.option(), .command()], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
     }
@@ -102,12 +102,12 @@ struct HexTests {
     @Test
     func pressAndHold_doesNotCancelAfterThreshold_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
                 // Initial hotkey press
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Different key press after cancel threshold
-                ScenarioStep(time: 1.5, key: .b, modifiers: [.command], expectedOutput: nil, expectedIsMatched: true),
+                ScenarioStep(time: 1.5, key: .b, modifiers: [.command()], expectedOutput: nil, expectedIsMatched: true),
             ]
         )
     }
@@ -115,12 +115,12 @@ struct HexTests {
     @Test
     func pressAndHold_doesNotCancelAfterThreshold_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // Initial hotkey press
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Different modifier press after cancel threshold
-                ScenarioStep(time: 1.5, key: nil, modifiers: [.option, .command], expectedOutput: nil, expectedIsMatched: true),
+                ScenarioStep(time: 1.5, key: nil, modifiers: [.option(), .command()], expectedOutput: nil, expectedIsMatched: true),
             ]
         )
     }
@@ -130,16 +130,16 @@ struct HexTests {
     @Test
     func pressAndHold_doesNotTriggerOnBackslide_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
                 // They press the hotkey with an extra modifier
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command, .shift], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command(), .shift()], expectedOutput: nil, expectedIsMatched: false),
                 // And then release the extra modifier, nothing should happen
-                ScenarioStep(time: 0.1, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: .a, modifiers: [.command()], expectedOutput: nil, expectedIsMatched: false),
                 // Then if they release everything, the hotkey should trigger
                 ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
                 // And try to press the hotkey again, it should start recording
-                ScenarioStep(time: 0.3, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.3, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
             ]
         )
     }
@@ -148,20 +148,20 @@ struct HexTests {
     @Test
     func doubleTapLock_startsRecordingOnDoubleTap_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
-                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command()], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Release all modifiers
                 ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
                 // Press modifier again
-                ScenarioStep(time: 0.15, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.15, key: nil, modifiers: [.command()], expectedOutput: nil, expectedIsMatched: false),
                 // Second tap within threshold
-                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Second release (should stay recording)
-                ScenarioStep(time: 0.3, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.command()], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
             ]
         )
     }
@@ -169,14 +169,14 @@ struct HexTests {
     @Test
     func doubleTapLock_startsRecordingOnDoubleTap_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
                 ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap within threshold
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Second release (should stay recording)
                 ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
             ]
@@ -186,17 +186,17 @@ struct HexTests {
     @Test
     func doubleTapLock_startsRecordingOnDoubleTap_multipleModifiers() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            hotkey: HotKey(key: nil, modifiers: [.option(), .command()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
-                ScenarioStep(time: 0.05, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.05, key: nil, modifiers: [.option(), .command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
-                ScenarioStep(time: 0.1, key: nil, modifiers: [.option], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.option()], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap within threshold
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option(), .command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Second release (should stay recording)
-                ScenarioStep(time: 0.3, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.option()], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
             ]
         )
     }
@@ -205,14 +205,14 @@ struct HexTests {
     @Test
     func doubleTapLock_ignoresSlowDoubleTap_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
-                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command()], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap after threshold
-                ScenarioStep(time: 0.4, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.4, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
             ]
         )
     }
@@ -220,14 +220,14 @@ struct HexTests {
     @Test
     func doubleTapLock_ignoresSlowDoubleTap_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
                 ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap after threshold
-                ScenarioStep(time: 0.4, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.4, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
             ]
         )
     }
@@ -236,18 +236,18 @@ struct HexTests {
     @Test
     func doubleTapLock_stopsRecordingOnNextTap_standard() throws {
         runScenario(
-            hotkey: HotKey(key: .a, modifiers: [.command]),
+            hotkey: HotKey(key: .a, modifiers: [.command()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
-                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command()], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap within threshold
-                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Second release (should stay recording)
-                ScenarioStep(time: 0.3, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.command()], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
                 // Third tap to stop recording
-                ScenarioStep(time: 1.0, key: .a, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 1.0, key: .a, modifiers: [.command()], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
     }
@@ -255,18 +255,18 @@ struct HexTests {
     @Test
     func doubleTapLock_stopsRecordingOnNextTap_modifierOnly() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
                 ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap within threshold
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Second release (should stay recording)
                 ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
                 // Third tap to stop recording
-                ScenarioStep(time: 1.0, key: nil, modifiers: [.option], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 1.0, key: nil, modifiers: [.option()], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
     }
@@ -278,14 +278,14 @@ struct HexTests {
     @Test
     func pressAndHold_stopsRecordingOnKeyPressAndStaysDirty() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // Initial hotkey press (option)
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Press a different modifier within cancel threshold
-                ScenarioStep(time: 0.1, key: .c, modifiers: [.option], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: .c, modifiers: [.option()], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Release the C
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option()], expectedOutput: nil, expectedIsMatched: false),
             ]
         )
     }
@@ -294,14 +294,14 @@ struct HexTests {
     @Test
     func pressAndHold_staysDirtyAfterTwoSeconds() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // Initial hotkey press (option)
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Press command after two seconds
-                ScenarioStep(time: 2.0, key: nil, modifiers: [.option, .command], expectedOutput: nil, expectedIsMatched: true),
+                ScenarioStep(time: 2.0, key: nil, modifiers: [.option(), .command()], expectedOutput: nil, expectedIsMatched: true),
                 // Release command
-                ScenarioStep(time: 2.1, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: true),
+                ScenarioStep(time: 2.1, key: nil, modifiers: [.option()], expectedOutput: nil, expectedIsMatched: true),
                 // Release option
                 ScenarioStep(time: 2.2, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
@@ -312,14 +312,14 @@ struct HexTests {
     @Test
     func doubleTap_onlyLocksAfterSecondRelease() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
                 ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second tap within threshold - should start a new recording but not lock yet
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .pressAndHold(startTime: Date(timeIntervalSince1970: 0.2))),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .pressAndHold(startTime: Date(timeIntervalSince1970: 0.2))),
                 // Second release - NOW it should lock
                 ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
             ]
@@ -330,16 +330,16 @@ struct HexTests {
     @Test
     func doubleTap_secondTapHeldTooLongBecomesHold() throws {
         runScenario(
-            hotkey: HotKey(key: nil, modifiers: [.option]),
+            hotkey: HotKey(key: nil, modifiers: [.option()]),
             steps: [
                 // First tap
-                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // First release
                 ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
                 // Second press within threshold
-                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option()], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Hold for 2 seconds (should stay in press-and-hold mode)
-                ScenarioStep(time: 2.2, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: true),
+                ScenarioStep(time: 2.2, key: nil, modifiers: [.option()], expectedOutput: nil, expectedIsMatched: true),
                 // Release - should stop recording since it was a hold
                 ScenarioStep(time: 2.3, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
             ]

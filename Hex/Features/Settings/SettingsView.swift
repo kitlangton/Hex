@@ -152,6 +152,17 @@ struct SettingsView: View {
 					.onTapGesture {
 						store.send(.startSettingHotKey)
 					}
+
+					// Modifier side controls - only show when not setting hotkey and has modifiers
+					if !store.isSettingHotKey && !hotKey.modifiers.isEmpty {
+						ModifierSideControls(
+							modifiers: hotKey.modifiers,
+							onUpdateSide: { modifierType, newSide in
+								store.send(.updateModifierSide(modifierType, newSide))
+							}
+						)
+						.transition(.opacity.combined(with: .move(edge: .top)))
+					}
 				}
 
 				// Double-tap toggle (for key+modifier combinations)
