@@ -201,9 +201,10 @@ extension HotKeyProcessor {
     // MARK: - Helpers
 
     private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
-        // For hotkeys that include a key, both the key and modifiers must match exactly
+        // For hotkeys that include a key, both the key and modifiers must match
+        // Using the side-aware matching logic
         if hotkey.key != nil {
-            return e.key == hotkey.key && e.modifiers == hotkey.modifiers
+            return e.key == hotkey.key && e.modifiers.matches(hotkey.modifiers)
         } else {
             // For modifier-only hotkeys, we just check that all required modifiers are present
             // This allows other modifiers to be pressed without affecting the match
@@ -228,8 +229,8 @@ extension HotKeyProcessor {
         if hotkey.key != nil {
             // For key+modifier hotkeys, we need to check:
             // 1. Key is released (key == nil)
-            // 2. Modifiers match exactly what was in the hotkey
-            return e.key == nil && e.modifiers == hotkey.modifiers
+            // 2. Modifiers match what was in the hotkey (considering sides)
+            return e.key == nil && e.modifiers.matches(hotkey.modifiers)
         } else {
             // For modifier-only hotkeys, we check:
             // 1. Key is nil

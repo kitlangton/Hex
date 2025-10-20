@@ -238,6 +238,9 @@
     "Downloading model..." : {
 
     },
+    "Either" : {
+
+    },
     "Enable in Settings" : {
 
     },
@@ -334,12 +337,14 @@
     "Input Device" : {
 
     },
+    "Left" : {
+
+    },
     "Maximum History Entries" : {
 
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -350,9 +355,6 @@
       }
     },
     "Microphone Selection" : {
-
-    },
-    "Microphone!" : {
 
     },
     "Model" : {
@@ -475,6 +477,9 @@
           }
         }
       }
+    },
+    "Right" : {
+
     },
     "Save Transcription History" : {
 
