@@ -132,14 +132,6 @@ struct SettingsView: View {
 				let modifiers = store.isSettingHotKey ? store.currentModifiers : hotKey.modifiers
 
 				VStack(spacing: 12) {
-					// Info text for full keyboard shortcut support
-					if hotKey.key != nil {
-						Text("You're using a full keyboard shortcut. Double-tap is recommended.")
-							.font(.caption)
-							.foregroundColor(.secondary)
-							.frame(maxWidth: .infinity, alignment: .center)
-					}
-
 					// Hot key view
 					HStack {
 						Spacer()
@@ -154,20 +146,28 @@ struct SettingsView: View {
 					}
 				}
 
-				// Double-tap toggle (for key+modifier combinations)
-				if hotKey.key != nil {
-					Label {
-						Toggle("Use double-tap only", isOn: $store.hexSettings.useDoubleTapOnly)
-						Text("Recommended for custom hotkeys to avoid interfering with normal usage")
+				// Recording mode picker
+				Label {
+					VStack(alignment: .leading, spacing: 6) {
+						Picker("Recording Mode", selection: $store.hexSettings.recordingMode) {
+							Text("Hold to Record").tag(RecordingMode.holdToRecord)
+							Text("Tap to Toggle").tag(RecordingMode.tapToToggle)
+						}
+						.pickerStyle(.menu)
+
+						// Description text based on selected mode
+						Text(store.hexSettings.recordingMode == .holdToRecord
+							? "Press and hold the hotkey to record, release to stop"
+							: "Tap once to start recording, tap again to stop")
 							.font(.caption)
 							.foregroundColor(.secondary)
-					} icon: {
-						Image(systemName: "hand.tap")
 					}
+				} icon: {
+					Image(systemName: "hand.tap.fill")
 				}
 
-				// Minimum key time (for modifier-only shortcuts)
-				if store.hexSettings.hotkey.key == nil {
+				// Minimum key time (only for hold-to-record mode with modifier-only shortcuts)
+				if store.hexSettings.recordingMode == .holdToRecord && store.hexSettings.hotkey.key == nil {
 					Label {
 						Slider(value: $store.hexSettings.minimumKeyTime, in: 0.0 ... 2.0, step: 0.1) {
 							Text("Ignore below \(store.hexSettings.minimumKeyTime, specifier: "%.1f")s")

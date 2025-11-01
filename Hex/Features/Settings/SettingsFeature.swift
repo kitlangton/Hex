@@ -108,8 +108,8 @@ struct SettingsFeature {
           let deviceRefreshTask = Task { @MainActor in
             for await _ in clock.timer(interval: .seconds(120)) {
               // Only refresh when the app is active to save resources
-              if await NSApplication.shared.isActive {
-                await send(.loadAvailableInputDevices)
+              if NSApplication.shared.isActive {
+                send(.loadAvailableInputDevices)
               }
             }
           }

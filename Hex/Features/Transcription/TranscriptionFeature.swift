@@ -158,20 +158,21 @@ private extension TranscriptionFeature {
 
         // Always keep hotKeyProcessor in sync with current user hotkey preference
         hotKeyProcessor.hotkey = hexSettings.hotkey
-        hotKeyProcessor.useDoubleTapOnly = hexSettings.useDoubleTapOnly
+        hotKeyProcessor.recordingMode = hexSettings.recordingMode
 
         // Process the key event
         switch hotKeyProcessor.process(keyEvent: keyEvent) {
         case .startRecording:
-          // If double-tap lock is triggered, we start recording immediately
-          if hotKeyProcessor.state == .doubleTapLock {
+          // For tap-to-toggle mode, start recording immediately
+          // For hold-to-record mode, apply the minimumKeyTime delay
+          if hexSettings.recordingMode == .tapToToggle {
             Task { await send(.startRecording) }
           } else {
             Task { await send(.hotKeyPressed) }
           }
           // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
-          // But if useDoubleTapOnly is true, always intercept the key
-          return hexSettings.useDoubleTapOnly || keyEvent.key != nil
+          // But if tap-to-toggle mode is enabled, always intercept the key
+          return hexSettings.recordingMode == .tapToToggle || keyEvent.key != nil
 
         case .stopRecording:
           Task { await send(.hotKeyReleased) }
@@ -251,17 +252,20 @@ private extension TranscriptionFeature {
     //  (e.g. if the setting was toggled off mid-recording)
     reallowSystemSleep(&state)
 
-    let durationIsLongEnough: Bool = {
-      guard let startTime = state.recordingStartTime else { return false }
-      return Date().timeIntervalSince(startTime) > state.hexSettings.minimumKeyTime
-    }()
+    // For hold-to-record mode with modifier-only hotkeys, check if duration is long enough
+    // For tap-to-toggle mode, always proceed to transcription
+    if state.hexSettings.recordingMode == .holdToRecord && state.hexSettings.hotkey.key == nil {
+      let durationIsLongEnough: Bool = {
+        guard let startTime = state.recordingStartTime else { return false }
+        return Date().timeIntervalSince(startTime) > state.hexSettings.minimumKeyTime
+      }()
 
-      guard (durationIsLongEnough && state.hexSettings.hotkey.key == nil) else {
-      // If the user recorded for less than minimumKeyTime, just discard
-      // unless the hotkey includes a regular key, in which case, we can assume it was intentional
-      print("Recording was too short, discarding")
-      return .run { _ in
-        _ = await recording.stopRecording()
+      guard durationIsLongEnough else {
+        // If the user recorded for less than minimumKeyTime, just discard
+        print("Recording was too short, discarding")
+        return .run { _ in
+          _ = await recording.stopRecording()
+        }
       }
     }
 

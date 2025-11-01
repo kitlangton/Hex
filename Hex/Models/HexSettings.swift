@@ -2,6 +2,11 @@ import ComposableArchitecture
 import Dependencies
 import Foundation
 
+public enum RecordingMode: String, Codable, Equatable, CaseIterable {
+	case holdToRecord
+	case tapToToggle
+}
+
 // To add a new setting, add a new property to the struct, the CodingKeys enum, and the custom decoder
 struct HexSettings: Codable, Equatable {
 	var soundEffectsEnabled: Bool = true
@@ -14,7 +19,7 @@ struct HexSettings: Codable, Equatable {
 	var pauseMediaOnRecord: Bool = true
 	var minimumKeyTime: Double = 0.2
 	var copyToClipboard: Bool = false
-	var useDoubleTapOnly: Bool = false
+	var recordingMode: RecordingMode = .holdToRecord
 	var outputLanguage: String? = nil
 	var selectedMicrophoneID: String? = nil
 	var saveTranscriptionHistory: Bool = true
@@ -32,11 +37,16 @@ struct HexSettings: Codable, Equatable {
 		case pauseMediaOnRecord
 		case minimumKeyTime
 		case copyToClipboard
-		case useDoubleTapOnly
+		case recordingMode
 		case outputLanguage
 		case selectedMicrophoneID
 		case saveTranscriptionHistory
 		case maxHistoryEntries
+	}
+
+	// Legacy coding key for migration only (not exposed as property)
+	private enum LegacyCodingKeys: String, CodingKey {
+		case useDoubleTapOnly
 	}
 
 	init(
@@ -50,7 +60,7 @@ struct HexSettings: Codable, Equatable {
 		pauseMediaOnRecord: Bool = true,
 		minimumKeyTime: Double = 0.2,
 		copyToClipboard: Bool = false,
-		useDoubleTapOnly: Bool = false,
+		recordingMode: RecordingMode = .holdToRecord,
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
 		saveTranscriptionHistory: Bool = true,
@@ -66,7 +76,7 @@ struct HexSettings: Codable, Equatable {
 		self.pauseMediaOnRecord = pauseMediaOnRecord
 		self.minimumKeyTime = minimumKeyTime
 		self.copyToClipboard = copyToClipboard
-		self.useDoubleTapOnly = useDoubleTapOnly
+		self.recordingMode = recordingMode
 		self.outputLanguage = outputLanguage
 		self.selectedMicrophoneID = selectedMicrophoneID
 		self.saveTranscriptionHistory = saveTranscriptionHistory
@@ -97,8 +107,17 @@ struct HexSettings: Codable, Equatable {
 			try container.decodeIfPresent(Double.self, forKey: .minimumKeyTime) ?? 0.2
 		copyToClipboard =
 			try container.decodeIfPresent(Bool.self, forKey: .copyToClipboard) ?? false
-		useDoubleTapOnly =
-			try container.decodeIfPresent(Bool.self, forKey: .useDoubleTapOnly) ?? false
+
+		// Migrate from old useDoubleTapOnly to new recordingMode
+		if let recordingModeValue = try container.decodeIfPresent(RecordingMode.self, forKey: .recordingMode) {
+			recordingMode = recordingModeValue
+		} else {
+			// Migration: check legacy useDoubleTapOnly setting
+			let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+			let useDoubleTapOnlyValue = try legacyContainer.decodeIfPresent(Bool.self, forKey: .useDoubleTapOnly) ?? false
+			recordingMode = useDoubleTapOnlyValue ? .tapToToggle : .holdToRecord
+		}
+
 		outputLanguage = try container.decodeIfPresent(String.self, forKey: .outputLanguage)
 		selectedMicrophoneID = try container.decodeIfPresent(String.self, forKey: .selectedMicrophoneID)
 		saveTranscriptionHistory =

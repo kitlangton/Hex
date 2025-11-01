@@ -310,6 +310,9 @@
     "History Disabled" : {
 
     },
+    "Hold to Record" : {
+
+    },
     "Hot Key" : {
       "comment" : "hotkey section in settings.",
       "localizations" : {
@@ -339,7 +342,6 @@
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -350,9 +352,6 @@
       }
     },
     "Microphone Selection" : {
-
-    },
-    "Microphone!" : {
 
     },
     "Model" : {
@@ -445,6 +444,9 @@
         }
       }
     },
+    "Press and hold the hotkey to record, release to stop" : {
+
+    },
     "Prevent System Sleep while Recording" : {
       "comment" : "Label for general setting whether to prevent system sleep while recording.",
       "localizations" : {
@@ -459,7 +461,7 @@
     "Quit" : {
 
     },
-    "Recommended for custom hotkeys to avoid interfering with normal usage" : {
+    "Recording Mode" : {
 
     },
     "Refresh available input devices" : {
@@ -602,6 +604,12 @@
     "System Default" : {
 
     },
+    "Tap once to start recording, tap again to stop" : {
+
+    },
+    "Tap to Toggle" : {
+
+    },
     "Transcription history is currently disabled." : {
 
     },
@@ -641,9 +649,6 @@
         }
       }
     },
-    "Use double-tap only" : {
-
-    },
     "Version" : {
       "comment" : "Label for version in About section.",
       "localizations" : {
@@ -667,9 +672,6 @@
       }
     },
     "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
-
-    },
-    "You're using a full keyboard shortcut. Double-tap is recommended." : {
 
     },
     "Your transcription history will appear here." : {
