@@ -141,7 +141,7 @@ extension HotKeyProcessor {
                     if elapsed < Self.holdToRecordCancelThreshold {
                         isDirty = true
                         resetToIdle()
-                        return .stopRecording
+                        return .cancel
                     } else {
                         // After 1s => remain recording
                         return nil

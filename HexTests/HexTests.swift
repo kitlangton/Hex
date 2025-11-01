@@ -84,7 +84,7 @@ struct HexTests {
                 // Initial hotkey press
                 ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Different key press within cancel threshold
-                ScenarioStep(time: 0.5, key: .b, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.5, key: .b, modifiers: [.command], expectedOutput: .cancel, expectedIsMatched: false),
             ]
         )
     }
@@ -98,7 +98,7 @@ struct HexTests {
                 // Initial hotkey press (option)
                 ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Press a different modifier within cancel threshold
-                ScenarioStep(time: 0.5, key: nil, modifiers: [.option, .command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.option, .command], expectedOutput: .cancel, expectedIsMatched: false),
             ]
         )
     }
@@ -318,7 +318,7 @@ struct HexTests {
                 // Initial hotkey press (option)
                 ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
                 // Press a different modifier within cancel threshold
-                ScenarioStep(time: 0.1, key: .c, modifiers: [.option], expectedOutput: .stopRecording, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: .c, modifiers: [.option], expectedOutput: .cancel, expectedIsMatched: false),
                 // Release the C
                 ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
             ]

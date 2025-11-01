@@ -257,7 +257,7 @@ private extension TranscriptionFeature {
     if state.hexSettings.recordingMode == .holdToRecord && state.hexSettings.hotkey.key == nil {
       let durationIsLongEnough: Bool = {
         guard let startTime = state.recordingStartTime else { return false }
-        return Date().timeIntervalSince(startTime) > state.hexSettings.minimumKeyTime
+        return Date().timeIntervalSince(startTime) >= state.hexSettings.minimumKeyTime
       }()
 
       guard durationIsLongEnough else {
