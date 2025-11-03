@@ -419,10 +419,15 @@ private extension TranscriptionFeature {
     state.isRecording = false
     state.isPrewarming = false
 
+    // Release power management assertion if active
+    reallowSystemSleep(&state)
+
     return .merge(
       .cancel(id: CancelID.transcription),
       .cancel(id: CancelID.delayedRecord),
       .run { _ in
+        // Stop the recording to release microphone access
+        _ = await recording.stopRecording()
         await soundEffect.play(.cancel)
       }
     )
