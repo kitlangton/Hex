@@ -248,28 +248,13 @@ private extension TranscriptionFeature {
     state.isRecording = false
 
     // Allow system to sleep again by releasing the power management assertion
-    // Always call this, even if the setting is off, to ensure we don’t leak assertions
+    // Always call this, even if the setting is off, to ensure we don't leak assertions
     //  (e.g. if the setting was toggled off mid-recording)
     reallowSystemSleep(&state)
 
-    // For hold-to-record mode with modifier-only hotkeys, check if duration is long enough
-    // For tap-to-toggle mode, always proceed to transcription
-    if state.hexSettings.recordingMode == .holdToRecord && state.hexSettings.hotkey.key == nil {
-      let durationIsLongEnough: Bool = {
-        guard let startTime = state.recordingStartTime else { return false }
-        return Date().timeIntervalSince(startTime) >= state.hexSettings.minimumKeyTime
-      }()
-
-      guard durationIsLongEnough else {
-        // If the user recorded for less than minimumKeyTime, just discard
-        print("Recording was too short, discarding")
-        return .run { _ in
-          _ = await recording.stopRecording()
-        }
-      }
-    }
-
-    // Otherwise, proceed to transcription
+    // Proceed to transcription
+    // Note: minimumKeyTime is already enforced by the delayed start in handleHotKeyPressed
+    // for Hold-to-Record mode. No need to check duration here.
     state.isTranscribing = true
     state.error = nil
     let model = state.hexSettings.selectedModel
