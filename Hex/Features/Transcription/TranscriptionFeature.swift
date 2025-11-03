@@ -230,6 +230,10 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
+    // If we're currently transcribing, cancel it first to avoid resource conflicts
+    // This is especially important for tap-to-toggle mode which bypasses handleHotKeyPressed
+    let transcriptionCancelEffect: Effect<Action> = state.isTranscribing ? .send(.cancel) : .none
+
     state.isRecording = true
     state.recordingStartTime = Date()
 
@@ -238,10 +242,12 @@ private extension TranscriptionFeature {
       preventSystemSleep(&state)
     }
 
-    return .run { _ in
+    let startRecordingEffect: Effect<Action> = .run { _ in
       await recording.startRecording()
       await soundEffect.play(.startRecording)
     }
+
+    return .merge(transcriptionCancelEffect, startRecordingEffect)
   }
 
   func handleStopRecording(_ state: inout State) -> Effect<Action> {
