@@ -205,16 +205,21 @@ extension HotKeyProcessor {
         if hotkey.key != nil {
             return e.key == hotkey.key && e.modifiers == hotkey.modifiers
         } else {
-            // For modifier-only hotkeys, we just check that all required modifiers are present
-            // This allows other modifiers to be pressed without affecting the match
-            return hotkey.modifiers.isSubset(of: e.modifiers)
+            // For modifier-only hotkeys, the event must be a pure flags change
+            // (no real key pressed) and contain the required modifiers
+            // This prevents arrow keys from triggering Fn-only hotkeys
+            return e.key == nil && hotkey.modifiers.isSubset(of: e.modifiers)
         }
     }
 
     /// "Dirty" if chord includes any extra modifiers or a different key.
     private func chordIsDirty(_ e: KeyEvent) -> Bool {
+        if hotkey.key == nil {
+            // Any key press while we're watching a pure-modifier hot-key is "dirty"
+            return e.key != nil
+        }
         let isSubset = e.modifiers.isSubset(of: hotkey.modifiers)
-        let isWrongKey = (hotkey.key != nil && e.key != nil && e.key != hotkey.key)
+        let isWrongKey = (e.key != nil && e.key != hotkey.key)
         return !isSubset || isWrongKey
     }
 
