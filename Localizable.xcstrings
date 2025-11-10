@@ -311,7 +311,7 @@
 
     },
     "Hold to Record" : {
-
+      "comment" : "Zum Aufnehmen gedrückt halten"
     },
     "Hot Key" : {
       "comment" : "hotkey section in settings.",
@@ -445,7 +445,14 @@
       }
     },
     "Press and hold the hotkey to record, release to stop" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Aufnehmen die Taste gedrückt halten, zum Beenden loslassen."
+          }
+        }
+      }
     },
     "Prevent System Sleep while Recording" : {
       "comment" : "Label for general setting whether to prevent system sleep while recording.",
@@ -472,7 +479,14 @@
 
     },
     "Recording Mode" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmemodus"
+          }
+        }
+      }
     },
     "Refresh available input devices" : {
 
@@ -615,10 +629,24 @@
 
     },
     "Tap once to start recording, tap again to stop" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmal tippen zum Starten der Aufnahme, erneut tippen zum Stoppen"
+          }
+        }
+      }
     },
     "Tap to Toggle" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Umschalten tippen"
+          }
+        }
+      }
     },
     "Transcription history is currently disabled." : {
 
