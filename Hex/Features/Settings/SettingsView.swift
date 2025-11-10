@@ -166,11 +166,17 @@ struct SettingsView: View {
 					Image(systemName: "hand.tap.fill")
 				}
 
-				// Minimum key time (only for hold-to-record mode with modifier-only shortcuts)
-				if store.hexSettings.recordingMode == .holdToRecord && store.hexSettings.hotkey.key == nil {
+				// Minimum key time (only for hold-to-record mode)
+				if store.hexSettings.recordingMode == .holdToRecord {
 					Label {
-						Slider(value: $store.hexSettings.minimumKeyTime, in: 0.0 ... 2.0, step: 0.1) {
-							Text("Ignore below \(store.hexSettings.minimumKeyTime, specifier: "%.1f")s")
+						VStack(alignment: .leading, spacing: 6) {
+							Slider(value: $store.hexSettings.minimumKeyTime, in: 0.0 ... 5.0, step: 0.1) {
+								Text("Minimum Hold Time: \(store.hexSettings.minimumKeyTime, specifier: "%.1f")s")
+							}
+
+							Text("Prevents accidental triggers by requiring the hotkey to be held for this duration")
+								.font(.caption)
+								.foregroundColor(.secondary)
 						}
 					} icon: {
 						Image(systemName: "clock")

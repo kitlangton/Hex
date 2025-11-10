@@ -324,16 +324,6 @@
         }
       }
     },
-    "Ignore below %.1fs" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unter %0.1fs ignorieren"
-          }
-        }
-      }
-    },
     "Input Device" : {
 
     },
@@ -353,6 +343,16 @@
     },
     "Microphone Selection" : {
 
+    },
+    "Minimum Hold Time: %.1fs" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mindesthaltezeit: %.1f"
+          }
+        }
+      }
     },
     "Model" : {
 
@@ -454,6 +454,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Systemschlaf während der Aufnahme verhindern"
+          }
+        }
+      }
+    },
+    "Prevents accidental triggers by requiring the hotkey to be held for this duration" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verhindert versehentliches Auslösen, indem die Tastenkombination für diese Dauer gedrückt gehalten werden muss."
           }
         }
       }
