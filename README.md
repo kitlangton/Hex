@@ -9,6 +9,12 @@ I've opened-sourced the project in the hopes that others will find it useful! We
 
 Join our [Discord community](https://discord.gg/5UzVCqWmav) for support, discussions, and updates!
 
+## Contributing
+
+**Issue reports are welcome!** If you encounter bugs or have feature requests, please [open an issue](https://github.com/kitlangton/Hex/issues).
+
+**Note on Pull Requests:** At this stage, I'm not actively reviewing code contributions for significant features or core logic changes. The project is evolving rapidly and it's easier for me to work directly from issue reports. Bug fixes and documentation improvements are still appreciated, but please open an issue first to discuss before investing time in a large PR. Thanks for understanding!
+
 ## Instructions
 
 Once you open Hex, you'll need to grant it microphone and accessibility permissions—so it can record your voice and paste the transcribed text into any application, respectively.

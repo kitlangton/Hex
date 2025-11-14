@@ -60,9 +60,28 @@ extension SharedReaderKey
 {
 	static var transcriptionHistory: Self {
 		Self[
-			.fileStorage(URL.documentsDirectory.appending(component: "transcription_history.json")),
+			.fileStorage(.transcriptionHistoryURL),
 			default: .init()
 		]
+	}
+}
+
+// MARK: - Storage Migration
+
+extension URL {
+	static var transcriptionHistoryURL: URL {
+		get {
+			let newURL = (try? URL.hexApplicationSupport.appending(component: "transcription_history.json")) ?? URL.documentsDirectory.appending(component: "transcription_history.json")
+			let legacyURL = URL.legacyDocumentsDirectory.appending(component: "transcription_history.json")
+			
+			// Migrate if needed
+			if FileManager.default.fileExists(atPath: legacyURL.path),
+			   !FileManager.default.fileExists(atPath: newURL.path) {
+				try? FileManager.default.copyItem(at: legacyURL, to: newURL)
+			}
+			
+			return newURL
+		}
 	}
 }
 
