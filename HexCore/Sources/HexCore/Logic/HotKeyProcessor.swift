@@ -25,16 +25,21 @@ import SwiftUI
 ///   That release time is used to detect a second quick tap => possible doubleTapLock.
 ///
 /// Additional details:
-/// - For modifier-only hotkeys, “release” is chord = (key:nil, modifiers:[]).
+/// - For modifier-only hotkeys, "release" is chord = (key:nil, modifiers:[]).
 /// - Pressing ESC => immediate .cancel => resetToIdle().
 /// - "Dirty" logic is unchanged from the prior iteration, so we still ignore any chord
 ///   until the user fully releases (key:nil, modifiers:[]).
+///
+/// Mouse click cancellation:
+/// - For modifier-only hotkeys in pressAndHold or doubleTapLock state, a mouse click
+///   will trigger .cancel to prevent accidental transcription during Option+click to duplicate, etc.
 
 public struct HotKeyProcessor {
     @Dependency(\.date.now) var now
 
     public var hotkey: HotKey
     public var useDoubleTapOnly: Bool = false
+    public var minimumKeyTime: TimeInterval = 0.15
 
     public private(set) var state: State = .idle
     private var lastTapAt: Date? // Time of the most recent release
@@ -43,9 +48,10 @@ public struct HotKeyProcessor {
     public static let doubleTapThreshold: TimeInterval = 0.3
     public static let pressAndHoldCancelThreshold: TimeInterval = 1.0
 
-    public init(hotkey: HotKey, useDoubleTapOnly: Bool = false) {
+    public init(hotkey: HotKey, useDoubleTapOnly: Bool = false, minimumKeyTime: TimeInterval = 0.15) {
         self.hotkey = hotkey
         self.useDoubleTapOnly = useDoubleTapOnly
+        self.minimumKeyTime = minimumKeyTime
     }
 
     public var isMatched: Bool {
@@ -88,6 +94,41 @@ public struct HotKeyProcessor {
             return handleNonmatchingChord(keyEvent)
         }
     }
+
+    /// Process a mouse click event. For modifier-only hotkeys in an active recording state,
+    /// this will cancel/discard the recording to prevent accidental transcription during Option+click, etc.
+    public mutating func processMouseClick() -> Output? {
+        // Only cancel if:
+        // 1. The hotkey is modifier-only (no key component)
+        // 2. We're currently in an active recording state (pressAndHold or doubleTapLock)
+        guard hotkey.key == nil else {
+            return nil
+        }
+
+        switch state {
+        case .idle:
+            return nil
+        case let .pressAndHold(startTime):
+            // Mouse click during modifier-only recording
+            let elapsed = now.timeIntervalSince(startTime)
+            // For modifier-only hotkeys, use the same threshold as RecordingDecisionEngine
+            // (max of minimumKeyTime and 0.3s) to be consistent
+            let effectiveMinimum = max(minimumKeyTime, RecordingDecisionEngine.modifierOnlyMinimumDuration)
+            
+            // Only discard if within threshold - after threshold, ignore clicks (only ESC cancels)
+            if elapsed < effectiveMinimum {
+                isDirty = true
+                resetToIdle()
+                return .discard
+            } else {
+                // After threshold, ignore mouse clicks - let recording continue
+                return nil
+            }
+        case .doubleTapLock:
+            // Mouse click during double-tap lock => ignore (only ESC cancels locked recordings)
+            return nil
+        }
+    }
 }
 
 // MARK: - State & Output
@@ -102,7 +143,8 @@ public extension HotKeyProcessor {
     enum Output: Equatable {
         case startRecording
         case stopRecording
-        case cancel
+        case cancel  // Explicit cancellation (ESC key) - plays cancel sound
+        case discard // Quick/accidental cancellation - silent
     }
 }
 
@@ -176,15 +218,34 @@ extension HotKeyProcessor {
                     return .stopRecording
                 }
             } else {
-                // If within 1s, treat as cancel hold => stop => become dirty
+                // User pressed a different key/modifier while holding hotkey
                 let elapsed = now.timeIntervalSince(startTime)
-                if elapsed < Self.pressAndHoldCancelThreshold {
-                    isDirty = true
-                    resetToIdle()
-                    return .stopRecording
+                
+                // Modifier-only hotkeys: Only discard within threshold, ignore after
+                if hotkey.key == nil {
+                    let effectiveMinimum = max(minimumKeyTime, RecordingDecisionEngine.modifierOnlyMinimumDuration)
+                    
+                    if elapsed < effectiveMinimum {
+                        // Within threshold => discard silently (accidental trigger)
+                        isDirty = true
+                        resetToIdle()
+                        return .discard
+                    } else {
+                        // After threshold => ignore extra modifiers/keys, keep recording (only ESC cancels)
+                        return nil
+                    }
                 } else {
-                    // After 1s => remain matched
-                    return nil
+                    // Printable-key hotkeys: Use old behavior with 1s threshold
+                    if elapsed < Self.pressAndHoldCancelThreshold {
+                        // Within 1s threshold => treat as accidental
+                        isDirty = true
+                        resetToIdle()
+                        // If very quick (< minimumKeyTime), discard silently. Otherwise stop with sound.
+                        return elapsed < minimumKeyTime ? .discard : .stopRecording
+                    } else {
+                        // After 1s => remain matched
+                        return nil
+                    }
                 }
             }
 

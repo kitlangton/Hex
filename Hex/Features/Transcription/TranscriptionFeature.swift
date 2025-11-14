@@ -41,8 +41,9 @@ struct TranscriptionFeature {
     case startRecording
     case stopRecording
 
-    // Cancel entire flow
-    case cancel
+    // Cancel/discard flow
+    case cancel   // Explicit cancellation with sound
+    case discard  // Silent discard (too short/accidental)
 
     // Transcription result flow
     case transcriptionResult(String)
@@ -50,7 +51,6 @@ struct TranscriptionFeature {
   }
 
   enum CancelID {
-    case delayedRecord
     case metering
     case transcription
   }
@@ -85,13 +85,13 @@ struct TranscriptionFeature {
       // MARK: - HotKey Flow
 
       case .hotKeyPressed:
-        // If we're transcribing, send a cancel first. Then queue up a
-        // "startRecording" after minimumKeyTime if the user keeps holding the hotkey.
-        return handleHotKeyPressed(isTranscribing: state.isTranscribing, minimumKeyTime: state.hexSettings.minimumKeyTime)
+        // If we're transcribing, send a cancel first. Otherwise start recording immediately.
+        // We'll decide later (on release) whether to keep or discard the recording.
+        return handleHotKeyPressed(isTranscribing: state.isTranscribing)
 
       case .hotKeyReleased:
-        // If we’re currently recording, then stop. Otherwise, just cancel
-        // the delayed “startRecording” effect if we never actually started.
+        // If we're currently recording, then stop. Otherwise, just cancel
+        // the delayed "startRecording" effect if we never actually started.
         return handleHotKeyReleased(isRecording: state.isRecording)
 
       // MARK: - Recording Flow
@@ -110,14 +110,21 @@ struct TranscriptionFeature {
       case let .transcriptionError(error):
         return handleTranscriptionError(&state, error: error)
 
-      // MARK: - Cancel Entire Flow
+      // MARK: - Cancel/Discard Flow
 
       case .cancel:
-        // Only cancel if we’re in the middle of recording or transcribing
+        // Only cancel if we're in the middle of recording or transcribing
         guard state.isRecording || state.isTranscribing else {
           return .none
         }
         return handleCancel(&state)
+
+      case .discard:
+        // Silent discard for quick/accidental recordings
+        guard state.isRecording else {
+          return .none
+        }
+        return handleDiscard(&state)
       }
     }
   }
@@ -143,55 +150,76 @@ private extension TranscriptionFeature {
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
-      // Handle incoming key events
-      keyEventMonitor.handleKeyEvent { keyEvent in
+      // Handle incoming input events (keyboard and mouse)
+      keyEventMonitor.handleInputEvent { inputEvent in
         // Skip if the user is currently setting a hotkey
         if isSettingHotKey {
-          return false
-        }
-
-        // If Escape is pressed with no modifiers while idle, let’s treat that as `cancel`.
-        if keyEvent.key == .escape, keyEvent.modifiers.isEmpty,
-           hotKeyProcessor.state == .idle
-        {
-          Task { await send(.cancel) }
           return false
         }
 
         // Always keep hotKeyProcessor in sync with current user hotkey preference
         hotKeyProcessor.hotkey = hexSettings.hotkey
         hotKeyProcessor.useDoubleTapOnly = hexSettings.useDoubleTapOnly
+        hotKeyProcessor.minimumKeyTime = hexSettings.minimumKeyTime
 
-        // Process the key event
-        switch hotKeyProcessor.process(keyEvent: keyEvent) {
-        case .startRecording:
-          // If double-tap lock is triggered, we start recording immediately
-          if hotKeyProcessor.state == .doubleTapLock {
-            Task { await send(.startRecording) }
-          } else {
-            Task { await send(.hotKeyPressed) }
-          }
-          // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
-          // But if useDoubleTapOnly is true, always intercept the key
-          return hexSettings.useDoubleTapOnly || keyEvent.key != nil
-
-        case .stopRecording:
-          Task { await send(.hotKeyReleased) }
-          return false // or `true` if you want to intercept
-
-        case .cancel:
-          Task { await send(.cancel) }
-          return true
-
-        case .none:
-          // If we detect repeated same chord, maybe intercept.
-          if let pressedKey = keyEvent.key,
-             pressedKey == hotKeyProcessor.hotkey.key,
-             keyEvent.modifiers == hotKeyProcessor.hotkey.modifiers
+        switch inputEvent {
+        case .keyboard(let keyEvent):
+          // If Escape is pressed with no modifiers while idle, let's treat that as `cancel`.
+          if keyEvent.key == .escape, keyEvent.modifiers.isEmpty,
+             hotKeyProcessor.state == .idle
           {
-            return true
+            Task { await send(.cancel) }
+            return false
           }
-          return false
+
+          // Process the key event
+          switch hotKeyProcessor.process(keyEvent: keyEvent) {
+          case .startRecording:
+            // If double-tap lock is triggered, we start recording immediately
+            if hotKeyProcessor.state == .doubleTapLock {
+              Task { await send(.startRecording) }
+            } else {
+              Task { await send(.hotKeyPressed) }
+            }
+            // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
+            // But if useDoubleTapOnly is true, always intercept the key
+            return hexSettings.useDoubleTapOnly || keyEvent.key != nil
+
+          case .stopRecording:
+            Task { await send(.hotKeyReleased) }
+            return false // or `true` if you want to intercept
+
+          case .cancel:
+            Task { await send(.cancel) }
+            return true
+
+          case .discard:
+            Task { await send(.discard) }
+            return false // Don't intercept - let the key chord reach other apps
+
+          case .none:
+            // If we detect repeated same chord, maybe intercept.
+            if let pressedKey = keyEvent.key,
+               pressedKey == hotKeyProcessor.hotkey.key,
+               keyEvent.modifiers == hotKeyProcessor.hotkey.modifiers
+            {
+              return true
+            }
+            return false
+          }
+
+        case .mouseClick:
+          // Process mouse click - for modifier-only hotkeys, this may cancel/discard
+          switch hotKeyProcessor.processMouseClick() {
+          case .cancel:
+            Task { await send(.cancel) }
+            return false // Don't intercept the click itself
+          case .discard:
+            Task { await send(.discard) }
+            return false // Don't intercept the click itself
+          case .startRecording, .stopRecording, .none:
+            return false
+          }
         }
       }
     }
@@ -201,29 +229,16 @@ private extension TranscriptionFeature {
 // MARK: - HotKey Press/Release Handlers
 
 private extension TranscriptionFeature {
-  func handleHotKeyPressed(isTranscribing: Bool, minimumKeyTime: Double) -> Effect<Action> {
+  func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
+    // If already transcribing, cancel first. Otherwise start recording immediately.
     let maybeCancel = isTranscribing ? Effect.send(Action.cancel) : .none
-
-    // We wait minimumKeyTime before actually sending `.startRecording`
-    // so the user can do a quick press => do something else
-    // (like a double-tap).
-    let delayedStart = Effect.run { send in
-      try await Task.sleep(for: .seconds(minimumKeyTime))
-      await send(Action.startRecording)
-    }
-    .cancellable(id: CancelID.delayedRecord, cancelInFlight: true)
-
-    return .merge(maybeCancel, delayedStart)
+    let startRecording = Effect.send(Action.startRecording)
+    return .merge(maybeCancel, startRecording)
   }
 
   func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
-    if isRecording {
-      // We actually stop if we’re currently recording
-      return .send(.stopRecording)
-    } else {
-      // If not recording yet, just cancel the delayed start
-      return .cancel(id: CancelID.delayedRecord)
-    }
+    // Always stop recording when hotkey is released
+    return isRecording ? .send(.stopRecording) : .none
   }
 }
 
@@ -422,7 +437,7 @@ private extension TranscriptionFeature {
   }
 }
 
-// MARK: - Cancel Handler
+// MARK: - Cancel/Discard Handlers
 
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
@@ -430,13 +445,28 @@ private extension TranscriptionFeature {
     state.isRecording = false
     state.isPrewarming = false
 
+    // Allow system to sleep again
+    reallowSystemSleep(&state)
+
     return .merge(
       .cancel(id: CancelID.transcription),
-      .cancel(id: CancelID.delayedRecord),
       .run { _ in
         await soundEffect.play(.cancel)
       }
     )
+  }
+
+  func handleDiscard(_ state: inout State) -> Effect<Action> {
+    state.isRecording = false
+    state.isPrewarming = false
+
+    // Allow system to sleep again
+    reallowSystemSleep(&state)
+
+    // Silently discard - no sound effect
+    return .run { _ in
+      _ = await recording.stopRecording()
+    }
   }
 }
 

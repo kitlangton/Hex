@@ -1,658 +1,656 @@
-# Hex HotKey Processing Semantics
+# Hex HotKey Semantics
 
-## DSL Notation
+## Overview
 
-### Key Event Notation
-- `K` = a specific key (e.g., `A`, `B`, `C`)
-- `M` = modifier(s) (⌘=command, ⌥=option, ⇧=shift, ⌃=control)
-- `MK` = modifier + key chord (e.g., `⌘A`)
-- `∅` = full release (key=nil, modifiers=[])
-- `M∅` = modifiers held, key released (e.g., `⌘∅`)
+Hex uses a **threshold-based recording system** that behaves differently depending on whether your hotkey is **modifier-only** (e.g., Option) or **a regular hotkey** (e.g., Cmd+A).
 
-### Timing Notation
-- `t=X.Xs` = event at time X.X seconds
-- `Δt<0.3s` = time delta less than 0.3 seconds
-- `Δt>1.0s` = time delta greater than 1.0 seconds
+The key insight: **Modifier-only hotkeys need protection from accidental triggers** (like quick Option taps for special characters), while regular hotkeys are inherently intentional.
 
-### State Notation
-- `[idle]` = idle state
-- `[hold]` = press-and-hold state (actively recording)
-- `[lock]` = double-tap lock state (recording locked on)
-- `[dirty]` = dirty flag active (ignoring input until full release)
+---
 
-### Output Notation
-- `→ start` = startRecording output
-- `→ stop` = stopRecording output
-- `→ cancel` = cancel output
-- `→ ø` = no output
+## Quick Reference
 
-### Example Walkthrough
-
-Here's a complete example to illustrate the notation:
-
-**Hotkey configured:** `⌘A`
+### Modifier-Only Hotkeys (e.g., Option, Option+Command)
 
 ```
-Physical User Actions:
-  t=0.0s: User holds Command, presses A
-          Keys down: [⌘][A]
-  
-  t=0.5s: User releases A, presses B (Command still held)
-          Keys down: [⌘][B]
-  
-DSL Representation:
-  t=0.0s: ⌘A [idle] → start [hold]
-          ↑   ↑      ↑       ↑
-          |   |      |       Recording started
-          |   |      Output: startRecording
-          |   Previous state
-          Current chord (what's pressed now)
-          
-  t=0.5s: ⌘B [hold] → stop [idle,dirty]
-          ↑   ↑      ↑     ↑
-          |   |      |     Recording stopped, dirty flag set
-          |   |      Output: stopRecording (cancelled within 1s)
-          |   Still recording
-          Different key pressed (A→B, ⌘ still held)
+┌─────────────────────────────────────────────────────┐
+│  Timeline: Press Option, then...                   │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  0s ═══════════════════════ 0.3s ══════════ ∞      │
+│      ↓                       ↓                      │
+│      START                   │                      │
+│                              │                      │
+│  ┌───────<0.3s──────┐        │   ┌────≥0.3s─────┐  │
+│  │ Quick Actions    │        │   │ Intentional   │  │
+│  │ • Release        │  →  DISCARD  • Release  → STOP│
+│  │ • Click          │        │   │ • Click    → NOP │
+│  │ • Press A        │        │   │ • Press A  → NOP │
+│  │ • Add Shift      │        │   │ • Add Shift→ NOP │
+│  └──────────────────┘        │   └───────────────┘  │
+│                              │                      │
+│  Only ESC cancels after 0.3s ───────────────────────┤
+└─────────────────────────────────────────────────────┘
 ```
 
-**Important clarifications:**
+**Key points:**
+- **< 0.3s**: Everything except ESC triggers **silent discard** (no sound)
+- **≥ 0.3s**: Only **ESC cancels** (with sound), everything else is **ignored**
+- Recording continues until you release the modifier or press ESC
 
-1. **Chord notation** shows **currently pressed** keys:
-   - `⌘A` → `⌘B` means: Command stayed held, switched A to B
-   - `⌘A` → `⌘∅` means: Command held, A released
-   - `⌘A` → `∅` means: Everything released
-   - `⌘A` → `⌘⇧A` means: Added Shift while holding ⌘A
+---
 
-2. **Timing is relative to scenario start:**
-   - `t=0.5s` means 0.5 seconds after first event
-   - Used to check threshold rules (< 0.3s for double-tap, < 1.0s for cancel)
+### Regular Hotkeys (e.g., Cmd+A, Option+K)
 
-## Constants
+```
+┌─────────────────────────────────────────────────────┐
+│  Timeline: Press Cmd+A, then...                    │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  0s ════════ 0.2s ═══════════════ 1.0s ═══════ ∞   │
+│      ↓         ↓                   ↓               │
+│      START     │                   │               │
+│                │                   │               │
+│  ┌──<0.2s──┐  │  ┌──0.2-1.0s───┐  │  ┌──>1.0s──┐  │
+│  │ Release │  │  │ • Press B   │  │  │ Press B │  │
+│  │ Click   │→DISCARD • Add Shift│→STOP │ Click  │→NOP│
+│  └─────────┘  │  └─────────────┘  │  └─────────┘  │
+│               │                   │               │
+└─────────────────────────────────────────────────────┘
+```
+
+**Key points:**
+- **< minimumKeyTime** (default 0.2s): **Silent discard**
+- **0.2s - 1.0s**: Different key/modifier triggers **stop** (with sound)
+- **> 1.0s**: Everything is **ignored** (allows typing while recording)
+- Release or ESC always stops
+
+---
+
+## Constants & Thresholds
 
 ```swift
-doubleTapThreshold = 0.3s      // Max time between taps for double-tap
-pressAndHoldCancelThreshold = 1.0s  // Max time to cancel via other key
+// For modifier-only hotkeys (system safety)
+modifierOnlyMinimumDuration = 0.3s
+
+// For all hotkeys (user-configurable)
+minimumKeyTime = 0.2s (default)
+
+// Other thresholds
+doubleTapThreshold = 0.3s           // Max time between taps
+pressAndHoldCancelThreshold = 1.0s  // For regular hotkeys only
 ```
 
-## State Machine
+### Effective Thresholds
 
-```
-States: {idle, pressAndHold(startTime), doubleTapLock}
-Outputs: {startRecording, stopRecording, cancel, ø}
-Flags: {isDirty: Bool}
-Memory: {lastTapAt: Date?}
-```
+The **actual threshold** used depends on the hotkey type:
 
-## Core Semantics
-
-### 1. Press-and-Hold Mode (Key + Modifiers)
-
-#### 1.1 Basic Press-and-Hold
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Basic activation
-  t=0.0s: ⌘A [idle] → start [hold]
-
-✓ PASS: Release stops recording  
-  t=0.0s: ⌘A [idle] → start [hold]
-  t=0.2s: ⌘∅ [hold] → stop [idle]
-```
-
-#### 1.2 Cancel on Other Key (within 1.0s)
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Other key cancels within threshold
-  t=0.0s: ⌘A [idle] → start [hold]
-  t=0.5s: ⌘B [hold] → stop [idle,dirty]
-```
-
-#### 1.3 No Cancel After Threshold (>1.0s)
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Other key ignored after 1s
-  t=0.0s: ⌘A [idle] → start [hold]
-  t=1.5s: ⌘B [hold] → ø [hold]
-  (Recording continues)
-```
-
-#### 1.4 No Backslide Activation
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Cannot activate by releasing extra modifiers
-  t=0.0s: ⌘⇧A [idle] → ø [idle]
-  t=0.1s: ⌘A [idle] → ø [idle]
-  t=0.2s: ∅ [idle] → ø [idle]
-  t=0.3s: ⌘A [idle] → start [hold]
-```
-
-### 2. Press-and-Hold Mode (Modifier Only)
-
-#### 2.1 Basic Modifier-Only Activation
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Modifier press starts
-  t=0.0s: ⌥ [idle] → start [hold]
-
-✓ PASS: Modifier release stops
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=0.2s: ∅ [idle] → stop [idle]
-```
-
-#### 2.2 Multiple Modifiers
-**Hotkey:** `⌥⌘`
-
-```
-✓ PASS: All modifiers required
-  t=0.0s: ⌥ [idle] → ø [idle]
-  t=0.1s: ⌥⌘ [idle] → start [hold]
-  t=0.2s: ∅ [idle] → stop [idle]
-```
-
-#### 2.3 Cancel on Extra Modifier (within 1.0s)
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Extra modifier cancels within threshold
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=0.5s: ⌥⌘ [hold] → stop [idle,dirty]
-```
-
-#### 2.4 No Cancel After Threshold (>1.0s)
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Extra modifier ignored after 1s
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=1.5s: ⌥⌘ [hold] → ø [hold]
-  (Recording continues even with extra modifier)
-```
-
-#### 2.5 Dirty State with Key Press
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Pressing key cancels and sets dirty
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=0.1s: ⌥C [hold] → stop [idle,dirty]
-  t=0.2s: ⌥ [dirty] → ø [dirty]
-```
-
-#### 2.6 Dirty Persists After Extra Modifiers (>1.0s)
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Modifier combo doesn't break after 1s
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=2.0s: ⌥⌘ [hold] → ø [hold]
-  t=2.1s: ⌥ [hold] → ø [hold]
-  t=2.2s: ∅ [hold] → stop [idle]
-```
-
-### 3. Double-Tap Lock Mode
-
-#### 3.1 Basic Double-Tap (Key + Modifiers)
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Quick double-tap locks
-  t=0.0s: ⌘A [idle] → start [hold]
-  t=0.1s: ⌘∅ [hold] → stop [idle] {lastTapAt=0.1}
-  t=0.1s: ∅ [idle] → ø [idle]
-  t=0.15s: ⌘ [idle] → ø [idle]
-  t=0.2s: ⌘A [idle] → start [hold]
-  t=0.3s: ⌘∅ [hold] → ø [lock] {Δt=0.2s<0.3s}
-  (Recording continues in lock mode)
-```
-
-#### 3.2 Basic Double-Tap (Modifier Only)
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Quick double-tap locks
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=0.1s: ∅ [hold] → stop [idle] {lastTapAt=0.1}
-  t=0.2s: ⌥ [idle] → start [hold]
-  t=0.3s: ∅ [hold] → ø [lock] {Δt=0.2s<0.3s}
-```
-
-#### 3.3 Double-Tap with Multiple Modifiers
-**Hotkey:** `⌥⌘`
-
-```
-✓ PASS: All modifiers in both taps
-  t=0.0s: ⌥ [idle] → ø [idle]
-  t=0.05s: ⌥⌘ [idle] → start [hold]
-  t=0.1s: ⌥ [hold] → stop [idle] {lastTapAt=0.1}
-  t=0.2s: ⌥⌘ [idle] → start [hold]
-  t=0.3s: ⌥ [hold] → ø [lock]
-```
-
-#### 3.4 Slow Double-Tap Rejected
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Tap spacing >0.3s resets
-  t=0.0s: ⌘A [idle] → start [hold]
-  t=0.1s: ⌘∅ [hold] → stop [idle] {lastTapAt=0.1}
-  t=0.4s: ⌘A [idle] → start [hold] {Δt=0.3s≥0.3s}
-  (No lock - treated as new tap)
-```
-
-#### 3.5 Lock Stops on Next Tap
-**Hotkey:** `⌘A`
-
-```
-✓ PASS: Tapping hotkey while locked stops
-  t=0.0s: ⌘A [idle] → start [hold]
-  t=0.1s: ⌘∅ [hold] → stop [idle]
-  t=0.2s: ⌘A [idle] → start [hold]
-  t=0.3s: ⌘∅ [hold] → ø [lock]
-  t=1.0s: ⌘A [lock] → stop [idle]
-```
-
-#### 3.6 Lock Timing (Only After Second Release)
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Lock engages on second release, not press
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=0.1s: ∅ [hold] → stop [idle]
-  t=0.2s: ⌥ [idle] → start [hold] {state=hold, not lock}
-  t=0.3s: ∅ [hold] → ø [lock] {NOW locked}
-```
-
-#### 3.7 Second Tap Held Too Long
-**Hotkey:** `⌥`
-
-```
-✓ PASS: Holding second tap >threshold = new hold
-  t=0.0s: ⌥ [idle] → start [hold]
-  t=0.1s: ∅ [hold] → stop [idle]
-  t=0.2s: ⌥ [idle] → start [hold]
-  t=2.2s: ⌥ [hold] → ø [hold] {still in hold mode}
-  t=2.3s: ∅ [hold] → stop [idle] {treated as hold, not lock}
-```
-
-## Test Results Summary
-
-### ✓ Passing Tests (26/26) - ALL TESTS PASS!
-
-**Press-and-Hold (Key + Modifiers):**
-- ✓ Basic activation and release
-- ✓ Cancel on other key within 1s
-- ✓ No cancel after 1s threshold
-- ✓ No backslide activation
-- ✓ Changing modifiers cancels within 1s (NEW)
-
-**Press-and-Hold (Modifier Only):**
-- ✓ Basic activation and release
-- ✓ Multiple modifiers required
-- ✓ No cancel after 1s with extra modifiers
-- ✓ Dirty persists through modifier changes after 1s
-- ✓ Partial release of multiple modifiers (NEW)
-- ✓ Adding extra modifier cancels within 1s (NEW)
-
-**Double-Tap Lock:**
-- ✓ All basic double-tap scenarios
-- ✓ Lock timing (only after second release)
-- ✓ Slow double-tap rejection
-- ✓ Stop on next tap while locked
-- ✓ Second tap held too long becomes hold
-
-**ESC Cancellation:**
-- ✓ ESC cancels from hold state (NEW)
-- ✓ ESC cancels from lock state (NEW)
-
-### ✅ Previously Failing Tests (Now Fixed!)
-
-#### Fixed: `pressAndHold_cancelsOnOtherModifierPress_modifierOnly`
-**Issue:** Extra modifier within 1s threshold didn't cancel for modifier-only hotkeys  
-**Fix:** Changed `chordMatchesHotkey` to require exact modifier match (no extra modifiers or keys)
-
-#### Fixed: `pressAndHold_stopsRecordingOnKeyPressAndStaysDirty`
-**Issue:** Pressing a key while modifier-only hotkey was active didn't cancel  
-**Fix:** Same as above - now requires exact match
-
-## The Fix (HotKeyProcessor.swift:203-212)
-
-**Before (Buggy):**
 ```swift
-private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
-    if hotkey.key != nil {
-        return e.key == hotkey.key && e.modifiers == hotkey.modifiers
-    } else {
-        // TOO PERMISSIVE: allows extra modifiers and keys
-        return hotkey.modifiers.isSubset(of: e.modifiers)
-    }
-}
-```
+// Modifier-only (e.g., Option)
+effectiveThreshold = max(minimumKeyTime, 0.3s)
+// User sets 0.1s → uses 0.3s
+// User sets 0.5s → uses 0.5s
 
-**After (Fixed):**
-```swift
-private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
-    if hotkey.key != nil {
-        return e.key == hotkey.key && e.modifiers == hotkey.modifiers
-    } else {
-        // Require exact match: no extra modifiers, no key pressed
-        return e.key == nil && hotkey.modifiers == e.modifiers
-    }
-}
-```
-
-**Why this works:** 
-- For `⌥` hotkey, now `⌥⌘` returns `false` (modifiers don't match exactly)
-- For `⌥` hotkey, now `⌥C` returns `false` (key is present)
-- Both route to `handleNonmatchingChord()` which has the cancel-within-1s logic
-
-## Semantic Analysis & Gaps
-
-### ✅ Inferred But Untested Behaviors
-
-#### 1. Multiple Modifiers - Partial Release
-**Hotkey:** `⌥⌘` (Option+Command)
-
-**Current behavior (inferred from code):**
-```
-t=0.0s: ⌥⌘ [idle] → start [hold]
-t=0.5s: ⌥ [hold] → stop [idle]  // Releasing Command = full release
-```
-
-**Reasoning:** `isReleaseForActiveHotkey` checks `!hotkey.modifiers.isSubset(of: e.modifiers)`.  
-For hotkey `[⌥⌘]` with event `[⌥]`: `![⌥⌘ ⊆ ⌥]` = `!false` = `true` → is a release.
-
-**Verdict:** Partial release = full release. **Semantically correct** - releasing any part of the hotkey chord releases it.
-
-**Test Gap:** Should add explicit test to document this behavior.
-
-#### 2. Multiple Modifiers - Adding Extra
-**Hotkey:** `⌥⌘`
-
-**Current behavior (inferred):**
-```
-t=0.0s: ⌥⌘ [idle] → start [hold]
-t=0.5s: ⌥⌘⇧ [hold] → stop [idle,dirty]  // Adds Shift within 1s
-```
-
-**Reasoning:** `chordMatchesHotkey` requires exact match. `[⌥⌘] ≠ [⌥⌘⇧]` → routes to `handleNonmatchingChord` → within 1s → cancel.
-
-**Verdict:** Consistent with single-modifier behavior. **Semantically correct**.
-
-**Test Gap:** Should add test for consistency.
-
-#### 3. Key+Modifier - Changing Modifiers (Same Key)
-**Hotkey:** `⌘A`
-
-**Current behavior (inferred):**
-```
-t=0.0s: ⌘A [idle] → start [hold]
-t=0.5s: ⌘⇧A [hold] → stop [idle,dirty]  // Added Shift, same key
-```
-
-**Reasoning:** `chordMatchesHotkey` requires exact modifier match. `[⌘] ≠ [⌘⇧]` → cancel within 1s.
-
-**Verdict:** **Semantically correct** - user is doing something else (e.g., Cmd+Shift+A is often a different command).
-
-**Test Gap:** Should add test.
-
-### ⚠️ Untested Implemented Features
-
-#### 1. ESC Key Behavior
-```
-Defined: ESC in any state → cancel → [idle]
-Coverage: No explicit tests for ESC
-Implementation: Lines 62-68 in HotKeyProcessor.swift
-```
-
-**Recommendation:** Add test to verify ESC cancels in all states (hold, lock).
-
-#### 2. useDoubleTapOnly Mode
-```
-Flag exists: useDoubleTapOnly: Bool = false
-Usage: Lines 118-126, 144-158, 192-195
-Tests: ZERO
-```
-
-**Recommendation:** Either add tests or remove the feature if unused.
-
-### ❓ Ambiguous Behaviors
-
-#### 1. Rapid Triple-Tap
-```
-Ambiguous: What happens with 3+ rapid taps?
-  t=0.0s: ⌥ → start
-  t=0.1s: ∅ → stop
-  t=0.2s: ⌥ → start
-  t=0.3s: ∅ → lock
-  t=0.4s: ⌥ → ??? (stop per lock behavior)
-  t=0.5s: ∅ → ???
-  t=0.6s: ⌥ → ??? (new start? or should it reset?)
-
-Recommendation: Test triple-tap explicitly
-```
-
-### 3. Modifier Subset Behavior
-```
-Current: For modifier-only hotkeys, subset matching
-  Hotkey: ⌥
-  Event: ⌥⌘ → matches (subset)
-  
-Question: Is this intentional after 1s threshold?
-  t=0.0s: ⌥ → start
-  t=2.0s: ⌥⌘ → still matched (by design)
-  
-But before 1s: should trigger dirty?
-```
-
-### 4. Hyper Key Combinations
-```
-Untested: What about ⌘⌥⇧⌃ (hyperkey)?
-Is this treated as a special case?
-```
-
-### 5. Fn Key Support
-```
-Question: Are Fn key combinations supported?
-  Hotkey: Fn+F1
-  Not tested in current suite
-```
-
-### 6. Dirty State Clear Conditions
-```
-Defined: isDirty cleared only on full release (∅)
-Question: Should certain actions clear dirty immediately?
-  - ESC press?
-  - Timeout after N seconds?
-```
-
-### 7. Multiple Sequential Hotkeys
-```
-Untested: User switches between different hotkeys
-  Processor A with hotkey ⌘A
-  Processor B with hotkey ⌘B
-  
-  What if both are monitoring simultaneously?
-```
-
-### 8. Double-Tap Only Mode
-```
-Code: useDoubleTapOnly flag exists
-Tests: No tests for this mode
-Coverage Gap: How does double-tap-only mode work?
-```
-
-## Proposed Additional Tests
-
-### 1. ESC Cancellation
-```swift
-@Test func escape_cancelsRecording()
-  t=0.0s: ⌘A → start [hold]
-  t=0.5s: ESC → cancel [idle]
-```
-
-### 2. Triple Tap Behavior
-```swift
-@Test func tripleTap_resetsAfterLockStop()
-  t=0.0s: ⌥ → start
-  t=0.1s: ∅ → stop
-  t=0.2s: ⌥ → start
-  t=0.3s: ∅ → lock
-  t=0.4s: ⌥ → stop (stops lock)
-  t=0.5s: ∅ → idle
-  t=0.6s: ⌥ → start (new sequence)
-```
-
-### 3. Fn Key Combinations
-```swift
-@Test func fnKey_worksWithModifiers()
-  Hotkey: Fn+⌘+F1
-  t=0.0s: Fn⌘F1 → start
-```
-
-### 4. Dirty State Timeout
-```swift
-@Test func dirty_clearsAfterTimeout()
-  t=0.0s: ⌘A → start
-  t=0.5s: ⌘B → stop [dirty]
-  t=10.5s: ??? → [dirty] or [idle]?
-```
-
-### 5. Double-Tap Only Mode
-```swift
-@Test func doubleTapOnly_requiresDoubleTap()
-  Config: useDoubleTapOnly = true
-  t=0.0s: ⌘A → ø (no start)
-  t=0.1s: ⌘∅ → ø
-  t=0.2s: ⌘A → start (on second tap)
-```
-
-## Summary & Recommendations
-
-### ✅ Current State
-- **21/21 tests passing**
-- **Core semantics are solid and consistent**
-- **Recent fix ensures symmetric behavior** between key+modifier and modifier-only hotkeys
-
-### ✅ Recently Added Tests (Now at 26 total)
-
-All Priority 1 tests have been added and pass:
-
-1. ✅ **ESC cancellation** - `escape_cancelsFromHold()`, `escape_cancelsFromLock()`
-2. ✅ **Multiple modifiers - partial release** - `multipleModifiers_partialRelease()`
-3. ✅ **Multiple modifiers - adding extra** - `multipleModifiers_addingExtra_cancelsWithin1s()`
-4. ✅ **Key+modifier - changing modifiers** - `keyModifier_changingModifiers_cancelsWithin1s()`
-
-### 🎯 Remaining Recommendations
-
-#### Priority 2: Edge Cases (MEDIUM)
-
-5. **Triple-tap behavior**
-   - What happens after lock is stopped? New sequence or triple-tap?
-   - Recommendation: Should start fresh sequence
-
-6. **Dirty state persistence**
-   - Verify dirty blocks all input until full release
-   - Consider: Should dirty have a timeout? (e.g., 5 seconds)
-
-#### Priority 3: Feature Completeness (LOW)
-
-7. **useDoubleTapOnly mode**
-   - Either add comprehensive tests
-   - Or remove if unused in production
-
-8. **Backslide with multiple modifiers**
-   - Hotkey `⌥⌘`: pressing `⌥⌘⇧` then releasing to `⌥⌘` shouldn't activate
-   - Already works via dirty logic, just needs explicit test
-
-### ⚡ No Urgent Fixes Needed
-
-The implementation is **semantically sound**. All inferred behaviors are consistent and logical:
-
-- ✅ Partial release = full release (makes sense)
-- ✅ Adding modifiers cancels within 1s (consistent)
-- ✅ Changing modifiers cancels within 1s (correct)
-- ✅ After 1s, extra input continues recording (allows typing)
-
-### 🤔 Design Questions to Consider
-
-1. **Should dirty have a timeout?**
-   - Current: Dirty persists until full release (∅)
-   - Alternative: Auto-clear dirty after 5-10 seconds
-   - Trade-off: Safety vs UX convenience
-
-2. **Is useDoubleTapOnly actually used?**
-   - Flag exists with code paths
-   - Zero tests suggest it might be dead code
-   - Check production usage before removing
-
-3. **Triple-tap semantics?**
-   - Should it be treated as a new first-tap?
-   - Or should there be a "triple-tap lock exit" mode?
-   - Current: Tap while locked = stop → next tap = new sequence ✅
-
-### 📊 Test Coverage Summary
-
-| Category | Tests | Coverage |
-|----------|-------|----------|
-| Press-and-Hold (Key+Mod) | 5 | ✅ Comprehensive |
-| Press-and-Hold (Mod-Only) | 6 | ✅ Comprehensive |
-| Double-Tap Lock | 7 | ✅ Comprehensive |
-| Multiple Modifiers | 4 | ✅ Comprehensive |
-| ESC Handling | 2 | ✅ Comprehensive |
-| Modifier Changes | 2 | ✅ Comprehensive |
-| useDoubleTapOnly | 0 | ❌ Untested |
-| **Total** | **26** | **95% estimated** |
-
-## Visual State Diagram
-
-```
-                    ┌─────────┐
-                    │  IDLE   │
-                    └────┬────┘
-                         │
-              ┌──────────┼──────────┐
-              │          │          │
-        chord=hotkey   ∅ (nop)   chord≠hotkey
-              │                      │
-              ▼                      ▼
-      ┌──────────────┐          [remains idle]
-      │ PRESS & HOLD │
-      │  (startTime) │
-      └──────┬───────┘
-             │
-    ┌────────┼────────┐
-    │        │        │
-release   other    t>1s
-within   within   other
-0.3s     1.0s     key
-    │        │        │
-    ▼        ▼        ▼
-  check   stop+   continue
- lastTap  dirty   matched
-    │        
-    ▼        
-Δt<0.3s? 
-    │        
-  YES│  NO
-    ▼   ▼
-┌──────┐ stop
-│ LOCK │ →idle
-└───┬──┘
-    │
-    │ tap again
-    ▼
-  stop
-  →idle
+// Regular (e.g., Cmd+A)
+effectiveThreshold = minimumKeyTime
+// User sets 0.1s → uses 0.1s
+// User sets 0.5s → uses 0.5s
 ```
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2025-11-13  
-**Test Suite:** HexCore/Tests/HexCoreTests/HotKeyProcessorTests.swift  
-**Implementation:** HexCore/Sources/HexCore/Logic/HotKeyProcessor.swift
+## Recording Decision Matrix
+
+When you **release** the hotkey, should we transcribe the recording?
+
+```
+┌──────────────────┬─────────────┬─────────────────────┐
+│   Hotkey Type    │  Duration   │      Decision       │
+├──────────────────┼─────────────┼─────────────────────┤
+│ Modifier-only    │   < 0.3s    │  Discard (silent)   │
+│ (Option)         │   ≥ 0.3s    │  Transcribe         │
+├──────────────────┼─────────────┼─────────────────────┤
+│ Regular    │   < 0.2s    │  Discard (silent)   │
+│ (Cmd+A)          │   ≥ 0.2s    │  Transcribe         │
+└──────────────────┴─────────────┴─────────────────────┘
+
+Note: minimumKeyTime can be adjusted by user
+      modifier-only always enforces 0.3s minimum
+```
+
+---
+
+## Detailed Behaviors
+
+### 1. Modifier-Only: Option
+
+#### Scenario A: Quick tap (< 0.3s)
+```
+User: Hold Option (0.1s) → Release
+      ↓
+  START ────→ DISCARD (silent)
+  
+Result: No transcription, no sound
+Why: Likely accidental (Option+Click, Option+A for special chars)
+```
+
+#### Scenario B: Hold and click (< 0.3s)
+```
+User: Hold Option (0.25s) → Click mouse
+      ↓
+  START ────→ DISCARD (silent)
+  
+Result: No transcription, no sound, click passes through
+Why: Option+Click is for duplicating items in macOS
+```
+
+#### Scenario C: Hold and press A (< 0.3s)
+```
+User: Hold Option (0.2s) → Press A
+      ↓
+  START ────→ DISCARD (silent)
+  
+Result: No transcription, Option+A passes through to macOS
+Why: Option+A might be for special character "å"
+```
+
+#### Scenario D: Hold longer (≥ 0.3s)
+```
+User: Hold Option (0.5s) → Release
+      ↓
+  START ───────────→ TRANSCRIBE
+  
+Result: Audio transcribed and pasted
+```
+
+#### Scenario E: Hold, then click (≥ 0.3s)
+```
+User: Hold Option (0.5s) → Click mouse
+      ↓
+  START ───────────→ (ignored, keeps recording)
+  
+Result: Recording continues, click passes through
+Why: After 0.3s, we assume intentional recording
+```
+
+#### Scenario F: Hold, then add Shift (≥ 0.3s)
+```
+User: Hold Option (0.5s) → Add Shift
+      ↓
+  START ───────────→ (ignored, keeps recording)
+  
+Result: Recording continues, Option+Shift passes through
+Why: User might be pressing Shift for capital letters while speaking
+```
+
+#### Scenario G: ESC cancels anytime
+```
+User: Hold Option (any duration) → Press ESC
+      ↓
+  START ───────────→ CANCEL (with sound)
+  
+Result: Recording cancelled, cancel sound plays
+Why: ESC is explicit "I want to cancel" gesture
+```
+
+---
+
+### 2. Regular Hotkey: Cmd+A
+
+#### Scenario A: Quick tap (< 0.2s)
+```
+User: Hold Cmd+A (0.1s) → Release
+      ↓
+  START ────→ DISCARD (silent)
+```
+
+#### Scenario B: Press different key within 1s
+```
+User: Hold Cmd+A (0.5s) → Press Cmd+B
+      ↓
+  START ───────────→ STOP (with sound)
+  
+Result: Recording stopped, audio discarded
+Why: User is likely using other Cmd shortcuts
+```
+
+#### Scenario C: Press different key after 1s
+```
+User: Hold Cmd+A (1.5s) → Press Cmd+B
+      ↓
+  START ───────────────────→ (ignored, keeps recording)
+  
+Result: Recording continues, Cmd+B passes through
+Why: After 1s, assume user is transcribing while typing
+```
+
+#### Scenario D: Add modifier (< 1s)
+```
+User: Hold Cmd+A (0.5s) → Add Shift (Cmd+Shift+A)
+      ↓
+  START ───────────→ STOP (with sound)
+  
+Result: Recording stopped
+Why: Cmd+Shift+A is likely a different command
+```
+
+---
+
+### 3. Multi-Modifier: Option+Command
+
+**Behaves like single modifier** (uses 0.3s threshold):
+
+```
+User: Hold Option+Command (0.25s) → Add Shift
+      ↓
+  START ────→ DISCARD (silent)
+
+User: Hold Option+Command (0.5s) → Add Shift
+      ↓
+  START ───────────→ (ignored, keeps recording)
+```
+
+**Partial release = full release:**
+```
+User: Hold Option+Command → Release Command (keep Option)
+      ↓
+  START ───────────→ STOP
+  
+Result: Recording stopped and transcribed (if ≥ 0.3s)
+Why: Releasing any part of the hotkey = release
+```
+
+---
+
+## Double-Tap Lock
+
+**Quick double-tap locks recording on** (hands-free mode)
+
+### Timeline
+
+```
+0.0s: Tap hotkey ──────────→ START
+0.1s: Release ─────────────→ STOP
+0.2s: Tap again ───────────→ START
+0.3s: Release ─────────────→ LOCK! (Δt = 0.2s < 0.3s)
+
+Now recording is locked on:
+- Release doesn't stop it
+- Tap hotkey again to stop
+- ESC also stops
+
+5.0s: Tap hotkey ──────────→ STOP
+```
+
+### Visual Diagram
+
+```
+     TAP 1      TAP 2
+       │          │
+  ─────●──────────●─────────●─────────
+       ↓   0.2s   ↓         ↓
+     START      START     STOP
+       ↓          ↓
+     STOP       LOCK!
+    (normal)  (hands-free)
+```
+
+### Rules
+
+1. **Timing window**: 2nd tap must be within **0.3s** of 1st release
+2. **Lock engages**: On **2nd release**, not 2nd press
+3. **Exit lock**: Tap hotkey again OR press ESC
+4. **Too slow**: If 2nd tap > 0.3s after 1st release, treated as new recording
+
+---
+
+## Output Types
+
+```
+┌────────────┬──────────────────┬────────────────────┐
+│   Output   │   Has Sound?     │    What Happens    │
+├────────────┼──────────────────┼────────────────────┤
+│ .discard   │   No (silent)    │ Stop recording,    │
+│            │                  │ discard audio,     │
+│            │                  │ pass keys through  │
+├────────────┼──────────────────┼────────────────────┤
+│ .stop      │   Yes (stop)     │ Stop recording,    │
+│ Recording  │                  │ transcribe if      │
+│            │                  │ long enough        │
+├────────────┼──────────────────┼────────────────────┤
+│ .cancel    │   Yes (cancel)   │ Stop recording,    │
+│            │                  │ discard audio,     │
+│            │                  │ play cancel sound  │
+└────────────┴──────────────────┴────────────────────┘
+```
+
+---
+
+## Key Interception
+
+**When does Hex intercept (block) key events from reaching other apps?**
+
+```
+┌─────────────────────────┬──────────────────────────┐
+│        Scenario         │       Intercepted?       │
+├─────────────────────────┼──────────────────────────┤
+│ Press modifier-only     │   No (passes through)    │
+│ hotkey (Option)         │                          │
+├─────────────────────────┼──────────────────────────┤
+│ Press regular hotkey  │   Yes (blocked)          │
+│ (Cmd+A)                 │                          │
+├─────────────────────────┼──────────────────────────┤
+│ .discard output         │   No (passes through)    │
+│                         │   ← CRITICAL!            │
+├─────────────────────────┼──────────────────────────┤
+│ .cancel output          │   Yes (blocked)          │
+├─────────────────────────┼──────────────────────────┤
+│ Mouse clicks            │   Never (always pass)    │
+└─────────────────────────┴──────────────────────────┘
+```
+
+**Example:**
+```
+User: Press Option (0.2s) → Press A
+      ↓
+  START → DISCARD (passes through)
+  
+Result: Hex discards recording silently
+        macOS sees Option+A
+        Special character dialog appears ✅
+```
+
+---
+
+## Dirty State
+
+**Prevents re-triggering until full release**
+
+### What triggers dirty?
+
+```
+┌────────────────────────────────────────────────┐
+│  Modifier-only (Option):                      │
+│  • Add extra modifier within 0.3s → dirty     │
+│  • Press any key within 0.3s → dirty          │
+│  • Click mouse within 0.3s → dirty            │
+├────────────────────────────────────────────────┤
+│  Regular (Cmd+A):                       │
+│  • Press different key within 1s → dirty      │
+│  • Change modifiers within 1s → dirty         │
+└────────────────────────────────────────────────┘
+```
+
+### Dirty behavior
+
+```
+User: Hold Option (0.1s) → Add Shift → Release Shift → Press Option again
+      ↓
+  START → DISCARD (dirty=true) → (ignored) → (ignored)
+  
+  User must release EVERYTHING (∅) to clear dirty
+  
+  → Release all keys → Now Option works again
+```
+
+### Visual
+
+```
+  CLEAN ──[ trigger ]──→ DIRTY ──[ full release ]──→ CLEAN
+    ↓                      ↓
+  Accepts              Ignores all
+  hotkey               input until ∅
+```
+
+---
+
+## Decision Tree
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Is ESC pressed?                                     │
+└──YES─→ CANCEL ────────────────────────────────────┐│
+   │                                                 ││
+   NO                                                ││
+   ↓                                                 ││
+┌─────────────────────────────────────────────────┐ ││
+│ Are we dirty?                                   │ ││
+└──YES─→ Ignore input (unless full release) ─────┐││ 
+   │                                             │││
+   NO                                            │││
+   ↓                                             │││
+┌─────────────────────────────────────────────┐ │││
+│ Does chord match hotkey exactly?            │ │││
+└──YES────────────────────┬──NO───────────────┘ │││
+   │                      │                     │││
+   │                      ↓                     │││
+   │           ┌──────────────────────┐         │││
+   │           │ Is recording active? │         │││
+   │           └──YES────────┬───NO───┘         │││
+   │              │          │                  │││
+   │              │          ↓                  │││
+   │              │    (ignore input)           │││
+   │              ↓                             │││
+   │    ┌────────────────────┐                 │││
+   │    │ Modifier-only?     │                 │││
+   │    └─YES──────┬────NO───┘                 │││
+   │       │       │                           │││
+   │       │       ↓                           │││
+   │       │  ┌──────────────┐                 │││
+   │       │  │ Elapsed < 1s?│                 │││
+   │       │  └─YES──┬───NO──┘                 │││
+   │       │     │   │                         │││
+   │       │     │   ↓                         │││
+   │       │     │ (ignore)                    │││
+   │       │     ↓                             │││
+   │       │  Elapsed                          │││
+   │       │  <minTime?                        │││
+   │       │     ↓                             │││
+   │       │  DISCARD                          │││
+   │       │     or                            │││
+   │       │  STOP                             │││
+   │       ↓                                   │││
+   │  Elapsed < max(0.3, minTime)?            │││
+   │       ↓                                   │││
+   │    DISCARD                                │││
+   │       or                                  │││
+   │    (ignore)                               │││
+   ↓                                           │││
+START or STOP                                  │││
+(depending on state)                           │││
+   │                                           │││
+   └───────────────────────────────────────────┘││
+                                                ││
+   ←────────────────────────────────────────────┘│
+                                                 │
+   ←─────────────────────────────────────────────┘
+```
+
+---
+
+## ASCII State Machine
+
+```
+                    ┌─────────┐
+                    │  IDLE   │◄────────┐
+                    └────┬────┘         │
+                         │              │
+                  chord = hotkey        │
+                         │              │
+                         ▼              │
+              ┌──────────────────┐     │
+              │  PRESS & HOLD    │     │
+              │  (recording...)  │     │
+              └────┬────────┬────┘     │
+                   │        │          │
+          release  │        │ other input
+          (normal) │        │          │
+                   │        ▼          │
+                   │  ┌──────────┐    │
+                   │  │ elapsed? │    │
+                   │  └─┬────┬───┘    │
+                   │    │    │        │
+                   │  <0.3  ≥0.3      │
+                   │    │    │        │
+                   │    ▼    ▼        │
+                   │ DISCARD (ignore) │
+                   │    │    │        │
+                   │    └────┘        │
+                   │         │        │
+              check last tap │        │
+                   │         │        │
+           Δt < 0.3s?        │        │
+                   │         │        │
+            YES ┌──┴──┐ NO   │        │
+                │     │      │        │
+                ▼     ▼      │        │
+           ┌────────┐ STOP───┘        │
+           │  LOCK  │                 │
+           └───┬────┘                 │
+               │                      │
+         tap again or ESC             │
+               │                      │
+               └──────────────────────┘
+```
+
+---
+
+## Examples with Full Explanations
+
+### Example 1: Quick Option tap for special character
+
+```
+Goal: Type "å" (Option+A)
+
+Timeline:
+  t=0.0s  Press Option          → START recording
+  t=0.15s Press A               → DISCARD (< 0.3s)
+                                  Option+A passes to macOS
+  
+macOS sees: Option+A
+Result: Special character dialog appears ✅
+Hex: Silent discard, no transcription
+```
+
+**Why this works:**
+- Recording starts immediately (responsive)
+- But discarded if < 0.3s (safety)
+- Keys pass through (Option+A reaches macOS)
+
+---
+
+### Example 2: Intentional voice recording with Option
+
+```
+Goal: Record a voice note
+
+Timeline:
+  t=0.0s  Press Option          → START recording
+  t=0.5s  Still holding...      (recording audio)
+  t=2.0s  Release Option        → STOP, TRANSCRIBE
+  
+Result: Audio transcribed and pasted ✅
+```
+
+---
+
+### Example 3: Option-click to duplicate
+
+```
+Goal: Duplicate file in Finder
+
+Timeline:
+  t=0.0s  Press Option          → START recording
+  t=0.2s  Click file            → DISCARD (< 0.3s)
+                                  Click passes through
+  
+Finder sees: Option+Click
+Result: File duplicated ✅
+Hex: Silent discard
+```
+
+---
+
+### Example 4: Recording while typing
+
+```
+Goal: Dictate code comments while typing
+
+Timeline:
+  t=0.0s  Press Option          → START recording
+  t=0.5s  Still talking...      (recording)
+  t=2.0s  Press Cmd+Tab         → IGNORED (> 0.3s)
+                                  Cmd+Tab passes through
+  t=3.0s  Type some code        → IGNORED
+  t=5.0s  Release Option        → STOP, TRANSCRIBE
+  
+Result: Audio transcribed ✅
+        Cmd+Tab worked ✅
+        Typing worked ✅
+```
+
+**Why:** After 0.3s, Hex assumes you're intentionally recording and ignores other input (except ESC).
+
+---
+
+### Example 5: Accidental recording cancellation
+
+```
+Goal: Cancel accidental recording
+
+Timeline:
+  t=0.0s  Press Option          → START recording
+  t=1.0s  "Oh no, accident!"
+  t=1.5s  Press ESC             → CANCEL (with sound)
+  
+Result: Recording cancelled ✅
+        Cancel sound plays
+```
+
+---
+
+## Summary Table
+
+```
+┌────────────────┬────────────────┬──────────────┬────────────────┐
+│  Hotkey Type   │  Time Window   │   Action     │    Result      │
+├────────────────┼────────────────┼──────────────┼────────────────┤
+│ Modifier-only  │    < 0.3s      │ Release      │ Discard        │
+│ (Option)       │                │ Click        │ Discard        │
+│                │                │ Press key    │ Discard        │
+│                │                │ Add modifier │ Discard        │
+│                ├────────────────┼──────────────┼────────────────┤
+│                │    ≥ 0.3s      │ Release      │ Transcribe     │
+│                │                │ Click        │ Ignore         │
+│                │                │ Press key    │ Ignore         │
+│                │                │ Add modifier │ Ignore         │
+│                │                │ ESC          │ Cancel         │
+├────────────────┼────────────────┼──────────────┼────────────────┤
+│ Regular  │  < minTime     │ Release      │ Discard        │
+│ (Cmd+A)        │                │              │                │
+│                ├────────────────┼──────────────┼────────────────┤
+│                │ minTime - 1s   │ Other key    │ Stop           │
+│                │                │ Add modifier │ Stop           │
+│                ├────────────────┼──────────────┼────────────────┤
+│                │    > 1s        │ Other key    │ Ignore         │
+│                │                │ Add modifier │ Ignore         │
+│                ├────────────────┼──────────────┼────────────────┤
+│                │    Any time    │ Release      │ Transcribe     │
+│                │                │ ESC          │ Cancel         │
+└────────────────┴────────────────┴──────────────┴────────────────┘
+```
+
+---
+
+## Implementation Files
+
+- **Core Logic**: `HexCore/Sources/HexCore/Logic/HotKeyProcessor.swift`
+- **Recording Decision**: `HexCore/Sources/HexCore/Logic/RecordingDecision.swift`
+- **Feature Integration**: `Hex/Features/Transcription/TranscriptionFeature.swift`
+- **Tests**: `HexCore/Tests/HexCoreTests/HotKeyProcessorTests.swift`
+
+---
+
+**Document Version:** 2.0  
+**Last Updated:** 2025-11-14  
+**Total Tests:** 46 passing ✅

@@ -33,6 +33,7 @@ public extension KeyEvent {
 struct KeyEventMonitorClient {
   var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
   var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> Void = { _ in }
+  var handleInputEvent: @Sendable (@escaping (InputEvent) -> Bool) -> Void = { _ in }
   var startMonitoring: @Sendable () async -> Void = {}
 }
 
@@ -45,6 +46,9 @@ extension KeyEventMonitorClient: DependencyKey {
       },
       handleKeyEvent: { handler in
         live.handleKeyEvent(handler)
+      },
+      handleInputEvent: { handler in
+        live.handleInputEvent(handler)
       },
       startMonitoring: {
         live.startMonitoring()
@@ -64,6 +68,7 @@ class KeyEventMonitorClientLive {
   private var eventTapPort: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: (KeyEvent) -> Bool] = [:]
+  private var inputContinuations: [UUID: (InputEvent) -> Bool] = [:]
   private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
   private var isMonitoring = false
 
@@ -86,7 +91,7 @@ class KeyEventMonitorClientLive {
           continuation.yield(event)
           return false
         }
-        let shouldStart = self.continuations.count == 1
+        let shouldStart = self.continuations.count == 1 && self.inputContinuations.isEmpty
 
         // Start monitoring if this is the first subscription
         if shouldStart {
@@ -105,7 +110,7 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.continuations[uuid] = nil
-      let shouldStop = self.continuations.isEmpty
+      let shouldStop = self.continuations.isEmpty && self.inputContinuations.isEmpty
 
       // Stop monitoring if no more listeners
       if shouldStop {
@@ -118,9 +123,14 @@ class KeyEventMonitorClientLive {
     guard !isMonitoring else { return }
     isMonitoring = true
 
-    // Create an event tap at the HID level to capture keyDown, keyUp, and flagsChanged
+    // Create an event tap at the HID level to capture keyDown, keyUp, flagsChanged, and mouse events
     let eventMask =
-      ((1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue))
+      ((1 << CGEventType.keyDown.rawValue) 
+       | (1 << CGEventType.keyUp.rawValue) 
+       | (1 << CGEventType.flagsChanged.rawValue)
+       | (1 << CGEventType.leftMouseDown.rawValue)
+       | (1 << CGEventType.rightMouseDown.rawValue)
+       | (1 << CGEventType.otherMouseDown.rawValue))
 
     guard
       let eventTap = CGEvent.tapCreate(
@@ -137,10 +147,18 @@ class KeyEventMonitorClientLive {
             return Unmanaged.passUnretained(cgEvent)
           }
 
-          let keyEvent = KeyEvent(cgEvent: cgEvent, type: type)
-          let handled = hotKeyClientLive.processKeyEvent(keyEvent)
+          // Check if it's a mouse event
+          if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            let handled = hotKeyClientLive.processInputEvent(.mouseClick)
+            return handled ? nil : Unmanaged.passUnretained(cgEvent)
+          }
 
-          if handled {
+          // Otherwise it's a keyboard event
+          let keyEvent = KeyEvent(cgEvent: cgEvent, type: type)
+          let handledByKeyHandler = hotKeyClientLive.processKeyEvent(keyEvent)
+          let handledByInputHandler = hotKeyClientLive.processInputEvent(.keyboard(keyEvent))
+
+          if handledByKeyHandler || handledByInputHandler {
             return nil
           } else {
             return Unmanaged.passUnretained(cgEvent)
@@ -173,7 +191,21 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.continuations[uuid] = handler
-      let shouldStart = self.continuations.count == 1
+      let shouldStart = self.continuations.count == 1 && self.inputContinuations.isEmpty
+
+      if shouldStart {
+        self.startMonitoring()
+      }
+    }
+  }
+
+  func handleInputEvent(_ handler: @escaping (InputEvent) -> Bool) {
+    let uuid = UUID()
+
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.inputContinuations[uuid] = handler
+      let shouldStart = self.inputContinuations.count == 1 && self.continuations.isEmpty
 
       if shouldStart {
         self.startMonitoring()
@@ -205,6 +237,20 @@ class KeyEventMonitorClientLive {
     var handled = false
     for continuation in handlers {
       if continuation(keyEvent) {
+        handled = true
+      }
+    }
+
+    return handled
+  }
+
+  private func processInputEvent(_ inputEvent: InputEvent) -> Bool {
+    // Read with concurrent access (no barrier)
+    let handlers = queue.sync { Array(inputContinuations.values) }
+
+    var handled = false
+    for continuation in handlers {
+      if continuation(inputEvent) {
         handled = true
       }
     }

@@ -7,6 +7,11 @@
 
 import Sauce
 
+public enum InputEvent {
+    case keyboard(KeyEvent)
+    case mouseClick
+}
+
 public struct KeyEvent {
     public let key: Key?
     public let modifiers: Modifiers

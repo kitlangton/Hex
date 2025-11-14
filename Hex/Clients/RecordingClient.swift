@@ -147,11 +147,11 @@ func pauseAllMediaApplications() async -> [String] {
       // VLC: check running, then pause if currently playing
       scriptParts.append("""
       try
-        if application "VLC" is running then
-          tell application "VLC"
+        if application \"VLC\" is running then
+          tell application \"VLC\"
             if playing then
               pause
-              set end of pausedPlayers to "VLC"
+              set end of pausedPlayers to \"VLC\"
             end if
           end tell
         end if
@@ -161,11 +161,11 @@ func pauseAllMediaApplications() async -> [String] {
       // Music / iTunes / Spotify: check running outside of tell, then query player state
       scriptParts.append("""
       try
-        if application "\(appName)" is running then
-          tell application "\(appName)"
+        if application \"\(appName)\" is running then
+          tell application \"\(appName)\"
             if player state is playing then
               pause
-              set end of pausedPlayers to "\(appName)"
+              set end of pausedPlayers to \"\(appName)\"
             end if
           end tell
         end if
@@ -224,16 +224,16 @@ func resumeMediaApplications(_ players: [String]) async {
     if player == "VLC" {
       scriptParts.append("""
       try
-        if application id "org.videolan.vlc" is running then
-          tell application id "org.videolan.vlc" to play
+        if application id \"org.videolan.vlc\" is running then
+          tell application id \"org.videolan.vlc\" to play
         end if
       end try
       """)
     } else {
       scriptParts.append("""
       try
-        if application "\(player)" is running then
-          tell application "\(player)" to play
+        if application \"\(player)\" is running then
+          tell application \"\(player)\" to play
         end if
       end try
       """)
