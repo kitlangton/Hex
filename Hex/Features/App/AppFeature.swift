@@ -37,6 +37,7 @@ struct AppFeature {
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.pasteboard) var pasteboard
+  @Dependency(\.transcription) var transcription
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -59,7 +60,10 @@ struct AppFeature {
         return .none
         
       case .task:
-        return startPasteLastTranscriptMonitoring()
+        return .merge(
+          startPasteLastTranscriptMonitoring(),
+          ensureSelectedModelReadiness()
+        )
         
       case .pasteLastTranscript:
         @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
@@ -110,6 +114,30 @@ struct AppFeature {
           send(.pasteLastTranscript)
         }
         return true // Intercept the key event
+      }
+    }
+  }
+
+  private func ensureSelectedModelReadiness() -> Effect<Action> {
+    .run { _ in
+      @Shared(.hexSettings) var hexSettings: HexSettings
+      @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
+      let selectedModel = hexSettings.selectedModel
+      guard !selectedModel.isEmpty else { return }
+      let isReady = await transcription.isModelDownloaded(selectedModel)
+      $modelBootstrapState.withLock { state in
+        state.modelIdentifier = selectedModel
+        if state.modelDisplayName?.isEmpty ?? true {
+          state.modelDisplayName = selectedModel
+        }
+        state.isModelReady = isReady
+        if isReady {
+          state.lastError = nil
+          state.isAutoDownloading = false
+          state.progress = 1
+        } else if !state.isAutoDownloading {
+          state.progress = 0
+        }
       }
     }
   }

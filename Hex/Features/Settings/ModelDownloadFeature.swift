@@ -95,6 +95,7 @@ public struct ModelDownloadFeature {
 	public struct State: Equatable {
 		// Shared user settings
 		@Shared(.hexSettings) var hexSettings: HexSettings
+		@Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
 
 		// Remote data
 		public var availableModels: IdentifiedArrayOf<ModelInfo> = []
@@ -107,6 +108,7 @@ public struct ModelDownloadFeature {
 		public var downloadProgress: Double = 0
 		public var downloadError: String?
 		public var downloadingModelName: String?
+		public var isAutoDownloadInProgress = false
         
         // Track which model generated a progress update to handle switching models
         public var activeDownloadID: UUID?
@@ -124,13 +126,14 @@ public struct ModelDownloadFeature {
 
 	// MARK: Actions
 
-    public enum Action: BindableAction {
-        case binding(BindingAction<State>)
-        // Requests
+	public enum Action: BindableAction {
+		case binding(BindingAction<State>)
+		// Requests
 		case fetchModels
 		case selectModel(String)
 		case toggleModelDisplay
 		case downloadSelectedModel
+		case autoDownloadIfNeeded
 		// Effects
         case modelsLoaded(recommended: String, available: [ModelInfo])
         case downloadProgress(Double)
@@ -164,12 +167,12 @@ public struct ModelDownloadFeature {
         return pattern == text
     }
 
-    private func resolvePattern(_ pattern: String, from available: [ModelInfo]) -> String? {
-        // No glob characters: return as-is
-        if !(pattern.contains("*") || pattern.contains("?")) { return pattern }
+	private func resolvePattern(_ pattern: String, from available: [ModelInfo]) -> String? {
+		// No glob characters: return as-is
+		if !(pattern.contains("*") || pattern.contains("?")) { return pattern }
 
-        // All matches
-        let matches = available.filter { fnmatch(pattern, $0.name, 0) == 0 }
+		// All matches
+		let matches = available.filter { fnmatch(pattern, $0.name, 0) == 0 }
         guard !matches.isEmpty else { return nil }
 
         // Prefer already-downloaded matches
@@ -183,11 +186,37 @@ public struct ModelDownloadFeature {
         }
 
         // If none downloaded yet, prefer non-turbo first
-        if let nonTurbo = matches.first(where: { !$0.name.localizedCaseInsensitiveContains("turbo") }) {
-            return nonTurbo.name
-        }
-        return matches.first!.name
-    }
+		if let nonTurbo = matches.first(where: { !$0.name.localizedCaseInsensitiveContains("turbo") }) {
+			return nonTurbo.name
+		}
+		return matches.first!.name
+	}
+
+	private func curatedDisplayName(for model: String, curated: IdentifiedArrayOf<CuratedModelInfo>) -> String {
+		if let match = curated.first(where: { matches($0.internalName, model) }) {
+			return match.displayName
+		}
+		return model
+			.replacingOccurrences(of: "-", with: " ")
+			.replacingOccurrences(of: "_", with: " ")
+			.capitalized
+	}
+
+	private func updateBootstrapState(_ state: inout State) {
+		let model = state.hexSettings.selectedModel
+		guard !model.isEmpty else { return }
+		let displayName = curatedDisplayName(for: model, curated: state.curatedModels)
+		state.$modelBootstrapState.withLock { bootstrap in
+			bootstrap.modelIdentifier = model
+			bootstrap.modelDisplayName = displayName
+			bootstrap.isModelReady = state.selectedModelIsDownloaded
+			if state.selectedModelIsDownloaded {
+				bootstrap.lastError = nil
+				bootstrap.isAutoDownloading = false
+				bootstrap.progress = 1
+			}
+		}
+	}
 
     private func reduce(state: inout State, action: Action) -> Effect<Action> {
         switch action {
@@ -200,12 +229,13 @@ public struct ModelDownloadFeature {
 			state.showAllModels.toggle()
 			return .none
 
-        case let .selectModel(model):
-            // If the curated item is a glob (e.g., "distil*large-v3"),
-            // resolve it to a concrete available model so both tabs stay in sync
-            let resolved = resolvePattern(model, from: Array(state.availableModels)) ?? model
-            state.$hexSettings.withLock { $0.selectedModel = resolved }
-            return .none
+		case let .selectModel(model):
+			// If the curated item is a glob (e.g., "distil*large-v3"),
+			// resolve it to a concrete available model so both tabs stay in sync
+			let resolved = resolvePattern(model, from: Array(state.availableModels)) ?? model
+			state.$hexSettings.withLock { $0.selectedModel = resolved }
+			updateBootstrapState(&state)
+			return .none
 
 		// MARK: – Fetch Models
 
@@ -231,13 +261,13 @@ public struct ModelDownloadFeature {
 				}
 			}
 
-        case let .modelsLoaded(recommended, available):
-            // Prefer Parakeet as recommended if present
-            let parakeet = "parakeet-tdt-0.6b-v3-coreml"
-            let availablePlus = available + (available.contains(where: { $0.name == parakeet }) ? [] : [ModelInfo(name: parakeet, isDownloaded: false)])
+		case let .modelsLoaded(recommended, available):
+			// Prefer Parakeet as recommended if present
+			let parakeet = "parakeet-tdt-0.6b-v3-coreml"
+			let availablePlus = available + (available.contains(where: { $0.name == parakeet }) ? [] : [ModelInfo(name: parakeet, isDownloaded: false)])
 
-            state.recommendedModel = availablePlus.contains(where: { $0.name == parakeet }) ? parakeet : recommended
-            state.availableModels = IdentifiedArrayOf(uniqueElements: availablePlus)
+			state.recommendedModel = availablePlus.contains(where: { $0.name == parakeet }) ? parakeet : recommended
+			state.availableModels = IdentifiedArrayOf(uniqueElements: availablePlus)
 
             // If the selected model is a pattern, resolve it now to the first available match
             if state.hexSettings.selectedModel.contains("*") || state.hexSettings.selectedModel.contains("?") {
@@ -247,25 +277,67 @@ public struct ModelDownloadFeature {
             }
 
             // Merge curated + download status with pattern support
-            var curated = CuratedModelLoader.load()
-            for idx in curated.indices {
-                let internalName = curated[idx].internalName
-                if let match = available.first(where: { matches(internalName, $0.name) }) {
-                    curated[idx].isDownloaded = match.isDownloaded
-                } else {
-                    curated[idx].isDownloaded = false
-                }
-            }
-            state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
-            return .none
+			var curated = CuratedModelLoader.load()
+			for idx in curated.indices {
+				let internalName = curated[idx].internalName
+				if let match = available.first(where: { matches(internalName, $0.name) }) {
+					curated[idx].isDownloaded = match.isDownloaded
+				} else {
+					curated[idx].isDownloaded = false
+				}
+			}
+			state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
+			updateBootstrapState(&state)
+			if !state.anyModelDownloaded && !state.hexSettings.hasCompletedModelBootstrap {
+				let preferred = state.recommendedModel.isEmpty ? state.hexSettings.selectedModel : state.recommendedModel
+				if !preferred.isEmpty {
+					state.$hexSettings.withLock { $0.selectedModel = preferred }
+					updateBootstrapState(&state)
+				}
+			}
+			let shouldAutoDownload = !state.anyModelDownloaded && !state.isDownloading && !state.hexSettings.hasCompletedModelBootstrap
+			return shouldAutoDownload ? .send(.autoDownloadIfNeeded) : .none
 
 		// MARK: – Download
 
-        case .downloadSelectedModel:
-            guard !state.selectedModel.isEmpty else { return .none }
-            state.downloadError = nil
-            state.isDownloading = true
-            state.downloadingModelName = state.selectedModel
+		case .autoDownloadIfNeeded:
+			guard !state.isDownloading else { return .none }
+			guard !state.hexSettings.hasCompletedModelBootstrap else { return .none }
+			let selected = state.hexSettings.selectedModel
+			let targetModel: String
+			if !selected.isEmpty, state.availableModels[id: selected] != nil {
+				targetModel = selected
+			} else if !state.recommendedModel.isEmpty,
+					 state.availableModels[id: state.recommendedModel] != nil
+			{
+				targetModel = state.recommendedModel
+				state.$hexSettings.withLock { $0.selectedModel = targetModel }
+			} else if let fallback = state.availableModels.first?.id {
+				targetModel = fallback
+				state.$hexSettings.withLock { $0.selectedModel = targetModel }
+			} else {
+				return .none
+			}
+			if state.availableModels[id: targetModel]?.isDownloaded == true {
+				return .none
+			}
+			state.isAutoDownloadInProgress = true
+			let displayName = curatedDisplayName(for: targetModel, curated: state.curatedModels)
+			state.$modelBootstrapState.withLock {
+				$0.isModelReady = false
+				$0.isAutoDownloading = true
+				$0.progress = 0
+				$0.lastError = nil
+				$0.modelIdentifier = targetModel
+				$0.modelDisplayName = displayName
+			}
+			return .send(.downloadSelectedModel)
+
+		case .downloadSelectedModel:
+			guard !state.hexSettings.selectedModel.isEmpty else { return .none }
+			state.downloadError = nil
+			state.isDownloading = true
+			state.downloadingModelName = state.hexSettings.selectedModel
             state.activeDownloadID = UUID()
             let downloadID = state.activeDownloadID!
             return .run { [state] send in
@@ -283,41 +355,69 @@ public struct ModelDownloadFeature {
 
 		case let .downloadProgress(progress):
 			state.downloadProgress = progress
+			if state.isAutoDownloadInProgress {
+				state.$modelBootstrapState.withLock { $0.progress = progress }
+			}
 			return .none
 
-        case let .downloadCompleted(result):
-            state.isDownloading = false
-            state.downloadingModelName = nil
-            state.activeDownloadID = nil
-            switch result {
-            case let .success(name):
-                state.availableModels[id: name]?.isDownloaded = true
-                if let idx = state.curatedModels.firstIndex(where: { $0.internalName == name }) {
-                    state.curatedModels[idx].isDownloaded = true
-                }
-            case let .failure(err):
-                // Enrich the error so users see which URL/host failed
-                let ns = err as NSError
-                var message = ns.localizedDescription
-                if let url = ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL {
-                    if let host = url.host { message += " (\(host))" }
-                } else if let str = ns.userInfo[NSURLErrorFailingURLStringErrorKey] as? String,
-                          let u = URL(string: str), let host = u.host {
-                    message += " (\(host))"
-                }
-                state.downloadError = message
-            }
-            return .none
+		case let .downloadCompleted(result):
+			state.isDownloading = false
+			state.downloadingModelName = nil
+			state.activeDownloadID = nil
+			var failureMessage: String?
+			switch result {
+			case let .success(name):
+				state.availableModels[id: name]?.isDownloaded = true
+				if let idx = state.curatedModels.firstIndex(where: { $0.internalName == name }) {
+					state.curatedModels[idx].isDownloaded = true
+				}
+				state.$hexSettings.withLock { settings in
+					settings.hasCompletedModelBootstrap = true
+				}
+			case let .failure(err):
+				// Enrich the error so users see which URL/host failed
+				let ns = err as NSError
+				var message = ns.localizedDescription
+				if let url = ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL {
+					if let host = url.host { message += " (\(host))" }
+				} else if let str = ns.userInfo[NSURLErrorFailingURLStringErrorKey] as? String,
+						let u = URL(string: str), let host = u.host {
+					message += " (\(host))"
+				}
+				state.downloadError = message
+				failureMessage = message
+			}
+			if state.isAutoDownloadInProgress {
+				state.$modelBootstrapState.withLock { bootstrap in
+					bootstrap.isAutoDownloading = false
+					bootstrap.isModelReady = failureMessage == nil && state.selectedModelIsDownloaded
+					bootstrap.progress = failureMessage == nil ? 1 : 0
+					bootstrap.lastError = failureMessage
+				}
+				state.isAutoDownloadInProgress = false
+			}
+			updateBootstrapState(&state)
+			return .none
 
-        case .cancelDownload:
-            guard let id = state.activeDownloadID else { return .none }
-            state.isDownloading = false
-            state.downloadingModelName = nil
-            state.activeDownloadID = nil
-            return .cancel(id: id)
+		case .cancelDownload:
+			guard let id = state.activeDownloadID else { return .none }
+			state.isDownloading = false
+			state.downloadingModelName = nil
+			state.activeDownloadID = nil
+			if state.isAutoDownloadInProgress {
+				state.isAutoDownloadInProgress = false
+				state.$modelBootstrapState.withLock {
+					$0.isAutoDownloading = false
+					$0.progress = 0
+					$0.isModelReady = false
+					$0.lastError = "Download cancelled"
+				}
+			}
+			return .cancel(id: id)
 
 		case .deleteSelectedModel:
 			guard !state.selectedModel.isEmpty else { return .none }
+			state.$modelBootstrapState.withLock { $0.isModelReady = false }
 			return .run { [state] send in
 				do {
 					try await transcription.deleteModel(state.selectedModel)
@@ -388,14 +488,31 @@ public struct ModelDownloadView: View {
 
 	public var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
-        SimpleHeader()
-        // Always show a concise, opinionated list (no dropdowns)
-        CuratedList(store: store)
-            if let err = store.downloadError {
-                Text("Download Error: \(err)")
-                    .foregroundColor(.red)
-                    .font(.caption)
-            }
+			SimpleHeader()
+			if store.isAutoDownloadInProgress {
+				AutoDownloadBannerView(
+					title: "Setting up \(autoDownloadDisplayName)",
+					subtitle: autoDownloadSubtitle,
+					progress: downloadProgressClamped,
+					style: .info
+				)
+			} else if !store.modelBootstrapState.isModelReady,
+						let message = store.modelBootstrapState.lastError
+			{
+				AutoDownloadBannerView(
+					title: "Automatic download failed",
+					subtitle: message,
+					progress: nil,
+					style: .error
+				)
+			}
+			// Always show a concise, opinionated list (no dropdowns)
+			CuratedList(store: store)
+			if let err = store.downloadError {
+				Text("Download Error: \(err)")
+					.foregroundColor(.red)
+					.font(.caption)
+			}
 		}
 		.frame(maxWidth: 500)
 		.task {
@@ -406,6 +523,24 @@ public struct ModelDownloadView: View {
 		.onAppear {
 			store.send(.fetchModels)
 		}
+	}
+
+	private var autoDownloadDisplayName: String {
+		let candidate = store.modelBootstrapState.modelDisplayName ?? store.hexSettings.selectedModel
+		return candidate.isEmpty ? "voice model" : candidate
+	}
+
+	private var downloadProgressClamped: Double {
+		max(0, min(store.downloadProgress, 1))
+	}
+
+	private var autoDownloadSubtitle: String {
+		let progress = downloadProgressClamped
+		if progress >= 0.999 {
+			return "Finalizing download…"
+		}
+		let percent = Int((progress * 100).rounded())
+		return "\(percent)% downloaded"
 	}
 }
 
@@ -518,6 +653,10 @@ private struct CuratedRow: View {
         return model.internalName == selected
     }
 
+    var isRecommended: Bool {
+        store.recommendedModel == model.internalName
+    }
+
     var body: some View {
         Button(action: { store.send(.selectModel(model.internalName)) }) {
             HStack(alignment: .center, spacing: 12) {
@@ -527,8 +666,21 @@ private struct CuratedRow: View {
 
                 // Title and ratings
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(model.displayName)
-                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(model.displayName)
+                            .font(.headline)
+                        if isRecommended {
+                            Text("Recommended")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.accentColor)
+                                )
+                        }
+                    }
                     HStack(spacing: 16) {
                         HStack(spacing: 6) {
                             StarRatingView(model.accuracyStars)

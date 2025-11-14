@@ -5,6 +5,12 @@ import HexCore
 
 // To add a new setting, add a new property to the struct, the CodingKeys enum, and the custom decoder
 struct HexSettings: Codable, Equatable {
+	static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
+	static var defaultPasteLastTranscriptHotkeyDescription: String {
+		let modifiers = defaultPasteLastTranscriptHotkey.modifiers.sorted.map { $0.stringValue }.joined()
+		let key = defaultPasteLastTranscriptHotkey.key?.toString ?? ""
+		return modifiers + key
+	}
 	var soundEffectsEnabled: Bool = true
 	var hotkey: HotKey = .init(key: nil, modifiers: [.option])
 	var openOnLogin: Bool = false
@@ -20,10 +26,11 @@ struct HexSettings: Codable, Equatable {
 	var selectedMicrophoneID: String? = nil
 	var saveTranscriptionHistory: Bool = true
 	var maxHistoryEntries: Int? = nil
-	var pasteLastTranscriptHotkey: HotKey? = nil
+	var pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey
+	var hasCompletedModelBootstrap: Bool = false
 
 	// Define coding keys to match struct properties
-	enum CodingKeys: String, CodingKey {
+		enum CodingKeys: String, CodingKey {
 		case soundEffectsEnabled
 		case hotkey
 		case openOnLogin
@@ -40,6 +47,7 @@ struct HexSettings: Codable, Equatable {
 		case saveTranscriptionHistory
 		case maxHistoryEntries
 		case pasteLastTranscriptHotkey
+		case hasCompletedModelBootstrap
 	}
 
 	init(
@@ -58,7 +66,8 @@ struct HexSettings: Codable, Equatable {
 		selectedMicrophoneID: String? = nil,
 		saveTranscriptionHistory: Bool = true,
 		maxHistoryEntries: Int? = nil,
-		pasteLastTranscriptHotkey: HotKey? = nil
+		pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey,
+		hasCompletedModelBootstrap: Bool = false
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.hotkey = hotkey
@@ -76,6 +85,7 @@ struct HexSettings: Codable, Equatable {
 		self.saveTranscriptionHistory = saveTranscriptionHistory
 		self.maxHistoryEntries = maxHistoryEntries
 		self.pasteLastTranscriptHotkey = pasteLastTranscriptHotkey
+		self.hasCompletedModelBootstrap = hasCompletedModelBootstrap
 	}
 
 	// Custom decoder that handles missing fields
@@ -109,7 +119,9 @@ struct HexSettings: Codable, Equatable {
 		saveTranscriptionHistory =
 			try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
 		maxHistoryEntries = try container.decodeIfPresent(Int.self, forKey: .maxHistoryEntries)
-		pasteLastTranscriptHotkey = try container.decodeIfPresent(HotKey.self, forKey: .pasteLastTranscriptHotkey)
+		pasteLastTranscriptHotkey = try container.decodeIfPresent(HotKey.self, forKey: .pasteLastTranscriptHotkey) ?? HexSettings.defaultPasteLastTranscriptHotkey
+		hasCompletedModelBootstrap =
+			try container.decodeIfPresent(Bool.self, forKey: .hasCompletedModelBootstrap) ?? false
 	}
 }
 
