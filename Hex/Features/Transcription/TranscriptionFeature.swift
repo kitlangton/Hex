@@ -25,7 +25,10 @@ struct TranscriptionFeature {
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
     var assertionID: IOPMAssertionID?
+    var sourceAppBundleID: String?
+    var sourceAppName: String?
     @Shared(.hexSettings) var hexSettings: HexSettings
+    @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
   }
 
@@ -246,8 +249,19 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
+    guard state.modelBootstrapState.isModelReady else {
+      return .run { _ in
+        await soundEffect.play(.cancel)
+      }
+    }
     state.isRecording = true
     state.recordingStartTime = Date()
+    
+    // Capture the active application
+    if let activeApp = NSWorkspace.shared.frontmostApplication {
+      state.sourceAppBundleID = activeApp.bundleIdentifier
+      state.sourceAppName = activeApp.localizedName
+    }
     
     print("[Recording] started at \(state.recordingStartTime!)")
 
@@ -350,6 +364,8 @@ private extension TranscriptionFeature {
     return finalizeRecordingAndStoreTranscript(
       result: result,
       duration: duration,
+      sourceAppBundleID: state.sourceAppBundleID,
+      sourceAppName: state.sourceAppName,
       transcriptionHistory: state.$transcriptionHistory
     )
   }
@@ -371,6 +387,8 @@ private extension TranscriptionFeature {
   func finalizeRecordingAndStoreTranscript(
     result: String,
     duration: TimeInterval,
+    sourceAppBundleID: String?,
+    sourceAppName: String?,
     transcriptionHistory: Shared<TranscriptionHistory>
   ) -> Effect<Action> {
     .run { send in
@@ -405,7 +423,9 @@ private extension TranscriptionFeature {
             timestamp: Date(),
             text: result,
             audioPath: finalURL,
-            duration: duration
+            duration: duration,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName
           )
 
           // Append to the in-memory shared history

@@ -3,6 +3,31 @@ import ComposableArchitecture
 import Dependencies
 import SwiftUI
 import Inject
+import AppKit
+
+// MARK: - Date Extensions
+
+extension Date {
+	func relativeFormatted() -> String {
+		let calendar = Calendar.current
+		let now = Date()
+		
+		if calendar.isDateInToday(self) {
+			return "Today"
+		} else if calendar.isDateInYesterday(self) {
+			return "Yesterday"
+		} else if let daysAgo = calendar.dateComponents([.day], from: self, to: now).day, daysAgo < 7 {
+			let formatter = DateFormatter()
+			formatter.dateFormat = "EEEE" // Day of week
+			return formatter.string(from: self)
+		} else {
+			let formatter = DateFormatter()
+			formatter.dateStyle = .medium
+			formatter.timeStyle = .none
+			return formatter.string(from: self)
+		}
+	}
+}
 
 // MARK: - Models
 
@@ -12,13 +37,17 @@ struct Transcript: Codable, Equatable, Identifiable {
 	var text: String
 	var audioPath: URL
 	var duration: TimeInterval
+	var sourceAppBundleID: String?
+	var sourceAppName: String?
 	
-	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL, duration: TimeInterval) {
+	init(id: UUID = UUID(), timestamp: Date, text: String, audioPath: URL, duration: TimeInterval, sourceAppBundleID: String? = nil, sourceAppName: String? = nil) {
 		self.id = id
 		self.timestamp = timestamp
 		self.text = text
 		self.audioPath = audioPath
 		self.duration = duration
+		self.sourceAppBundleID = sourceAppBundleID
+		self.sourceAppName = sourceAppName
 	}
 }
 
@@ -221,8 +250,22 @@ struct TranscriptView: View {
 
 			HStack {
 				HStack(spacing: 6) {
+					// App icon and name
+					if let bundleID = transcript.sourceAppBundleID,
+					   let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+						Image(nsImage: NSWorkspace.shared.icon(forFile: appURL.path))
+							.resizable()
+							.frame(width: 14, height: 14)
+						if let appName = transcript.sourceAppName {
+							Text(appName)
+						}
+						Text("•")
+					}
+					
 					Image(systemName: "clock")
-					Text(transcript.timestamp.formatted(date: .numeric, time: .shortened))
+					Text(transcript.timestamp.relativeFormatted())
+					Text("•")
+					Text(transcript.timestamp.formatted(date: .omitted, time: .shortened))
 					Text("•")
 					Text(String(format: "%.1fs", transcript.duration))
 				}
