@@ -345,6 +345,123 @@ struct HotKeyProcessorTests {
             ]
         )
     }
+    
+    // MARK: - Additional Coverage Tests
+    
+    // Tests ESC cancellation from hold state
+    @Test
+    func escape_cancelsFromHold() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            steps: [
+                // Start recording
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Press ESC
+                ScenarioStep(time: 0.5, key: .escape, modifiers: [], expectedOutput: .cancel, expectedIsMatched: false),
+            ]
+        )
+    }
+    
+    // Tests ESC cancellation from lock state
+    @Test
+    func escape_cancelsFromLock() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option]),
+            steps: [
+                // First tap
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                // First release
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
+                // Second tap (locks)
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true),
+                // Now locked - press ESC
+                ScenarioStep(time: 1.0, key: .escape, modifiers: [], expectedOutput: .cancel, expectedIsMatched: false),
+            ]
+        )
+    }
+    
+    // Tests that partially releasing multiple modifiers counts as full release
+    @Test
+    func multipleModifiers_partialRelease() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            steps: [
+                // Press both modifiers
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Release Command (keep Option) - should stop recording
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.option], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+    
+    // Tests that adding extra modifier to multiple-modifier hotkey cancels within 1s
+    @Test
+    func multipleModifiers_addingExtra_cancelsWithin1s() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            steps: [
+                // Press both required modifiers
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Add Shift within 1s
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.option, .command, .shift], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+    
+    // Tests that changing modifiers on same key cancels within 1s
+    @Test
+    func keyModifier_changingModifiers_cancelsWithin1s() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            steps: [
+                // Initial hotkey press
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Add Shift modifier while keeping same key, within 1s
+                ScenarioStep(time: 0.5, key: .a, modifiers: [.command, .shift], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+    
+    // Tests that dirty state blocks all input until full release
+    @Test
+    func dirtyState_blocksInputUntilFullRelease() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option]),
+            steps: [
+                // Start recording
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Press extra modifier - cancels and goes dirty
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.option, .command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                // Try pressing hotkey again - should be ignored (dirty)
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                // Try pressing different keys - should be ignored (dirty)
+                ScenarioStep(time: 0.3, key: .c, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                // Full release - clears dirty
+                ScenarioStep(time: 0.4, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Now hotkey works again
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+            ]
+        )
+    }
+    
+    // Tests that you can't activate by releasing extra modifiers (backslide)
+    @Test
+    func multipleModifiers_noBackslideActivation() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            steps: [
+                // Press with extra modifier (doesn't match)
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option, .command, .shift], expectedOutput: nil, expectedIsMatched: false),
+                // Release Shift - now matches hotkey exactly, but should NOT activate (backslide)
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.option, .command], expectedOutput: nil, expectedIsMatched: false),
+                // Full release
+                ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // NOW pressing hotkey should work
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true),
+            ]
+        )
+    }
 }
 
 struct ScenarioStep {

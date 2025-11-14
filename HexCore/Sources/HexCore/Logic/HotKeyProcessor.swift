@@ -205,9 +205,10 @@ extension HotKeyProcessor {
         if hotkey.key != nil {
             return e.key == hotkey.key && e.modifiers == hotkey.modifiers
         } else {
-            // For modifier-only hotkeys, we just check that all required modifiers are present
-            // This allows other modifiers to be pressed without affecting the match
-            return hotkey.modifiers.isSubset(of: e.modifiers)
+            // For modifier-only hotkeys, require exact match
+            // - Exact modifiers (no extra modifiers)
+            // - No key pressed
+            return e.key == nil && hotkey.modifiers == e.modifiers
         }
     }
 

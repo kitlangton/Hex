@@ -247,6 +247,9 @@
     "Enable in Settings" : {
 
     },
+    "English only" : {
+
+    },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
       "localizations" : {
@@ -357,15 +360,17 @@
     "Microphone Selection" : {
 
     },
-    "Model" : {
+    "Model prewarming..." : {
 
     },
-    "Model prewarming..." : {
+    "More actions" : {
+
+    },
+    "Multilingual" : {
 
     },
     "No models found." : {
       "comment" : "Replacement text in transcription model section when no available models are found",
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -489,6 +494,7 @@
     },
     "Selected Model" : {
       "comment" : "Label for selecting which model is active",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -523,9 +529,6 @@
         }
       }
     },
-    "Show All Models" : {
-
-    },
     "Show Changelog" : {
       "localizations" : {
         "de" : {
@@ -547,19 +550,10 @@
         }
       }
     },
+    "Show in Finder" : {
+
+    },
     "Show Models Folder" : {
-
-    },
-    "Show Recommended" : {
-
-    },
-    "Showing all models" : {
-
-    },
-    "Showing recommended models" : {
-
-    },
-    "Size" : {
 
     },
     "Sound" : {
@@ -619,6 +613,9 @@
       }
     },
     "Unlimited" : {
+
+    },
+    "Use" : {
 
     },
     "Use clipboard to insert" : {

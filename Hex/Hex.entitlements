@@ -2,9 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.automation.apple-events</key>
-	<true/>
-	<key>com.apple.security.device.audio-input</key>
-	<true/>
+    <!-- Enable app sandbox -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- Allow outgoing network connections (HTTPS to Hugging Face, etc.) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Allow user to pick folders/files for import (optional, for model import) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Allow sending AppleEvents for AppleScript media controls (you already request Accessibility at runtime) -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
 </dict>
 </plist>

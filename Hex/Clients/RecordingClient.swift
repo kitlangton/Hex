@@ -125,7 +125,12 @@ private func getInstalledMediaPlayers() -> [String: String] {
   return result
 }
 
+// Backoff to avoid spamming AppleScript errors on systems without controllable players
+private var mediaControlErrorCount = 0
+private var mediaControlDisabled = false
+
 func pauseAllMediaApplications() async -> [String] {
+  if mediaControlDisabled { return [] }
   // First check which media players are actually installed
   let installedPlayers = getInstalledMediaPlayers()
   if installedPlayers.isEmpty {
@@ -139,30 +144,31 @@ func pauseAllMediaApplications() async -> [String] {
 
   for (appName, _) in installedPlayers {
     if appName == "VLC" {
-      // VLC has a different AppleScript interface
+      // VLC: check running, then pause if currently playing
       scriptParts.append("""
       try
-        set appName to "VLC"
-        if application appName is running then
-          tell application appName to set isVLCplaying to playing
-            if isVLCplaying then
-              tell application appName to play
-              set end of pausedPlayers to appName
+        if application "VLC" is running then
+          tell application "VLC"
+            if playing then
+              pause
+              set end of pausedPlayers to "VLC"
             end if
+          end tell
         end if
       end try
       """)
     } else {
-      // Standard interface for Music/iTunes/Spotify
+      // Music / iTunes / Spotify: check running outside of tell, then query player state
       scriptParts.append("""
       try
-        set appName to "\(appName)"
-        tell application appName
-          if it is running and player state is playing then
-            pause
-            set end of pausedPlayers to appName
-          end if
-        end tell
+        if application "\(appName)" is running then
+          tell application "\(appName)"
+            if player state is playing then
+              pause
+              set end of pausedPlayers to "\(appName)"
+            end if
+          end tell
+        end if
       end try
       """)
     }
@@ -176,6 +182,8 @@ func pauseAllMediaApplications() async -> [String] {
   guard let resultDescriptor = appleScript?.executeAndReturnError(&error) else {
     if let error = error {
       print("Error pausing media applications: \(error)")
+      mediaControlErrorCount += 1
+      if mediaControlErrorCount >= 3 { mediaControlDisabled = true }
     }
     return []
   }
@@ -184,9 +192,11 @@ func pauseAllMediaApplications() async -> [String] {
   var pausedPlayers: [String] = []
   let count = resultDescriptor.numberOfItems
   
-  for i in 0...count {
-    if let item = resultDescriptor.atIndex(i)?.stringValue {
-      pausedPlayers.append(item)
+  if count > 0 {
+    for i in 1...count {
+      if let item = resultDescriptor.atIndex(i)?.stringValue {
+        pausedPlayers.append(item)
+      }
     }
   }
     
@@ -212,18 +222,14 @@ func resumeMediaApplications(_ players: [String]) async {
   
   for player in validPlayers {
     if player == "VLC" {
-      // VLC has a different AppleScript interface
       scriptParts.append("""
       try
-        tell application id "org.videolan.vlc"
-          if it is running then
-            tell application id "org.videolan.vlc" to play
-          end if
-        end tell
+        if application id "org.videolan.vlc" is running then
+          tell application id "org.videolan.vlc" to play
+        end if
       end try
       """)
     } else {
-      // Standard interface for Music/iTunes/Spotify
       scriptParts.append("""
       try
         if application "\(player)" is running then

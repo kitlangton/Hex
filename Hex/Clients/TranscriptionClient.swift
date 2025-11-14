@@ -10,6 +10,7 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import WhisperKit
+import Darwin
 
 /// A client that downloads and loads WhisperKit models, then transcribes audio files using the loaded model.
 /// Exposes progress callbacks to report overall download-and-load percentage and transcription progress.
@@ -67,6 +68,7 @@ actor TranscriptionClientLive {
 
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
+  private var parakeet: ParakeetClient = ParakeetClient()
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -93,6 +95,14 @@ actor TranscriptionClientLive {
   /// Ensures the given `variant` model is downloaded and loaded, reporting
   /// overall progress (0%–50% for downloading, 50%–100% for loading).
   func downloadAndLoadModel(variant: String, progressCallback: @escaping (Progress) -> Void) async throws {
+    // If Parakeet, use Parakeet client path
+    if isParakeet(variant) {
+      try await parakeet.ensureLoaded(progress: progressCallback)
+      currentModelName = variant
+      return
+    }
+    // Resolve wildcard patterns (e.g., "distil*large-v3") to a concrete variant
+    let variant = await resolveVariant(variant)
     // Special handling for corrupted or malformed variant names
     if variant.isEmpty {
       throw NSError(
@@ -159,6 +169,11 @@ actor TranscriptionClientLive {
   /// Returns `true` if the model is already downloaded to the local folder.
   /// Performs a thorough check to ensure the model files are actually present and usable.
   func isModelDownloaded(_ modelName: String) async -> Bool {
+    if isParakeet(modelName) {
+      let available = await parakeet.isModelAvailable()
+      print("[TranscriptionClientLive] Parakeet available? \(available)")
+      return available
+    }
     let modelFolderPath = modelPath(for: modelName).path
     let fileManager = FileManager.default
 
@@ -196,7 +211,11 @@ actor TranscriptionClientLive {
 
   /// Lists all model variants available in the `argmaxinc/whisperkit-coreml` repository.
   func getAvailableModels() async throws -> [String] {
-    try await WhisperKit.fetchAvailableModels()
+    var names = try await WhisperKit.fetchAvailableModels()
+    #if canImport(FluidAudio)
+    if !names.contains("parakeet-tdt-0.6b-v3-coreml") { names.insert("parakeet-tdt-0.6b-v3-coreml", at: 0) }
+    #endif
+    return names
   }
 
   /// Transcribes the audio file at `url` using a `model` name.
@@ -208,6 +227,11 @@ actor TranscriptionClientLive {
     options: DecodingOptions,
     progressCallback: @escaping (Progress) -> Void
   ) async throws -> String {
+    if isParakeet(model) {
+      try await downloadAndLoadModel(variant: model) { _ in }
+      return try await parakeet.transcribe(url)
+    }
+    let model = await resolveVariant(model)
     // Load or switch to the required model if needed.
     if whisperKit == nil || model != currentModelName {
       unloadCurrentModel()
@@ -236,6 +260,28 @@ actor TranscriptionClientLive {
   }
 
   // MARK: - Private Helpers
+
+  /// Resolve wildcard patterns (e.g. "distil*large-v3") to a concrete model name.
+  /// Preference: downloaded > non-turbo > any match.
+  private func resolveVariant(_ variant: String) async -> String {
+    if !(variant.contains("*") || variant.contains("?")) { return variant }
+    let names: [String]
+    do { names = try await WhisperKit.fetchAvailableModels() } catch { return variant }
+    let matches = names.filter { fnmatch(variant, $0, 0) == 0 }
+    guard !matches.isEmpty else { return variant }
+    var downloaded: [String] = []
+    for name in matches { if await isModelDownloaded(name) { downloaded.append(name) } }
+    if !downloaded.isEmpty {
+      if let nonTurbo = downloaded.first(where: { !$0.localizedCaseInsensitiveContains("turbo") }) { return nonTurbo }
+      return downloaded[0]
+    }
+    if let nonTurbo = matches.first(where: { !$0.localizedCaseInsensitiveContains("turbo") }) { return nonTurbo }
+    return matches[0]
+  }
+
+  private func isParakeet(_ name: String) -> Bool {
+    name.hasPrefix("parakeet-")
+  }
 
   /// Creates or returns the local folder (on disk) for a given `variant` model.
   private func modelPath(for variant: String) -> URL {
@@ -335,7 +381,7 @@ actor TranscriptionClientLive {
       tokenizerFolder: tokenizerFolder,
       // verbose: true,
       // logLevel: .debug,
-      prewarm: true,
+      prewarm: false,
       load: true
     )
 

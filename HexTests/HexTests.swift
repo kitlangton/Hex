@@ -7,7 +7,7 @@
 
 import Dependencies
 import Foundation
-@testable import Hex
+@testable import HexCore
 import Sauce
 import Testing
 

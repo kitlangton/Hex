@@ -10,6 +10,8 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	@Shared(.hexSettings) var hexSettings: HexSettings
 
 	func applicationDidFinishLaunching(_: Notification) {
+		// Ensure Parakeet/FluidAudio caches live under Application Support, not ~/.cache
+		configureLocalCaches()
 		if isTesting {
 			print("TESTING")
 			return
@@ -36,6 +38,25 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		presentSettingsView()
 		NSApp.activate(ignoringOtherApps: true)
 	}
+
+	/// Sets XDG_CACHE_HOME so FluidAudio stores models under our app's
+	/// Application Support folder, keeping everything in one place.
+    private func configureLocalCaches() {
+        do {
+            let support = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            let cache = support.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
+            try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+            setenv("XDG_CACHE_HOME", cache.path, 1)
+            print("[Hex] XDG_CACHE_HOME set to: \(cache.path)")
+        } catch {
+            print("Warning: failed to configure local caches: \(error)")
+        }
+    }
 
 	func presentMainView() {
 		guard invisibleWindow == nil else {

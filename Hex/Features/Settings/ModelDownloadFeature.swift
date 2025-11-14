@@ -8,6 +8,7 @@ import ComposableArchitecture
 import Dependencies
 import IdentifiedCollections
 import SwiftUI
+import Darwin
 
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -148,14 +149,47 @@ public struct ModelDownloadFeature {
 
 	// MARK: Reducer
 
-	public var body: some ReducerOf<Self> {
-		BindingReducer()
-		Reduce(reduce)
-	}
+    public var body: some ReducerOf<Self> {
+        BindingReducer()
+        Reduce(reduce)
+    }
 
 
-	private func reduce(state: inout State, action: Action) -> Effect<Action> {
-		switch action {
+    // MARK: - Helpers (pattern matching)
+    private func matches(_ pattern: String, _ text: String) -> Bool {
+        if pattern.contains("*") || pattern.contains("?") {
+            return fnmatch(pattern, text, 0) == 0
+        }
+        return pattern == text
+    }
+
+    private func resolvePattern(_ pattern: String, from available: [ModelInfo]) -> String? {
+        // No glob characters: return as-is
+        if !(pattern.contains("*") || pattern.contains("?")) { return pattern }
+
+        // All matches
+        let matches = available.filter { fnmatch(pattern, $0.name, 0) == 0 }
+        guard !matches.isEmpty else { return nil }
+
+        // Prefer already-downloaded matches
+        let downloaded = matches.filter { $0.isDownloaded }
+        if !downloaded.isEmpty {
+            // Prefer non-turbo if both exist, otherwise turbo
+            if let nonTurbo = downloaded.first(where: { !$0.name.localizedCaseInsensitiveContains("turbo") }) {
+                return nonTurbo.name
+            }
+            return downloaded.first!.name
+        }
+
+        // If none downloaded yet, prefer non-turbo first
+        if let nonTurbo = matches.first(where: { !$0.name.localizedCaseInsensitiveContains("turbo") }) {
+            return nonTurbo.name
+        }
+        return matches.first!.name
+    }
+
+    private func reduce(state: inout State, action: Action) -> Effect<Action> {
+        switch action {
 		// MARK: – UI bindings
 
 		case .binding:
@@ -165,9 +199,12 @@ public struct ModelDownloadFeature {
 			state.showAllModels.toggle()
 			return .none
 
-		case let .selectModel(model):
-			state.$hexSettings.withLock { $0.selectedModel = model }
-			return .none
+        case let .selectModel(model):
+            // If the curated item is a glob (e.g., "distil*large-v3"),
+            // resolve it to a concrete available model so both tabs stay in sync
+            let resolved = resolvePattern(model, from: Array(state.availableModels)) ?? model
+            state.$hexSettings.withLock { $0.selectedModel = resolved }
+            return .none
 
 		// MARK: – Fetch Models
 
@@ -193,16 +230,33 @@ public struct ModelDownloadFeature {
 				}
 			}
 
-		case let .modelsLoaded(recommended, available):
-			state.recommendedModel = recommended
-			state.availableModels = IdentifiedArrayOf(uniqueElements: available)
-			// Merge curated + download status
-			var curated = CuratedModelLoader.load()
-			for idx in curated.indices {
-				curated[idx].isDownloaded = available.first(where: { $0.name == curated[idx].internalName })?.isDownloaded ?? false
-			}
-			state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
-			return .none
+        case let .modelsLoaded(recommended, available):
+            // Prefer Parakeet as recommended if present
+            let parakeet = "parakeet-tdt-0.6b-v3-coreml"
+            let availablePlus = available + (available.contains(where: { $0.name == parakeet }) ? [] : [ModelInfo(name: parakeet, isDownloaded: false)])
+
+            state.recommendedModel = availablePlus.contains(where: { $0.name == parakeet }) ? parakeet : recommended
+            state.availableModels = IdentifiedArrayOf(uniqueElements: availablePlus)
+
+            // If the selected model is a pattern, resolve it now to the first available match
+            if state.hexSettings.selectedModel.contains("*") || state.hexSettings.selectedModel.contains("?") {
+                if let resolved = resolvePattern(state.hexSettings.selectedModel, from: available) {
+                    state.$hexSettings.withLock { $0.selectedModel = resolved }
+                }
+            }
+
+            // Merge curated + download status with pattern support
+            var curated = CuratedModelLoader.load()
+            for idx in curated.indices {
+                let internalName = curated[idx].internalName
+                if let match = available.first(where: { matches(internalName, $0.name) }) {
+                    curated[idx].isDownloaded = match.isDownloaded
+                } else {
+                    curated[idx].isDownloaded = false
+                }
+            }
+            state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
+            return .none
 
 		// MARK: – Download
 
@@ -313,21 +367,16 @@ public struct ModelDownloadView: View {
 
 	public var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
-			HeaderView(store: store)
-			Group {
-				if store.showAllModels {
-					AllModelsPicker(store: store)
-				} else {
-					CuratedList(store: store)
-				}
-			}
-			if let err = store.downloadError {
-				Text("Download Error: \(err)")
-					.foregroundColor(.red)
-					.font(.caption)
-			}
-			FooterView(store: store)
+        SimpleHeader()
+        // Always show a concise, opinionated list (no dropdowns)
+        CuratedList(store: store)
+            if let err = store.downloadError {
+                Text("Download Error: \(err)")
+                    .foregroundColor(.red)
+                    .font(.caption)
+            }
 		}
+		.frame(maxWidth: 500)
 		.task {
 			if store.availableModels.isEmpty {
 				store.send(.fetchModels)
@@ -341,143 +390,205 @@ public struct ModelDownloadView: View {
 
 // MARK: – Subviews
 
-private struct HeaderView: View {
-	@Bindable var store: StoreOf<ModelDownloadFeature>
-
-	var body: some View {
-		HStack {
-			Text(store.showAllModels ? "Showing all models" : "Showing recommended models")
-				.font(.caption)
-				.foregroundColor(.secondary)
-			Spacer()
-			Button(
-				store.showAllModels ? "Show Recommended" : "Show All Models"
-			) {
-				store.send(.toggleModelDisplay)
-			}
-			.font(.caption)
-		}
-	}
+private struct SimpleHeader: View {
+    var body: some View {
+        HStack {
+            Text("Transcription Model")
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+        }
+    }
 }
 
-private struct AllModelsPicker: View {
-	@Bindable var store: StoreOf<ModelDownloadFeature>
+// Removed the dropdown picker — selection is now by clicking a row.
 
-	var body: some View {
-		Picker(
-			"Selected Model",
-			selection: Binding(
-				get: { store.hexSettings.selectedModel },
-				set: { store.send(.selectModel($0)) }
-			)
-		) {
-			ForEach(store.availableModels) { info in
-				HStack {
-					Text(
-						info.name == store.recommendedModel
-							? "\(info.name) (Recommended)"
-							: info.name
-					)
-					Spacer()
-					if info.isDownloaded {
-						Image(systemName: "checkmark.circle.fill")
-							.foregroundColor(.green)
-					}
-				}
-				.tag(info.name)
-			}
-		}
-		.pickerStyle(.menu)
-	}
+// MARK: – Compact Primary Card
+
+private struct PrimaryModelCard: View {
+    @Bindable var store: StoreOf<ModelDownloadFeature>
+
+    private var primary: CuratedModelInfo? {
+        // Prefer Parakeet if present; otherwise currently selected
+        if let p = store.curatedModels.first(where: { $0.internalName.hasPrefix("parakeet-") }) { return p }
+        return store.curatedModels.first(where: { $0.internalName == store.hexSettings.selectedModel })
+            ?? store.curatedModels.first
+    }
+
+    var body: some View {
+        if let model = primary {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.displayName)
+                            .font(.title3.weight(.semibold))
+                        HStack(spacing: 6) {
+                            Label(model.internalName.hasPrefix("parakeet-") ? "Multilingual" : "English only",
+                                  systemImage: model.internalName.hasPrefix("parakeet-") ? "globe" : "character.cursor.ibeam")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(model.storageSize)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if model.isDownloaded {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    StarRatingView( model.accuracyStars )
+                    Text("Accuracy").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    StarRatingView( model.speedStars )
+                    Text("Speed").font(.caption).foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Button(model.isDownloaded ? "Use" : "Download") {
+                        store.send(.selectModel(model.internalName))
+                        if !model.isDownloaded { store.send(.downloadSelectedModel) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+
+                    if model.isDownloaded {
+                        Button("Delete", role: .destructive) { store.send(.deleteSelectedModel) }
+                            .buttonStyle(.bordered)
+                            .controlSize(.regular)
+                    }
+                }
+            }
+            .padding(14)
+            .background( RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)) )
+            .overlay( RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.2)) )
+        } else {
+            Text("No models found.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
 }
 
 private struct CuratedList: View {
-	@Bindable var store: StoreOf<ModelDownloadFeature>
+    @Bindable var store: StoreOf<ModelDownloadFeature>
 
-	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
-			// Header
-			HStack(alignment: .bottom) {
-				Text("Model")
-					.frame(minWidth: 80, alignment: .leading)
-					.font(.caption.bold())
-				Spacer()
-				Text("Accuracy")
-					.frame(minWidth: 80, alignment: .leading)
-					.font(.caption.bold())
-				Spacer()
-				Text("Speed")
-					.frame(minWidth: 80, alignment: .leading)
-					.font(.caption.bold())
-				Spacer()
-				Text("Size")
-					.frame(minWidth: 70, alignment: .leading)
-					.font(.caption.bold())
-			}
-			.padding(.horizontal, 8)
-
-			ForEach(store.curatedModels) { model in
-				CuratedRow(store: store, model: model)
-			}
-		}
-	}
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(store.curatedModels) { model in
+                CuratedRow(store: store, model: model)
+            }
+        }
+    }
 }
 
 private struct CuratedRow: View {
-	@Bindable var store: StoreOf<ModelDownloadFeature>
-	let model: CuratedModelInfo
+    @Bindable var store: StoreOf<ModelDownloadFeature>
+    let model: CuratedModelInfo
 
-	var isSelected: Bool {
-		model.internalName == store.hexSettings.selectedModel
-	}
+    var isSelected: Bool {
+        let selected = store.hexSettings.selectedModel
+        if model.internalName.contains("*") || model.internalName.contains("?") {
+            return fnmatch(model.internalName, selected, 0) == 0
+        }
+        // Also consider the inverse: selected may be a concrete name while the curated item is a prefix-like value
+        if selected.contains("*") || selected.contains("?") {
+            return fnmatch(selected, model.internalName, 0) == 0
+        }
+        return model.internalName == selected
+    }
 
-	var body: some View {
-		Button(
-			action: { store.send(.selectModel(model.internalName)) }
-		) {
-			HStack {
-				HStack {
-					Text(model.displayName)
-						.font(.headline)
-					if model.isDownloaded {
-						Image(systemName: "checkmark.circle.fill")
-							.foregroundColor(.green)
-					}
-					if isSelected {
-						Image(systemName: "checkmark")
-							.foregroundColor(.blue)
-					}
-				}
-				.frame(minWidth: 80, alignment: .leading)
-				Spacer()
-				StarRatingView(model.accuracyStars)
-					.frame(minWidth: 80, alignment: .leading)
-				Spacer()
-				StarRatingView(model.speedStars)
-					.frame(minWidth: 80, alignment: .leading)
-				Spacer()
-				Text(model.storageSize)
-					.foregroundColor(.secondary)
-					.frame(minWidth: 70, alignment: .leading)
-			}
-			.padding(8)
-			.background(
-				RoundedRectangle(cornerRadius: 8)
-					.fill(isSelected ? Color.blue.opacity(0.1) : Color.clear)
-			)
-			.overlay(
-				RoundedRectangle(cornerRadius: 8)
-					.stroke(
-						isSelected
-							? Color.blue.opacity(0.3)
-							: Color.gray.opacity(0.2)
-					)
-			)
-			.contentShape(.rect)
-		}
-		.buttonStyle(.plain)
-	}
+    var body: some View {
+        Button(action: { store.send(.selectModel(model.internalName)) }) {
+            HStack(alignment: .center, spacing: 12) {
+                // Radio selector
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+
+                // Title and ratings
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(model.displayName)
+                        .font(.headline)
+                    HStack(spacing: 16) {
+                        HStack(spacing: 6) {
+                            StarRatingView(model.accuracyStars)
+                            Text("Accuracy").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 6) {
+                            StarRatingView(model.speedStars)
+                            Text("Speed").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                // Trailing size, menu, and action icons (download/checkmark), aligned to the right
+                HStack(spacing: 8) {
+                    Text(model.storageSize)
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                        .frame(width: 72, alignment: .trailing)
+
+                    // Overflow menu kept centrally aligned across rows
+                    Menu {
+                        Button("Show in Finder") { store.send(.openModelLocation) }
+                        Divider()
+                        Button("Delete", role: .destructive) {
+                            store.send(.selectModel(model.internalName))
+                            store.send(.deleteSelectedModel)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 28, height: 28)
+                    }
+                    .menuIndicator(.hidden)
+                    .buttonStyle(.borderless)
+                    .help("More actions")
+
+                    // Download/Downloaded icon at the far right
+                    Group {
+                        if model.isDownloaded {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Button {
+                                store.send(.selectModel(model.internalName))
+                                store.send(.downloadSelectedModel)
+                            } label: {
+                                Image(systemName: "arrow.down.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Download")
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.blue.opacity(0.08) : Color(NSColor.controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.blue.opacity(0.35) : Color.gray.opacity(0.18))
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        // Keep context menu as an alternative path
+        .contextMenu {
+            Button("Show in Finder") { store.send(.openModelLocation) }
+            Divider()
+            Button("Delete", role: .destructive) {
+                store.send(.selectModel(model.internalName))
+                store.send(.deleteSelectedModel)
+            }
+        }
+    }
 }
+
+// Removed multilingual/English badge — all curated entries here are multilingual.
 
 private struct FooterView: View {
 	@Bindable var store: StoreOf<ModelDownloadFeature>

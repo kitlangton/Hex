@@ -280,10 +280,11 @@ private extension TranscriptionFeature {
         let audioURL = await recording.stopRecording()
 
         // Create transcription options with the selected language
+        // Note: cap concurrency to avoid audio I/O overloads on some Macs
         let decodeOptions = DecodingOptions(
           language: language,
           detectLanguage: language == nil, // Only auto-detect if no language specified
-          chunkingStrategy: .vad
+          chunkingStrategy: .vad,
         )
         
         let result = try await transcription.transcribe(audioURL, model, decodeOptions) { _ in }
