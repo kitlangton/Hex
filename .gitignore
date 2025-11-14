@@ -10,6 +10,7 @@ updates/
 buildServer.json
 bin
 scripts
+tools
 ExportOptions.plist
 HexCore/.build
 HexCore/.swiftpm/xcode/xcuserdata/kit.xcuserdatad/xcschemes
