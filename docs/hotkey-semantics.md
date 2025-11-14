@@ -110,7 +110,7 @@ When you **release** the hotkey, should we transcribe the recording?
 │ Modifier-only    │   < 0.3s    │  Discard (silent)   │
 │ (Option)         │   ≥ 0.3s    │  Transcribe         │
 ├──────────────────┼─────────────┼─────────────────────┤
-│ Regular    │   < 0.2s    │  Discard (silent)   │
+│ Regular          │   < 0.2s    │  Discard (silent)   │
 │ (Cmd+A)          │   ≥ 0.2s    │  Transcribe         │
 └──────────────────┴─────────────┴─────────────────────┘
 
@@ -337,7 +337,7 @@ Now recording is locked on:
 │ Press modifier-only     │   No (passes through)    │
 │ hotkey (Option)         │                          │
 ├─────────────────────────┼──────────────────────────┤
-│ Press regular hotkey  │   Yes (blocked)          │
+│ Press regular hotkey     │   Yes (blocked)          │
 │ (Cmd+A)                 │                          │
 ├─────────────────────────┼──────────────────────────┤
 │ .discard output         │   No (passes through)    │
@@ -626,7 +626,7 @@ Result: Recording cancelled ✅
 │                │                │ Add modifier │ Ignore         │
 │                │                │ ESC          │ Cancel         │
 ├────────────────┼────────────────┼──────────────┼────────────────┤
-│ Regular  │  < minTime     │ Release      │ Discard        │
+│ Regular        │  < minTime     │ Release      │ Discard        │
 │ (Cmd+A)        │                │              │                │
 │                ├────────────────┼──────────────┼────────────────┤
 │                │ minTime - 1s   │ Other key    │ Stop           │
