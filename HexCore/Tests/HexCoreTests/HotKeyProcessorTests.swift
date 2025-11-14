@@ -290,6 +290,47 @@ struct HotKeyProcessorTests {
         )
     }
 
+    // MARK: - Fn + Arrow Regression
+
+    // After using Fn with another key (e.g., Arrow), then fully releasing,
+    // a subsequent standalone Fn press should be recognized and start recording.
+    // This guards against the state getting "stuck" after Fn+Arrow usage (Issue #81).
+    @Test
+    func modifierOnly_fn_triggersAfterFnPlusKeyThenFullRelease() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.fn]),
+            steps: [
+                // Simulate using an Arrow with Fn held (use .c as a stand-in key for arrows in unit tests)
+                ScenarioStep(time: 0.00, key: .c,  modifiers: [.fn], expectedOutput: nil, expectedIsMatched: false),
+                // Fully release everything
+                ScenarioStep(time: 0.05, key: nil, modifiers: [],    expectedOutput: nil, expectedIsMatched: false),
+                // Next standalone Fn press should trigger recording
+                ScenarioStep(time: 0.20, key: nil, modifiers: [.fn], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Release Fn should stop recording
+                ScenarioStep(time: 0.40, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+
+    // If the user uses Fn+Key and releases only the key (keeps Fn held),
+    // we must NOT trigger — no standalone Fn edge occurred.
+    @Test
+    func modifierOnly_fn_doesNotTriggerWhenFnRemainsHeldAfterKeyRelease() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.fn]),
+            steps: [
+                // Use Fn with another key (stand-in for arrow)
+                ScenarioStep(time: 0.00, key: .c,  modifiers: [.fn], expectedOutput: nil, expectedIsMatched: false),
+                // Release the key but keep Fn held — should not start
+                ScenarioStep(time: 0.05, key: nil, modifiers: [.fn], expectedOutput: nil, expectedIsMatched: false),
+                // Only once the user fully releases and presses Fn again should it start
+                ScenarioStep(time: 0.10, key: nil, modifiers: [],    expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.25, key: nil, modifiers: [.fn], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.45, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+
     // The user presses and holds options, therefore it should start recording and then after two seconds he also presses command, which should not do anything.
     @Test
     func pressAndHold_staysDirtyAfterTwoSeconds() throws {

@@ -214,8 +214,13 @@ extension HotKeyProcessor {
 
     /// "Dirty" if chord includes any extra modifiers or a different key.
     private func chordIsDirty(_ e: KeyEvent) -> Bool {
+        if hotkey.key == nil {
+            // Any key press while watching pure-modifier hotkey is "dirty"
+            // Also dirty if there are extra modifiers beyond what the hotkey requires
+            return e.key != nil || !e.modifiers.isSubset(of: hotkey.modifiers)
+        }
         let isSubset = e.modifiers.isSubset(of: hotkey.modifiers)
-        let isWrongKey = (hotkey.key != nil && e.key != nil && e.key != hotkey.key)
+        let isWrongKey = (e.key != nil && e.key != hotkey.key)
         return !isSubset || isWrongKey
     }
 
