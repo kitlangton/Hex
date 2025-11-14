@@ -28,8 +28,9 @@ jobs:
           MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
         run: |
           echo "$MACOS_CERTIFICATE" | base64 --decode > /tmp/cert.p12
-          security import /tmp/cert.p12 -P "$MACOS_CERTIFICATE_PWD" -A
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" login.keychain-db
+          security unlock-keychain -p "" login.keychain-db
+          security import /tmp/cert.p12 -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -k "" login.keychain-db
           rm /tmp/cert.p12
 
       - name: Build and release

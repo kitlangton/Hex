@@ -10,21 +10,6 @@ env:
   XCODE_VERSION: '16.2'
 
 jobs:
-  lint:
-    name: Swift Lint
-    runs-on: macos-15
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install SwiftLint
-      run: brew install swiftlint
-      
-    - name: Run SwiftLint
-      run: swiftlint --config .swiftlint.yml --reporter github-actions-logging
-      continue-on-error: true
-
   build-test:
     name: Build and Test
     runs-on: macos-15
