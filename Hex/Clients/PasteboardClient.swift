@@ -92,6 +92,10 @@ struct PasteboardClientLive {
     /// Pastes current clipboard content to the frontmost application
     static func pasteToFrontmostApp() -> Bool {
         let script = """
+        if application "System Events" is not running then
+            tell application "System Events" to launch
+            delay 0.1
+        end if
         tell application "System Events"
             tell process (name of first application process whose frontmost is true)
                 tell (menu item "Paste" of menu of menu item "Paste" of menu "Edit" of menu bar item "Edit" of menu bar 1)
@@ -133,46 +137,14 @@ struct PasteboardClientLive {
         return false
     }
 
+    @MainActor
     func pasteWithClipboard(_ text: String) async {
         let pasteboard = NSPasteboard.general
         let originalItems = savePasteboardState(pasteboard: pasteboard)
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-
-        let source = CGEventSource(stateID: .combinedSessionState)
         
-        // Track if paste operation successful
-        var pasteSucceeded = PasteboardClientLive.pasteToFrontmostApp()
-        
-        // If menu-based paste failed, try simulated keypresses
-        if !pasteSucceeded {
-            print("Failed to paste to frontmost app, falling back to simulated keypresses")
-            let vKeyCode = Sauce.shared.keyCode(for: .v)
-            let cmdKeyCode: CGKeyCode = 55 // Command key
-
-            // Create cmd down event
-            let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: cmdKeyCode, keyDown: true)
-
-            // Create v down event
-            let vDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true)
-            vDown?.flags = .maskCommand
-
-            // Create v up event
-            let vUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
-            vUp?.flags = .maskCommand
-
-            // Create cmd up event
-            let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: cmdKeyCode, keyDown: false)
-
-            // Post the events
-            cmdDown?.post(tap: .cghidEventTap)
-            vDown?.post(tap: .cghidEventTap)
-            vUp?.post(tap: .cghidEventTap)
-            cmdUp?.post(tap: .cghidEventTap)
-            
-            // Assume keypress-based paste succeeded - but text will remain in clipboard as fallback
-            pasteSucceeded = true
-        }
+        let pasteSucceeded = await tryPaste(text)
         
         // Only restore original pasteboard contents if:
         // 1. Copying to clipboard is disabled AND
@@ -192,6 +164,53 @@ struct PasteboardClientLive {
             // TODO: Could add a notification here to inform user
             // that text is available in clipboard
         }
+    }
+
+    // MARK: - Paste Orchestration
+
+    @MainActor
+    private func tryPaste(_ text: String) async -> Bool {
+        // 1) Fast path: send Cmd+V (no delay)
+        if await postCmdV(delayMs: 0) { return true }
+        // 2) Menu fallback (quiet failure)
+        if PasteboardClientLive.pasteToFrontmostApp() { return true }
+        // 3) AX insert fallback
+        if (try? Self.insertTextAtCursor(text)) != nil { return true }
+        return false
+    }
+
+    // MARK: - Helpers
+
+    @MainActor
+    private func postCmdV(delayMs: Int) async -> Bool {
+        // Optional tiny wait before keystrokes
+        try? await wait(milliseconds: delayMs)
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let vKey = vKeyCode()
+        let cmdKey: CGKeyCode = 55
+        let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: cmdKey, keyDown: true)
+        let vDown = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true)
+        vDown?.flags = .maskCommand
+        let vUp = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
+        vUp?.flags = .maskCommand
+        let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: cmdKey, keyDown: false)
+        cmdDown?.post(tap: .cghidEventTap)
+        vDown?.post(tap: .cghidEventTap)
+        vUp?.post(tap: .cghidEventTap)
+        cmdUp?.post(tap: .cghidEventTap)
+        return true
+    }
+
+    @MainActor
+    private func vKeyCode() -> CGKeyCode {
+        if Thread.isMainThread { return Sauce.shared.keyCode(for: .v) }
+        return DispatchQueue.main.sync { Sauce.shared.keyCode(for: .v) }
+    }
+
+    @MainActor
+    private func wait(milliseconds: Int) async throws {
+        try Task.checkCancellation()
+        try await Task.sleep(nanoseconds: UInt64(milliseconds) * 1_000_000)
     }
     
     func simulateTypingWithAppleScript(_ text: String) {
