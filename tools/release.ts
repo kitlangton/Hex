@@ -7,7 +7,7 @@
 
 import { Command } from "@effect/platform"
 import { NodeContext, NodeRuntime } from "@effect/platform-node"
-import { Console, Effect, Config, Secret, pipe } from "effect"
+import { Console, Effect, Config, Secret, Option, pipe } from "effect"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import { readFile } from "fs/promises"
 import { join } from "path"
@@ -45,15 +45,19 @@ type ReleaseConfig = Config.Config.Success<typeof ReleaseConfig>
  * Get notarization args based on config (uses keychain if no Apple creds provided)
  */
 const getNotarizeArgs = (config: ReleaseConfig) => {
-  if (config.appleId && config.applePassword && config.teamId) {
+  if (
+    Option.isSome(config.appleId) &&
+    Option.isSome(config.applePassword) &&
+    Option.isSome(config.teamId)
+  ) {
     // Use provided credentials (CI)
     return [
       "--apple-id",
-      config.appleId,
+      config.appleId.value,
       "--password",
-      Secret.value(config.applePassword),
+      Secret.value(config.applePassword.value),
       "--team-id",
-      config.teamId,
+      config.teamId.value,
     ]
   }
   // Use keychain profile (local)
@@ -79,16 +83,23 @@ const runCommand = (name: string, ...args: string[]) =>
 const runCommandCheck = (name: string, ...args: string[]) =>
   pipe(
     Command.make(name, ...args),
-    Command.exitCode,
-    Effect.tap(() => Console.log(`✓ ${name} ${args.join(" ")}`)),
-    Effect.tapError((error) =>
-      Console.error(`✗ ${name} ${args.join(" ")} failed:`, error)
+    Command.lines,
+    Effect.tap((output) => {
+      // Show output for debugging
+      if (output.length > 0) {
+        return Console.log(output.join("\n"))
+      }
+      return Effect.void
+    }),
+    Effect.map(() => 0), // Success
+    Effect.catchAll((error) =>
+      pipe(
+        Console.error(`\n❌ ${name} ${args.join(" ")} failed`),
+        Effect.zipRight(Console.error(`Error: ${error}`)),
+        Effect.zipRight(Effect.fail(error))
+      )
     ),
-    Effect.flatMap((code) =>
-      code === 0
-        ? Effect.succeed(void 0)
-        : Effect.fail(`Command exited with code ${code}`)
-    )
+    Effect.tap(() => Console.log(`✅ ${name} ${args.join(" ")}`))
   )
 
 // ============================================================================
@@ -208,35 +219,39 @@ const incrementBuildNumber = (plistPath: string) =>
  */
 const cleanBuildFolder = (scheme: string, derivedDataPath: string) =>
   pipe(
-    runCommandCheck(
-      "xcodebuild",
-      "clean",
-      "-scheme",
-      scheme,
-      "-configuration",
-      "Release",
-      "-derivedDataPath",
-      derivedDataPath
-    ),
-    Effect.tap(() => Console.log(`✓ Cleaned build (DerivedData: ${derivedDataPath})`))
+    Console.log(`🧹 Cleaning build folder...`),
+    Effect.zipRight(
+      runCommandCheck(
+        "xcodebuild",
+        "clean",
+        "-scheme",
+        scheme,
+        "-configuration",
+        "Release",
+        "-derivedDataPath",
+        derivedDataPath
+      )
+    )
   )
 
 const buildArchive = (scheme: string, archivePath: string, derivedDataPath: string) =>
   pipe(
-    runCommandCheck(
-      "xcodebuild",
-      "archive",
-      "-scheme",
-      scheme,
-      "-archivePath",
-      archivePath,
-      "-configuration",
-      "Release",
-      "-derivedDataPath",
-      derivedDataPath,
-      "CODE_SIGN_STYLE=Automatic"
-    ),
-    Effect.tap(() => Console.log(`✓ Archive created at ${archivePath}`))
+    Console.log(`📦 Creating archive (this may take several minutes)...`),
+    Effect.zipRight(
+      runCommandCheck(
+        "xcodebuild",
+        "archive",
+        "-scheme",
+        scheme,
+        "-archivePath",
+        archivePath,
+        "-configuration",
+        "Release",
+        "-derivedDataPath",
+        derivedDataPath,
+        "CODE_SIGN_STYLE=Automatic"
+      )
+    )
   )
 
 /**
@@ -403,10 +418,10 @@ const uploadToS3 = (filePath: string, bucket: string, key: string, config: Relea
     Effect.gen(function* () {
       // Use explicit credentials if provided, otherwise AWS SDK uses default credential chain
       const credentials =
-        config.awsAccessKeyId && config.awsSecretAccessKey
+        Option.isSome(config.awsAccessKeyId) && Option.isSome(config.awsSecretAccessKey)
           ? {
-              accessKeyId: config.awsAccessKeyId,
-              secretAccessKey: Secret.value(config.awsSecretAccessKey),
+              accessKeyId: config.awsAccessKeyId.value,
+              secretAccessKey: Secret.value(config.awsSecretAccessKey.value),
             }
           : undefined
 
@@ -453,63 +468,74 @@ const generateAppcast = (updatesDir: string) =>
 const main = Effect.gen(function* () {
   const config = yield* ReleaseConfig
 
-  yield* Console.log("🚀 Starting Hex release process...")
+  yield* Console.log("\n🚀 Starting Hex release process...\n")
+
+  // Detect project root (works whether run from tools/ or project root)
+  const cwd = process.cwd()
+  const projectRoot = cwd.endsWith("tools") ? join(cwd, "..") : cwd
+  process.chdir(projectRoot)
 
   // Setup directories
-  const buildDir = join(process.cwd(), "build")
-  const updatesDir = join(process.cwd(), "updates")
+  const buildDir = join(projectRoot, "build")
+  const updatesDir = join(projectRoot, "updates")
   const derivedDataPath = join(buildDir, "DerivedData")
   yield* runCommandCheck("mkdir", "-p", buildDir, updatesDir)
   yield* runCommandCheck("rm", "-rf", derivedDataPath)
 
   // Version management - use VERSION env if provided (from git tag), else bump
-  const newVersion = config.version
-    ? config.version.replace(/^v/, "") // Strip 'v' prefix if present
-    : (() => {
-        const current = yield* getVersion(config.plistPath)
-        return bumpVersion(current, "patch")
-      })()
+  const newVersion = Option.isSome(config.version)
+    ? config.version.value.replace(/^v/, "") // Strip 'v' prefix if present
+    : bumpVersion(yield* getVersion(config.plistPath), "patch")
 
-  yield* Console.log(`Release version: ${newVersion}`)
+  yield* Console.log(`\n📦 Release version: ${newVersion}\n`)
   yield* updateVersion(config.plistPath, newVersion)
   yield* updateXcodeVersion(newVersion)
   yield* incrementBuildNumber(config.plistPath)
 
   // Build and archive
+  yield* Console.log(`\n🔨 Building...\n`)
   const archivePath = join(buildDir, "Hex.xcarchive")
   yield* cleanBuildFolder(config.scheme, derivedDataPath)
   yield* buildArchive(config.scheme, archivePath, derivedDataPath)
 
   // Export
+  yield* Console.log(`\n📤 Exporting...\n`)
   yield* exportApp(archivePath, config.exportOptions, buildDir)
 
   // Notarize app
+  yield* Console.log(`\n🍎 Notarizing app...\n`)
   const appBundle = join(buildDir, "Hex.app")
   yield* notarizeApp(appBundle, config)
 
-  // Create ZIP for Homebrew
+  // Create ZIP for Homebrew (in build dir to avoid appcast conflict)
+  yield* Console.log(`\n🗜️  Creating artifacts...\n`)
   const zipFilename = `Hex-${newVersion}.zip`
-  const zipPath = join(updatesDir, zipFilename)
+  const zipPath = join(buildDir, zipFilename)
   yield* runCommandCheck("ditto", "-c", "-k", "--keepParent", appBundle, zipPath)
-  yield* Console.log(`✓ Created ZIP at ${zipPath}`)
 
   // Create and notarize DMG
   const dmgFilename = `Hex-${newVersion}.dmg`
   const dmgPath = join(buildDir, dmgFilename)
   yield* createSignedDMG(appBundle, dmgPath)
+
+  yield* Console.log(`\n🍎 Notarizing DMG...\n`)
   yield* notarizeDMG(dmgPath, config)
 
-  // Move to updates dir
+  // Move DMG to updates dir
   const finalDmgPath = join(updatesDir, dmgFilename)
   yield* runCommandCheck("mv", dmgPath, finalDmgPath)
 
-  // Generate appcast
+  // Generate appcast (only DMG in updates dir, not ZIP)
   yield* generateAppcast(updatesDir)
+
+  // Move ZIP to updates dir after appcast generation
+  const finalZipPath = join(updatesDir, zipFilename)
+  yield* runCommandCheck("mv", zipPath, finalZipPath)
 
   // Upload to S3
   yield* uploadToS3(finalDmgPath, config.bucket, dmgFilename, config)
   yield* uploadToS3(finalDmgPath, config.bucket, "hex-latest.dmg", config)
-  yield* uploadToS3(zipPath, config.bucket, zipFilename, config)
+  yield* uploadToS3(finalZipPath, config.bucket, zipFilename, config)
 
   const appcastPath = join(updatesDir, "appcast.xml")
   yield* uploadToS3(appcastPath, config.bucket, "appcast.xml", config)

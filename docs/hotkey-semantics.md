@@ -12,26 +12,21 @@ The key insight: **Modifier-only hotkeys need protection from accidental trigger
 
 ### Modifier-Only Hotkeys (e.g., Option, Option+Command)
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Timeline: Press Option, then...                   │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  0s ═══════════════════════ 0.3s ══════════ ∞      │
-│      ↓                       ↓                      │
-│      START                   │                      │
-│                              │                      │
-│  ┌───────<0.3s──────┐        │   ┌────≥0.3s─────┐  │
-│  │ Quick Actions    │        │   │ Intentional   │  │
-│  │ • Release        │  →  DISCARD  • Release  → STOP│
-│  │ • Click          │        │   │ • Click    → NOP │
-│  │ • Press A        │        │   │ • Press A  → NOP │
-│  │ • Add Shift      │        │   │ • Add Shift→ NOP │
-│  └──────────────────┘        │   └───────────────┘  │
-│                              │                      │
-│  Only ESC cancels after 0.3s ───────────────────────┤
-└─────────────────────────────────────────────────────┘
-```
+**Timeline: Press Option → START recording**
+
+**Before 0.3s (< 0.3s):**
+- Release → DISCARD (silent)
+- Click → DISCARD (silent)
+- Press A → DISCARD (silent)
+- Add Shift → DISCARD (silent)
+- All actions trigger silent discard
+
+**After 0.3s (≥ 0.3s):**
+- Release → STOP (transcribe)
+- Click → NOP (ignore, keep recording)
+- Press A → NOP (ignore, keep recording)
+- Add Shift → NOP (ignore, keep recording)
+- ESC → CANCEL (only way to stop)
 
 **Key points:**
 - **< 0.3s**: Everything except ESC triggers **silent discard** (no sound)
@@ -42,22 +37,24 @@ The key insight: **Modifier-only hotkeys need protection from accidental trigger
 
 ### Regular Hotkeys (e.g., Cmd+A, Option+K)
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Timeline: Press Cmd+A, then...                    │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  0s ════════ 0.2s ═══════════════ 1.0s ═══════ ∞   │
-│      ↓         ↓                   ↓               │
-│      START     │                   │               │
-│                │                   │               │
-│  ┌──<0.2s──┐  │  ┌──0.2-1.0s───┐  │  ┌──>1.0s──┐  │
-│  │ Release │  │  │ • Press B   │  │  │ Press B │  │
-│  │ Click   │→DISCARD • Add Shift│→STOP │ Click  │→NOP│
-│  └─────────┘  │  └─────────────┘  │  └─────────┘  │
-│               │                   │               │
-└─────────────────────────────────────────────────────┘
-```
+**Timeline: Press Cmd+A → START recording**
+
+**Before 0.2s (< minimumKeyTime):**
+- Release → DISCARD (silent)
+- Click → DISCARD (silent)
+
+**Between 0.2s - 1.0s:**
+- Press different key (e.g., Cmd+B) → STOP (with sound)
+- Add modifier (e.g., Shift) → STOP (with sound)
+
+**After 1.0s (> 1.0s):**
+- Press different key → NOP (ignore, keep recording)
+- Add modifier → NOP (ignore, keep recording)
+- Allows typing while recording
+
+**Any time:**
+- Release → STOP (transcribe if long enough)
+- ESC → CANCEL
 
 **Key points:**
 - **< minimumKeyTime** (default 0.2s): **Silent discard**
@@ -103,20 +100,15 @@ effectiveThreshold = minimumKeyTime
 
 When you **release** the hotkey, should we transcribe the recording?
 
-```
-┌──────────────────┬─────────────┬─────────────────────┐
-│   Hotkey Type    │  Duration   │      Decision       │
-├──────────────────┼─────────────┼─────────────────────┤
-│ Modifier-only    │   < 0.3s    │  Discard (silent)   │
-│ (Option)         │   ≥ 0.3s    │  Transcribe         │
-├──────────────────┼─────────────┼─────────────────────┤
-│ Regular          │   < 0.2s    │  Discard (silent)   │
-│ (Cmd+A)          │   ≥ 0.2s    │  Transcribe         │
-└──────────────────┴─────────────┴─────────────────────┘
+**Modifier-only (Option):**
+- Duration < 0.3s → Discard (silent)
+- Duration ≥ 0.3s → Transcribe
 
-Note: minimumKeyTime can be adjusted by user
-      modifier-only always enforces 0.3s minimum
-```
+**Regular (Cmd+A):**
+- Duration < 0.2s (or < minimumKeyTime) → Discard (silent)
+- Duration ≥ 0.2s (or ≥ minimumKeyTime) → Transcribe
+
+*Note: minimumKeyTime can be adjusted by user, but modifier-only always enforces 0.3s minimum*
 
 ---
 
@@ -282,18 +274,15 @@ Now recording is locked on:
 5.0s: Tap hotkey ──────────→ STOP
 ```
 
-### Visual Diagram
+### Sequence
 
-```
-     TAP 1      TAP 2
-       │          │
-  ─────●──────────●─────────●─────────
-       ↓   0.2s   ↓         ↓
-     START      START     STOP
-       ↓          ↓
-     STOP       LOCK!
-    (normal)  (hands-free)
-```
+1. **Tap 1** (t=0.0s) → START recording
+2. **Release** (t=0.1s) → STOP (normal behavior)
+3. **Tap 2** (t=0.2s, within 0.3s window) → START recording again
+4. **Release** (t=0.3s, Δt=0.2s < 0.3s) → **LOCK!** (hands-free mode)
+5. Recording continues until:
+   - Tap hotkey again → STOP
+   - Press ESC → STOP
 
 ### Rules
 
@@ -306,23 +295,19 @@ Now recording is locked on:
 
 ## Output Types
 
-```
-┌────────────┬──────────────────┬────────────────────┐
-│   Output   │   Has Sound?     │    What Happens    │
-├────────────┼──────────────────┼────────────────────┤
-│ .discard   │   No (silent)    │ Stop recording,    │
-│            │                  │ discard audio,     │
-│            │                  │ pass keys through  │
-├────────────┼──────────────────┼────────────────────┤
-│ .stop      │   Yes (stop)     │ Stop recording,    │
-│ Recording  │                  │ transcribe if      │
-│            │                  │ long enough        │
-├────────────┼──────────────────┼────────────────────┤
-│ .cancel    │   Yes (cancel)   │ Stop recording,    │
-│            │                  │ discard audio,     │
-│            │                  │ play cancel sound  │
-└────────────┴──────────────────┴────────────────────┘
-```
+- **`.discard`** (silent)
+  - Stop recording
+  - Discard audio
+  - Pass keys through to macOS
+
+- **`.stop`** (with stop sound)
+  - Stop recording
+  - Transcribe if duration ≥ threshold
+
+- **`.cancel`** (with cancel sound)
+  - Stop recording
+  - Discard audio
+  - Play cancel sound
 
 ---
 
@@ -330,24 +315,13 @@ Now recording is locked on:
 
 **When does Hex intercept (block) key events from reaching other apps?**
 
-```
-┌─────────────────────────┬──────────────────────────┐
-│        Scenario         │       Intercepted?       │
-├─────────────────────────┼──────────────────────────┤
-│ Press modifier-only     │   No (passes through)    │
-│ hotkey (Option)         │                          │
-├─────────────────────────┼──────────────────────────┤
-│ Press regular hotkey     │   Yes (blocked)          │
-│ (Cmd+A)                 │                          │
-├─────────────────────────┼──────────────────────────┤
-│ .discard output         │   No (passes through)    │
-│                         │   ← CRITICAL!            │
-├─────────────────────────┼──────────────────────────┤
-│ .cancel output          │   Yes (blocked)          │
-├─────────────────────────┼──────────────────────────┤
-│ Mouse clicks            │   Never (always pass)    │
-└─────────────────────────┴──────────────────────────┘
-```
+**Key Interception Rules:**
+
+- **Press modifier-only hotkey (Option)** → No (passes through)
+- **Press regular hotkey (Cmd+A)** → Yes (blocked)
+- **`.discard` output** → No (passes through) ← CRITICAL!
+- **`.cancel` output** → Yes (blocked)
+- **Mouse clicks** → Never intercepted (always pass through)
 
 **Example:**
 ```
@@ -368,18 +342,14 @@ Result: Hex discards recording silently
 
 ### What triggers dirty?
 
-```
-┌────────────────────────────────────────────────┐
-│  Modifier-only (Option):                      │
-│  • Add extra modifier within 0.3s → dirty     │
-│  • Press any key within 0.3s → dirty          │
-│  • Click mouse within 0.3s → dirty            │
-├────────────────────────────────────────────────┤
-│  Regular (Cmd+A):                       │
-│  • Press different key within 1s → dirty      │
-│  • Change modifiers within 1s → dirty         │
-└────────────────────────────────────────────────┘
-```
+**Modifier-only (Option):**
+- Add extra modifier within 0.3s → dirty
+- Press any key within 0.3s → dirty
+- Click mouse within 0.3s → dirty
+
+**Regular (Cmd+A):**
+- Press different key within 1s → dirty
+- Change modifiers within 1s → dirty
 
 ### Dirty behavior
 
@@ -393,125 +363,73 @@ User: Hold Option (0.1s) → Add Shift → Release Shift → Press Option again
   → Release all keys → Now Option works again
 ```
 
-### Visual
+### State Flow
 
-```
-  CLEAN ──[ trigger ]──→ DIRTY ──[ full release ]──→ CLEAN
-    ↓                      ↓
-  Accepts              Ignores all
-  hotkey               input until ∅
-```
+**CLEAN** → [trigger dirty condition] → **DIRTY** → [full release (all keys)] → **CLEAN**
+
+- **CLEAN**: Accepts hotkey input
+- **DIRTY**: Ignores all input until full release (all keys released)
 
 ---
 
 ## Decision Tree
 
-```
-┌─────────────────────────────────────────────────────┐
-│ Is ESC pressed?                                     │
-└──YES─→ CANCEL ────────────────────────────────────┐│
-   │                                                 ││
-   NO                                                ││
-   ↓                                                 ││
-┌─────────────────────────────────────────────────┐ ││
-│ Are we dirty?                                   │ ││
-└──YES─→ Ignore input (unless full release) ─────┐││ 
-   │                                             │││
-   NO                                            │││
-   ↓                                             │││
-┌─────────────────────────────────────────────┐ │││
-│ Does chord match hotkey exactly?            │ │││
-└──YES────────────────────┬──NO───────────────┘ │││
-   │                      │                     │││
-   │                      ↓                     │││
-   │           ┌──────────────────────┐         │││
-   │           │ Is recording active? │         │││
-   │           └──YES────────┬───NO───┘         │││
-   │              │          │                  │││
-   │              │          ↓                  │││
-   │              │    (ignore input)           │││
-   │              ↓                             │││
-   │    ┌────────────────────┐                 │││
-   │    │ Modifier-only?     │                 │││
-   │    └─YES──────┬────NO───┘                 │││
-   │       │       │                           │││
-   │       │       ↓                           │││
-   │       │  ┌──────────────┐                 │││
-   │       │  │ Elapsed < 1s?│                 │││
-   │       │  └─YES──┬───NO──┘                 │││
-   │       │     │   │                         │││
-   │       │     │   ↓                         │││
-   │       │     │ (ignore)                    │││
-   │       │     ↓                             │││
-   │       │  Elapsed                          │││
-   │       │  <minTime?                        │││
-   │       │     ↓                             │││
-   │       │  DISCARD                          │││
-   │       │     or                            │││
-   │       │  STOP                             │││
-   │       ↓                                   │││
-   │  Elapsed < max(0.3, minTime)?            │││
-   │       ↓                                   │││
-   │    DISCARD                                │││
-   │       or                                  │││
-   │    (ignore)                               │││
-   ↓                                           │││
-START or STOP                                  │││
-(depending on state)                           │││
-   │                                           │││
-   └───────────────────────────────────────────┘││
-                                                ││
-   ←────────────────────────────────────────────┘│
-                                                 │
-   ←─────────────────────────────────────────────┘
-```
+**Processing order:**
+
+1. **Is ESC pressed?**
+   - YES → CANCEL (exit)
+
+2. **Are we dirty?**
+   - YES → Ignore input (unless full release)
+
+3. **Does chord match hotkey exactly?**
+   - NO → Check if recording active
+     - Recording active → Handle based on elapsed time
+     - Not recording → Ignore input
+   - YES → Continue to step 4
+
+4. **Is recording active?**
+   - NO → START recording
+   - YES → Check hotkey type and elapsed time
+
+5. **If recording active:**
+   - **Modifier-only?**
+     - YES → Check elapsed < max(0.3s, minimumKeyTime)
+       - YES → DISCARD or (ignore if ≥0.3s)
+       - NO → (ignore)
+   - **Regular hotkey?**
+     - Check elapsed < 1s
+       - YES → Check elapsed < minimumKeyTime
+         - YES → DISCARD
+         - NO → STOP
+       - NO → (ignore)
+
+6. **Final action:**
+   - START or STOP (depending on current state)
 
 ---
 
-## ASCII State Machine
+## State Machine
 
-```
-                    ┌─────────┐
-                    │  IDLE   │◄────────┐
-                    └────┬────┘         │
-                         │              │
-                  chord = hotkey        │
-                         │              │
-                         ▼              │
-              ┌──────────────────┐     │
-              │  PRESS & HOLD    │     │
-              │  (recording...)  │     │
-              └────┬────────┬────┘     │
-                   │        │          │
-          release  │        │ other input
-          (normal) │        │          │
-                   │        ▼          │
-                   │  ┌──────────┐    │
-                   │  │ elapsed? │    │
-                   │  └─┬────┬───┘    │
-                   │    │    │        │
-                   │  <0.3  ≥0.3      │
-                   │    │    │        │
-                   │    ▼    ▼        │
-                   │ DISCARD (ignore) │
-                   │    │    │        │
-                   │    └────┘        │
-                   │         │        │
-              check last tap │        │
-                   │         │        │
-           Δt < 0.3s?        │        │
-                   │         │        │
-            YES ┌──┴──┐ NO   │        │
-                │     │      │        │
-                ▼     ▼      │        │
-           ┌────────┐ STOP───┘        │
-           │  LOCK  │                 │
-           └───┬────┘                 │
-               │                      │
-         tap again or ESC             │
-               │                      │
-               └──────────────────────┘
-```
+**States:**
+
+- **IDLE**
+  - Transition: chord matches hotkey → PRESS & HOLD
+
+- **PRESS & HOLD** (recording)
+  - On release (normal):
+    - Check elapsed time
+    - If < 0.3s (modifier-only) or < minimumKeyTime (regular) → DISCARD
+    - If ≥ threshold → Check last tap timing
+      - If Δt < 0.3s → LOCK
+      - Otherwise → STOP → IDLE
+  - On other input:
+    - Check elapsed time
+    - If < 0.3s → DISCARD → IDLE
+    - If ≥ 0.3s → (ignore, keep recording)
+
+- **LOCK** (hands-free recording)
+  - Transition: Tap hotkey again OR press ESC → STOP → IDLE
 
 ---
 
@@ -611,34 +529,37 @@ Result: Recording cancelled ✅
 
 ## Summary Table
 
-```
-┌────────────────┬────────────────┬──────────────┬────────────────┐
-│  Hotkey Type   │  Time Window   │   Action     │    Result      │
-├────────────────┼────────────────┼──────────────┼────────────────┤
-│ Modifier-only  │    < 0.3s      │ Release      │ Discard        │
-│ (Option)       │                │ Click        │ Discard        │
-│                │                │ Press key    │ Discard        │
-│                │                │ Add modifier │ Discard        │
-│                ├────────────────┼──────────────┼────────────────┤
-│                │    ≥ 0.3s      │ Release      │ Transcribe     │
-│                │                │ Click        │ Ignore         │
-│                │                │ Press key    │ Ignore         │
-│                │                │ Add modifier │ Ignore         │
-│                │                │ ESC          │ Cancel         │
-├────────────────┼────────────────┼──────────────┼────────────────┤
-│ Regular        │  < minTime     │ Release      │ Discard        │
-│ (Cmd+A)        │                │              │                │
-│                ├────────────────┼──────────────┼────────────────┤
-│                │ minTime - 1s   │ Other key    │ Stop           │
-│                │                │ Add modifier │ Stop           │
-│                ├────────────────┼──────────────┼────────────────┤
-│                │    > 1s        │ Other key    │ Ignore         │
-│                │                │ Add modifier │ Ignore         │
-│                ├────────────────┼──────────────┼────────────────┤
-│                │    Any time    │ Release      │ Transcribe     │
-│                │                │ ESC          │ Cancel         │
-└────────────────┴────────────────┴──────────────┴────────────────┘
-```
+**Modifier-only (Option):**
+
+- **Time < 0.3s:**
+  - Release → Discard
+  - Click → Discard
+  - Press key → Discard
+  - Add modifier → Discard
+
+- **Time ≥ 0.3s:**
+  - Release → Transcribe
+  - Click → Ignore (keep recording)
+  - Press key → Ignore (keep recording)
+  - Add modifier → Ignore (keep recording)
+  - ESC → Cancel
+
+**Regular (Cmd+A):**
+
+- **Time < minimumKeyTime:**
+  - Release → Discard
+
+- **Time: minimumKeyTime - 1s:**
+  - Other key → Stop
+  - Add modifier → Stop
+
+- **Time > 1s:**
+  - Other key → Ignore (keep recording)
+  - Add modifier → Ignore (keep recording)
+
+- **Any time:**
+  - Release → Transcribe (if long enough)
+  - ESC → Cancel
 
 ---
 
