@@ -12,7 +12,7 @@
     "internalName": "openai_whisper-tiny",
     "size": "Multilingual",
     "accuracyStars": 2,
-    "speedStars": 5,
+    "speedStars": 4,
     "storageSize": "100MB"
   },
   {

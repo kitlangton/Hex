@@ -64,3 +64,7 @@ Hex is organized into several directories, each serving a specific purpose:
     - A list of supported languages for transcription.
   - `Audio/`
     - Sound effects for user feedback.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.

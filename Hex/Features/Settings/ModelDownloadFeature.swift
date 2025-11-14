@@ -534,35 +534,12 @@ private struct CuratedRow: View {
 
                 Spacer(minLength: 12)
 
-                // Trailing size, menu, and action/progress icons, aligned to the right
-                HStack(spacing: 8) {
+                // Trailing size and action/progress icons, aligned to the right
+                HStack(spacing: 12) {
                     Text(model.storageSize)
                         .foregroundStyle(.secondary)
                         .font(.subheadline)
                         .frame(width: 72, alignment: .trailing)
-
-                    // Overflow menu kept centrally aligned across rows (same items as context menu)
-                    Menu {
-                        if store.isDownloading, store.downloadingModelName == model.internalName {
-                            Button("Cancel Download", role: .destructive) { store.send(.cancelDownload) }
-                        }
-                        if model.isDownloaded || (store.isDownloading && store.downloadingModelName == model.internalName) {
-                            Button("Show in Finder") { store.send(.openModelLocation) }
-                        }
-                        if model.isDownloaded {
-                            Divider()
-                            Button("Delete", role: .destructive) {
-                                store.send(.selectModel(model.internalName))
-                                store.send(.deleteSelectedModel)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .frame(width: 28, height: 28)
-                    }
-                    .menuIndicator(.hidden)
-                    .buttonStyle(.borderless)
-                    .help("More actions")
 
                     // Download/Progress/Downloaded at far right
                     ZStack {
