@@ -57,5 +57,37 @@ struct HotKeySectionView: View {
                 }
             }
         }
+        
+        Section("Paste Last Transcript") {
+            let pasteHotkey = store.hexSettings.pasteLastTranscriptHotkey
+            let key = store.isSettingPasteLastTranscriptHotkey ? nil : pasteHotkey?.key
+            let modifiers = store.isSettingPasteLastTranscriptHotkey ? store.currentPasteLastModifiers : (pasteHotkey?.modifiers ?? [])
+            
+            VStack(spacing: 12) {
+                Text("Set a keyboard shortcut to paste your last transcription")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                
+                HStack {
+                    Spacer()
+                    HotKeyView(modifiers: modifiers, key: key, isActive: store.isSettingPasteLastTranscriptHotkey)
+                        .animation(.spring(), value: key)
+                        .animation(.spring(), value: modifiers)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    store.send(.startSettingPasteLastTranscriptHotkey)
+                }
+                
+                if pasteHotkey != nil {
+                    Button("Clear Hotkey", role: .destructive) {
+                        store.send(.clearPasteLastTranscriptHotkey)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
     }
 }

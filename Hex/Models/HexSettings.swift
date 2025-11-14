@@ -20,6 +20,7 @@ struct HexSettings: Codable, Equatable {
 	var selectedMicrophoneID: String? = nil
 	var saveTranscriptionHistory: Bool = true
 	var maxHistoryEntries: Int? = nil
+	var pasteLastTranscriptHotkey: HotKey? = nil
 
 	// Define coding keys to match struct properties
 	enum CodingKeys: String, CodingKey {
@@ -38,6 +39,7 @@ struct HexSettings: Codable, Equatable {
 		case selectedMicrophoneID
 		case saveTranscriptionHistory
 		case maxHistoryEntries
+		case pasteLastTranscriptHotkey
 	}
 
 	init(
@@ -55,7 +57,8 @@ struct HexSettings: Codable, Equatable {
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
 		saveTranscriptionHistory: Bool = true,
-		maxHistoryEntries: Int? = nil
+		maxHistoryEntries: Int? = nil,
+		pasteLastTranscriptHotkey: HotKey? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.hotkey = hotkey
@@ -72,6 +75,7 @@ struct HexSettings: Codable, Equatable {
 		self.selectedMicrophoneID = selectedMicrophoneID
 		self.saveTranscriptionHistory = saveTranscriptionHistory
 		self.maxHistoryEntries = maxHistoryEntries
+		self.pasteLastTranscriptHotkey = pasteLastTranscriptHotkey
 	}
 
 	// Custom decoder that handles missing fields
@@ -105,6 +109,7 @@ struct HexSettings: Codable, Equatable {
 		saveTranscriptionHistory =
 			try container.decodeIfPresent(Bool.self, forKey: .saveTranscriptionHistory) ?? true
 		maxHistoryEntries = try container.decodeIfPresent(Int.self, forKey: .maxHistoryEntries)
+		pasteLastTranscriptHotkey = try container.decodeIfPresent(HotKey.self, forKey: .pasteLastTranscriptHotkey)
 	}
 }
 

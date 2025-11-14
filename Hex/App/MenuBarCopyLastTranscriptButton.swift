@@ -17,11 +17,11 @@ struct MenuBarCopyLastTranscriptButton: View {
 
     Button(action: {
       if let text = lastText {
-        Task { await pasteboard.copy(text) }
+        Task { await pasteboard.paste(text) }
       }
     }) {
       HStack(spacing: 6) {
-        Text("Copy Last Transcript")
+        Text("Paste Last Transcript")
         if !preview.isEmpty {
           Text("(\(preview))")
             .foregroundStyle(.secondary)

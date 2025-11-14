@@ -147,6 +147,11 @@ actor TranscriptionClientLive {
 
   /// Deletes a model from disk if it exists
   func deleteModel(variant: String) async throws {
+    if isParakeet(variant) {
+      try await parakeet.deleteCaches()
+      if currentModelName == variant { unloadCurrentModel() }
+      return
+    }
     let modelFolder = modelPath(for: variant)
 
     // Check if the model exists

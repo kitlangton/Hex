@@ -112,6 +112,52 @@ actor ParakeetClient {
     let result = try await asr.transcribe(url)
     return result.text
   }
+
+  // Delete cached Parakeet models from known locations and reset state
+  func deleteCaches() async throws {
+    let fm = FileManager.default
+    let modelId = "parakeet-tdt-0.6b-v3-coreml"
+
+    // Candidate roots (same order used for detection)
+    let xdg = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].flatMap { URL(fileURLWithPath: $0, isDirectory: true) }
+    let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+    let appCache = appSupport?.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
+    let userCache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache", isDirectory: true)
+
+    // Vendor prefixes we consider
+    let vendors = [
+      "fluidaudio/Models",
+      "FluidAudio/Models",
+      // FluidAudio default under Application Support root
+      "FluidAudio/Models"
+    ]
+
+    var removedAny = false
+    for root in [xdg, appCache, appSupport, userCache].compactMap({ $0 }) {
+      for vendor in vendors {
+        let base = root.appendingPathComponent(vendor, isDirectory: true)
+        // Remove exact match
+        let direct = base.appendingPathComponent(modelId, isDirectory: true)
+        if fm.fileExists(atPath: direct.path) {
+          try? fm.removeItem(at: direct)
+          removedAny = true
+        }
+        // Remove any prefixed folders
+        if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
+          for item in items where item.lastPathComponent.hasPrefix(modelId) {
+            try? fm.removeItem(at: item)
+            removedAny = true
+          }
+        }
+      }
+    }
+
+    // Reset live objects so a future download can proceed cleanly
+    if removedAny {
+      self.asr = nil
+      self.models = nil
+    }
+  }
 }
 
 #else

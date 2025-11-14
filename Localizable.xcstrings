@@ -75,6 +75,9 @@
         }
       }
     },
+    "Cancel Download" : {
+
+    },
     "Changelog" : {
       "localizations" : {
         "de" : {
@@ -117,6 +120,9 @@
         }
       }
     },
+    "Clear Hotkey" : {
+
+    },
     "Close" : {
       "localizations" : {
         "de" : {
@@ -137,9 +143,6 @@
           }
         }
       }
-    },
-    "Copy Last Transcript" : {
-
     },
     "Copy to clipboard" : {
       "comment" : "copy transcription from history.",
@@ -229,6 +232,9 @@
         }
       }
     },
+    "Downloaded" : {
+
+    },
     "Downloading %@..." : {
       "comment" : "In Transcription Model section in settings.",
       "extractionState" : "stale",
@@ -242,6 +248,9 @@
       }
     },
     "Downloading model..." : {
+
+    },
+    "Downloading… %lld%%" : {
 
     },
     "Enable in Settings" : {
@@ -419,6 +428,9 @@
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
 
     },
+    "Paste Last Transcript" : {
+
+    },
     "Pause Media while Recording" : {
       "comment" : "Label for general setting whether to pause media while recording.",
       "localizations" : {
@@ -505,6 +517,9 @@
       }
     },
     "Selected: %@" : {
+
+    },
+    "Set a keyboard shortcut to paste your last transcription" : {
 
     },
     "Settings" : {

@@ -13,6 +13,10 @@ extension SharedReaderKey
   static var isSettingHotKey: Self {
     Self[.inMemory("isSettingHotKey"), default: false]
   }
+  
+  static var isSettingPasteLastTranscriptHotkey: Self {
+    Self[.inMemory("isSettingPasteLastTranscriptHotkey"), default: false]
+  }
 }
 
 // MARK: - Settings Feature
@@ -23,10 +27,12 @@ struct SettingsFeature {
   struct State {
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isSettingHotKey) var isSettingHotKey: Bool = false
+    @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
 
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
+    var currentPasteLastModifiers: Modifiers = .init(modifiers: [])
     
     // Available microphones
     var availableInputDevices: [AudioInputDevice] = []
@@ -45,6 +51,8 @@ struct SettingsFeature {
     // Existing
     case task
     case startSettingHotKey
+    case startSettingPasteLastTranscriptHotkey
+    case clearPasteLastTranscriptHotkey
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
     case togglePreventSystemSleep(Bool)
@@ -164,7 +172,36 @@ struct SettingsFeature {
         state.$isSettingHotKey.withLock { $0 = true }
         return .none
 
+      case .startSettingPasteLastTranscriptHotkey:
+        state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = true }
+        return .none
+        
+      case .clearPasteLastTranscriptHotkey:
+        state.$hexSettings.withLock { $0.pasteLastTranscriptHotkey = nil }
+        return .none
+
       case let .keyEvent(keyEvent):
+        // Handle paste last transcript hotkey setting
+        if state.isSettingPasteLastTranscriptHotkey {
+          if keyEvent.key == .escape {
+            state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
+            state.currentPasteLastModifiers = []
+            return .none
+          }
+
+          state.currentPasteLastModifiers = keyEvent.modifiers.union(state.currentPasteLastModifiers)
+          let currentModifiers = state.currentPasteLastModifiers
+          if let key = keyEvent.key {
+            state.$hexSettings.withLock {
+              $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: currentModifiers)
+            }
+            state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
+            state.currentPasteLastModifiers = []
+          }
+          return .none
+        }
+        
+        // Handle main recording hotkey setting
         guard state.isSettingHotKey else { return .none }
 
         if keyEvent.key == .escape {

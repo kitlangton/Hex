@@ -124,17 +124,18 @@ public struct ModelDownloadFeature {
 
 	// MARK: Actions
 
-	public enum Action: BindableAction {
-		case binding(BindingAction<State>)
-		// Requests
+    public enum Action: BindableAction {
+        case binding(BindingAction<State>)
+        // Requests
 		case fetchModels
 		case selectModel(String)
 		case toggleModelDisplay
 		case downloadSelectedModel
 		// Effects
-		case modelsLoaded(recommended: String, available: [ModelInfo])
-		case downloadProgress(Double)
-		case downloadCompleted(Result<String, Error>)
+        case modelsLoaded(recommended: String, available: [ModelInfo])
+        case downloadProgress(Double)
+        case downloadCompleted(Result<String, Error>)
+        case cancelDownload
 
 		case deleteSelectedModel
 		case openModelLocation
@@ -260,40 +261,51 @@ public struct ModelDownloadFeature {
 
 		// MARK: – Download
 
-		case .downloadSelectedModel:
-			guard !state.selectedModel.isEmpty else { return .none }
-			state.downloadError = nil
-			state.isDownloading = true
-			state.downloadingModelName = state.selectedModel
-			return .run { [state] send in
-				do {
-					// Assume downloadModel returns AsyncThrowingStream<Double, Error>
-					try await transcription.downloadModel(state.selectedModel) { progress in
-						Task { await send(.downloadProgress(progress.fractionCompleted)) }
-					}
-					await send(.downloadCompleted(.success(state.selectedModel)))
-				} catch {
-					await send(.downloadCompleted(.failure(error)))
-				}
-			}
+        case .downloadSelectedModel:
+            guard !state.selectedModel.isEmpty else { return .none }
+            state.downloadError = nil
+            state.isDownloading = true
+            state.downloadingModelName = state.selectedModel
+            state.activeDownloadID = UUID()
+            let downloadID = state.activeDownloadID!
+            return .run { [state] send in
+                do {
+                    // Assume downloadModel returns AsyncThrowingStream<Double, Error>
+                    try await transcription.downloadModel(state.selectedModel) { progress in
+                        Task { await send(.downloadProgress(progress.fractionCompleted)) }
+                    }
+                    await send(.downloadCompleted(.success(state.selectedModel)))
+                } catch {
+                    await send(.downloadCompleted(.failure(error)))
+                }
+            }
+            .cancellable(id: downloadID)
 
 		case let .downloadProgress(progress):
 			state.downloadProgress = progress
 			return .none
 
-		case let .downloadCompleted(result):
-			state.isDownloading = false
-			state.downloadingModelName = nil
-			switch result {
-			case let .success(name):
-				state.availableModels[id: name]?.isDownloaded = true
-				if let idx = state.curatedModels.firstIndex(where: { $0.internalName == name }) {
-					state.curatedModels[idx].isDownloaded = true
-				}
-			case let .failure(err):
-				state.downloadError = err.localizedDescription
-			}
-			return .none
+        case let .downloadCompleted(result):
+            state.isDownloading = false
+            state.downloadingModelName = nil
+            state.activeDownloadID = nil
+            switch result {
+            case let .success(name):
+                state.availableModels[id: name]?.isDownloaded = true
+                if let idx = state.curatedModels.firstIndex(where: { $0.internalName == name }) {
+                    state.curatedModels[idx].isDownloaded = true
+                }
+            case let .failure(err):
+                state.downloadError = err.localizedDescription
+            }
+            return .none
+
+        case .cancelDownload:
+            guard let id = state.activeDownloadID else { return .none }
+            state.isDownloading = false
+            state.downloadingModelName = nil
+            state.activeDownloadID = nil
+            return .cancel(id: id)
 
 		case .deleteSelectedModel:
 			guard !state.selectedModel.isEmpty else { return .none }
@@ -522,20 +534,27 @@ private struct CuratedRow: View {
 
                 Spacer(minLength: 12)
 
-                // Trailing size, menu, and action icons (download/checkmark), aligned to the right
+                // Trailing size, menu, and action/progress icons, aligned to the right
                 HStack(spacing: 8) {
                     Text(model.storageSize)
                         .foregroundStyle(.secondary)
                         .font(.subheadline)
                         .frame(width: 72, alignment: .trailing)
 
-                    // Overflow menu kept centrally aligned across rows
+                    // Overflow menu kept centrally aligned across rows (same items as context menu)
                     Menu {
-                        Button("Show in Finder") { store.send(.openModelLocation) }
-                        Divider()
-                        Button("Delete", role: .destructive) {
-                            store.send(.selectModel(model.internalName))
-                            store.send(.deleteSelectedModel)
+                        if store.isDownloading, store.downloadingModelName == model.internalName {
+                            Button("Cancel Download", role: .destructive) { store.send(.cancelDownload) }
+                        }
+                        if model.isDownloaded || (store.isDownloading && store.downloadingModelName == model.internalName) {
+                            Button("Show in Finder") { store.send(.openModelLocation) }
+                        }
+                        if model.isDownloaded {
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                store.send(.selectModel(model.internalName))
+                                store.send(.deleteSelectedModel)
+                            }
                         }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -545,11 +564,20 @@ private struct CuratedRow: View {
                     .buttonStyle(.borderless)
                     .help("More actions")
 
-                    // Download/Downloaded icon at the far right
-                    Group {
-                        if model.isDownloaded {
+                    // Download/Progress/Downloaded at far right
+                    ZStack {
+                        if store.isDownloading, store.downloadingModelName == model.internalName {
+                            ProgressView(value: store.downloadProgress)
+                                .progressViewStyle(.circular)
+                                .controlSize(.small)
+                                .tint(.blue)
+                                .frame(width: 24, height: 24)
+                                .help("Downloading… \(Int(store.downloadProgress * 100))%")
+                        } else if model.isDownloaded {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
+                                .frame(width: 24, height: 24)
+                                .help("Downloaded")
                         } else {
                             Button {
                                 store.send(.selectModel(model.internalName))
@@ -559,9 +587,9 @@ private struct CuratedRow: View {
                             }
                             .buttonStyle(.borderless)
                             .help("Download")
+                            .frame(width: 24, height: 24)
                         }
                     }
-                    .frame(width: 28, height: 28)
                 }
             }
             .padding(10)
@@ -578,11 +606,18 @@ private struct CuratedRow: View {
         .buttonStyle(.plain)
         // Keep context menu as an alternative path
         .contextMenu {
-            Button("Show in Finder") { store.send(.openModelLocation) }
-            Divider()
-            Button("Delete", role: .destructive) {
-                store.send(.selectModel(model.internalName))
-                store.send(.deleteSelectedModel)
+            if store.isDownloading, store.downloadingModelName == model.internalName {
+                Button("Cancel Download", role: .destructive) { store.send(.cancelDownload) }
+            }
+            if model.isDownloaded || (store.isDownloading && store.downloadingModelName == model.internalName) {
+                Button("Show in Finder") { store.send(.openModelLocation) }
+            }
+            if model.isDownloaded {
+                Divider()
+                Button("Delete", role: .destructive) {
+                    store.send(.selectModel(model.internalName))
+                    store.send(.deleteSelectedModel)
+                }
             }
         }
     }

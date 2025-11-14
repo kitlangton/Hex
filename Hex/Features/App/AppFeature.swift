@@ -31,7 +31,12 @@ struct AppFeature {
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
     case setActiveTab(ActiveTab)
+    case task
+    case pasteLastTranscript
   }
+
+  @Dependency(\.keyEventMonitor) var keyEventMonitor
+  @Dependency(\.pasteboard) var pasteboard
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -52,6 +57,19 @@ struct AppFeature {
       switch action {
       case .binding:
         return .none
+        
+      case .task:
+        return startPasteLastTranscriptMonitoring()
+        
+      case .pasteLastTranscript:
+        @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
+        guard let lastTranscript = transcriptionHistory.history.first?.text else {
+          return .none
+        }
+        return .run { _ in
+          await pasteboard.paste(lastTranscript)
+        }
+        
       case .transcription:
         return .none
       case .settings:
@@ -64,6 +82,32 @@ struct AppFeature {
       case let .setActiveTab(tab):
         state.activeTab = tab
         return .none
+      }
+    }
+  }
+  
+  private func startPasteLastTranscriptMonitoring() -> Effect<Action> {
+    .run { send in
+      @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
+      @Shared(.hexSettings) var hexSettings: HexSettings
+      
+      keyEventMonitor.handleKeyEvent { keyEvent in
+        // Skip if user is setting a hotkey
+        if isSettingPasteLastTranscriptHotkey {
+          return false
+        }
+        
+        // Check if this matches the paste last transcript hotkey
+        guard let pasteHotkey = hexSettings.pasteLastTranscriptHotkey,
+              let key = keyEvent.key,
+              key == pasteHotkey.key,
+              keyEvent.modifiers == pasteHotkey.modifiers else {
+          return false
+        }
+        
+        // Trigger paste action
+        Task { await send(.pasteLastTranscript) }
+        return true // Intercept the key event
       }
     }
   }
@@ -109,6 +153,9 @@ struct AppView: View {
         AboutView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("About")
       }
+    }
+    .task {
+      await store.send(.task).finish()
     }
     .enableInjection()
   }
