@@ -233,6 +233,8 @@ private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
     state.isRecording = true
     state.recordingStartTime = Date()
+    
+    print("[Recording] started at \(state.recordingStartTime!)")
 
     // Prevent system sleep during recording
     if state.hexSettings.preventSystemSleep {
@@ -247,9 +249,13 @@ private extension TranscriptionFeature {
 
   func handleStopRecording(_ state: inout State) -> Effect<Action> {
     state.isRecording = false
+    
+    let stopTime = now
+    let startTime = state.recordingStartTime
+    let duration = startTime.map { stopTime.timeIntervalSince($0) } ?? 0
 
     // Allow system to sleep again by releasing the power management assertion
-    // Always call this, even if the setting is off, to ensure we don’t leak assertions
+    // Always call this, even if the setting is off, to ensure we don't leak assertions
     //  (e.g. if the setting was toggled off mid-recording)
     reallowSystemSleep(&state)
 
@@ -258,14 +264,16 @@ private extension TranscriptionFeature {
         hotkey: state.hexSettings.hotkey,
         minimumKeyTime: state.hexSettings.minimumKeyTime,
         recordingStartTime: state.recordingStartTime,
-        currentTime: now
+        currentTime: stopTime
       )
     )
+
+    print("[Recording] stopped duration=\(String(format: "%.3f", duration))s start=\(startTime?.description ?? "nil") stop=\(stopTime) decision=\(decision) minimumKeyTime=\(state.hexSettings.minimumKeyTime)s hotkeyHasKey=\(state.hexSettings.hotkey.key != nil)")
 
     guard decision == .proceedToTranscription else {
       // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
       // discard the audio to avoid accidental triggers.
-      print("Recording was too short, discarding")
+      print("[Recording] Discarding short recording")
       return .run { _ in
         _ = await recording.stopRecording()
       }

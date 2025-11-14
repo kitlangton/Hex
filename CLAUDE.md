@@ -12,7 +12,10 @@ Hex is a macOS menu bar application for on‑device voice‑to‑text. It suppor
 # Build the app
 xcodebuild -scheme Hex -configuration Release
 
-# Run tests
+# Run tests (must be run from HexCore directory for unit tests)
+cd HexCore && swift test
+
+# Or run all tests via Xcode
 xcodebuild test -scheme Hex
 
 # Open in Xcode (recommended for development)

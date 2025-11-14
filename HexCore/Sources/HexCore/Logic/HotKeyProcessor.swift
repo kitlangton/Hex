@@ -233,10 +233,17 @@ extension HotKeyProcessor {
     /// For a modifier-only hotkey, "release" => no modifiers at all.
     private func isReleaseForActiveHotkey(_ e: KeyEvent) -> Bool {
         if hotkey.key != nil {
-            // For key+modifier hotkeys, we need to check:
-            // 1. Key is released (key == nil)
-            // 2. Modifiers match exactly what was in the hotkey
-            return e.key == nil && e.modifiers == hotkey.modifiers
+            let requiredModifiers = hotkey.modifiers
+            let keyReleased = e.key == nil
+            let modifiersAreSubset = e.modifiers.isSubset(of: requiredModifiers)
+
+            if keyReleased {
+                // Treat as release even if some modifiers were lifted first,
+                // as long as no new modifiers are introduced.
+                return modifiersAreSubset
+            }
+
+            return false
         } else {
             // For modifier-only hotkeys, we check:
             // 1. Key is nil
