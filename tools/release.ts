@@ -250,7 +250,7 @@ const buildArchive = (scheme: string, archivePath: string, derivedDataPath: stri
         "-derivedDataPath",
         derivedDataPath,
         "-skipMacroValidation",
-        "CODE_SIGN_STYLE=Automatic"
+        "-allowProvisioningUpdates"
       )
     )
   )
