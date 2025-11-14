@@ -70,16 +70,10 @@ jobs:
           ONLY_ACTIVE_ARCH=NO \
           | xcbeautify
           
-    - name: Run tests
+    - name: Run HexCore package tests
       run: |
-        xcodebuild test \
-          -project Hex.xcodeproj \
-          -scheme Hex \
-          -configuration ${{ matrix.configuration }} \
-          -destination 'platform=macOS,arch=arm64' \
-          -clonedSourcePackagesDirPath SourcePackages \
-          -resultBundlePath TestResults-${{ matrix.configuration }}.xcresult \
-          | xcbeautify
+        cd HexCore
+        swift test
           
     - name: Upload test results
       uses: actions/upload-artifact@v4
