@@ -120,7 +120,7 @@
         }
       }
     },
-    "Clear Hotkey" : {
+    "Clear hotkey" : {
 
     },
     "Close" : {
@@ -472,7 +472,13 @@
         }
       }
     },
+    "Quick shortcut to drop your most recent transcription into any app." : {
+
+    },
     "Quit" : {
+
+    },
+    "Recommended" : {
 
     },
     "Recommended for custom hotkeys to avoid interfering with normal usage" : {
@@ -514,9 +520,6 @@
       }
     },
     "Selected: %@" : {
-
-    },
-    "Set a keyboard shortcut to paste your last transcription" : {
 
     },
     "Settings" : {

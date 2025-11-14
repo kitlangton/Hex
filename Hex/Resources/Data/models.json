@@ -1,11 +1,11 @@
 [
   {
-    "displayName": "Parakeet TDT v3 (Multilingual)",
+    "displayName": "Parakeet TDT v3",
     "internalName": "parakeet-tdt-0.6b-v3-coreml",
     "size": "Multilingual",
     "accuracyStars": 5,
     "speedStars": 5,
-    "storageSize": "700MB"
+    "storageSize": "650MB"
   },
   {
     "displayName": "Whisper Small (Tiny)",
@@ -13,7 +13,7 @@
     "size": "Multilingual",
     "accuracyStars": 2,
     "speedStars": 4,
-    "storageSize": "100MB"
+    "storageSize": "73MB"
   },
   {
     "displayName": "Whisper Medium (Base)",
@@ -21,7 +21,7 @@
     "size": "Multilingual",
     "accuracyStars": 3,
     "speedStars": 3,
-    "storageSize": "500MB"
+    "storageSize": "140MB"
   },
   {
     "displayName": "Whisper Large v3",
