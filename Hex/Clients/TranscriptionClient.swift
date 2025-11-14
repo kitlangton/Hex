@@ -353,12 +353,15 @@ actor TranscriptionClientLive {
 
     do {
       // Download directly using the exact variant name provided
+      // WhisperKit 0.15.0 changed downloader params: passing
+      // "argmaxinc/whisperkit-coreml" to a parameter interpreted as a host
+      // yields NSURLErrorCannotFindHost in production builds that need
+      // to fetch models for the first time. Let WhisperKit use its
+      // default repo/host (Hugging Face) by omitting the repo/host arg.
       let tempFolder = try await WhisperKit.download(
         variant: variant,
         downloadBase: nil,
         useBackgroundSession: false,
-        from: "argmaxinc/whisperkit-coreml",
-        token: nil,
         progressCallback: { progress in
           progressCallback(progress)
         }

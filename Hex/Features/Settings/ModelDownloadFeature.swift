@@ -296,7 +296,16 @@ public struct ModelDownloadFeature {
                     state.curatedModels[idx].isDownloaded = true
                 }
             case let .failure(err):
-                state.downloadError = err.localizedDescription
+                // Enrich the error so users see which URL/host failed
+                let ns = err as NSError
+                var message = ns.localizedDescription
+                if let url = ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL {
+                    if let host = url.host { message += " (\(host))" }
+                } else if let str = ns.userInfo[NSURLErrorFailingURLStringErrorKey] as? String,
+                          let u = URL(string: str), let host = u.host {
+                    message += " (\(host))"
+                }
+                state.downloadError = message
             }
             return .none
 
