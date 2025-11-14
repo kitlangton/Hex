@@ -60,6 +60,7 @@ struct TranscriptionFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.soundEffects) var soundEffect
+  @Dependency(\.date.now) var now
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -252,14 +253,18 @@ private extension TranscriptionFeature {
     //  (e.g. if the setting was toggled off mid-recording)
     reallowSystemSleep(&state)
 
-    let durationIsLongEnough: Bool = {
-      guard let startTime = state.recordingStartTime else { return false }
-      return Date().timeIntervalSince(startTime) > state.hexSettings.minimumKeyTime
-    }()
+    let decision = RecordingDecisionEngine.decide(
+      .init(
+        hotkey: state.hexSettings.hotkey,
+        minimumKeyTime: state.hexSettings.minimumKeyTime,
+        recordingStartTime: state.recordingStartTime,
+        currentTime: now
+      )
+    )
 
-      guard (durationIsLongEnough && state.hexSettings.hotkey.key == nil) else {
-      // If the user recorded for less than minimumKeyTime, just discard
-      // unless the hotkey includes a regular key, in which case, we can assume it was intentional
+    guard decision == .proceedToTranscription else {
+      // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
+      // discard the audio to avoid accidental triggers.
       print("Recording was too short, discarding")
       return .run { _ in
         _ = await recording.stopRecording()
