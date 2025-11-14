@@ -63,6 +63,7 @@ public struct HotKeyProcessor {
             print("ESCAPE HIT IN STATE: \(state)")
         }
         if keyEvent.key == .escape, state != .idle {
+            isDirty = true
             resetToIdle()
             return .cancel
         }

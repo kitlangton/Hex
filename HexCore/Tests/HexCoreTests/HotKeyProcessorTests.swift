@@ -422,6 +422,26 @@ struct HotKeyProcessorTests {
         )
     }
     
+    // Tests that ESC while holding hotkey doesn't restart recording (issue #36)
+    @Test
+    func escape_whileHoldingHotkey_doesNotRestart() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            steps: [
+                // Start recording
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Press ESC while still holding hotkey
+                ScenarioStep(time: 0.5, key: .escape, modifiers: [.command], expectedOutput: .cancel, expectedIsMatched: false),
+                // Hotkey still held - should be ignored (dirty)
+                ScenarioStep(time: 0.6, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // Full release
+                ScenarioStep(time: 0.7, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Now pressing hotkey should work again
+                ScenarioStep(time: 0.8, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+            ]
+        )
+    }
+    
     // Tests that partially releasing multiple modifiers counts as full release
     @Test
     func multipleModifiers_partialRelease() throws {
