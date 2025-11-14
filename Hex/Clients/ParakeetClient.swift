@@ -63,6 +63,8 @@ actor ParakeetClient {
 
   func ensureLoaded(progress: @escaping (Progress) -> Void) async throws {
     if asr != nil { return }
+    let t0 = Date()
+    print("[Parakeet] ensureLoaded begin (version=v3)")
     let p = Progress(totalUnitCount: 100)
     p.completedUnitCount = 1
     progress(p)
@@ -93,6 +95,7 @@ actor ParakeetClient {
     self.asr = manager
     p.completedUnitCount = 100
     progress(p)
+    print(String(format: "[Parakeet] ensureLoaded end (%.2fs)", Date().timeIntervalSince(t0)))
   }
 
   private func directorySize(_ dir: URL) -> UInt64? {
@@ -109,7 +112,10 @@ actor ParakeetClient {
 
   func transcribe(_ url: URL) async throws -> String {
     guard let asr else { throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"]) }
+    let t0 = Date()
+    print("[Parakeet] transcribe begin file=\(url.lastPathComponent)")
     let result = try await asr.transcribe(url)
+    print(String(format: "[Parakeet] transcribe end (%.2fs)", Date().timeIntervalSince(t0)))
     return result.text
   }
 

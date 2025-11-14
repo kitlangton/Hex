@@ -232,18 +232,30 @@ actor TranscriptionClientLive {
     options: DecodingOptions,
     progressCallback: @escaping (Progress) -> Void
   ) async throws -> String {
+    let startAll = Date()
     if isParakeet(model) {
-      try await downloadAndLoadModel(variant: model) { _ in }
-      return try await parakeet.transcribe(url)
+      print("[Transcription] Engine=Parakeet model=\(model) url=\(url.lastPathComponent)")
+      let startLoad = Date()
+      try await downloadAndLoadModel(variant: model) { p in
+        progressCallback(p)
+      }
+      print(String(format: "[Transcription] Parakeet ensureLoaded took %.2fs", Date().timeIntervalSince(startLoad)))
+      let startTx = Date()
+      let text = try await parakeet.transcribe(url)
+      print(String(format: "[Transcription] Parakeet transcribe took %.2fs", Date().timeIntervalSince(startTx)))
+      print(String(format: "[Transcription] Total elapsed %.2fs", Date().timeIntervalSince(startAll)))
+      return text
     }
     let model = await resolveVariant(model)
     // Load or switch to the required model if needed.
     if whisperKit == nil || model != currentModelName {
       unloadCurrentModel()
+      let startLoad = Date()
       try await downloadAndLoadModel(variant: model) { p in
         // Debug logging, or scale as desired:
         progressCallback(p)
       }
+      print(String(format: "[Transcription] WhisperKit ensureLoaded(model=%@) took %.2fs", model, Date().timeIntervalSince(startLoad)))
     }
 
     guard let whisperKit = whisperKit else {
@@ -257,7 +269,11 @@ actor TranscriptionClientLive {
     }
 
     // Perform the transcription.
+    print("[Transcription] Engine=WhisperKit model=\(model) url=\(url.lastPathComponent)")
+    let startTx = Date()
     let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
+    print(String(format: "[Transcription] WhisperKit transcribe took %.2fs", Date().timeIntervalSince(startTx)))
+    print(String(format: "[Transcription] Total elapsed %.2fs", Date().timeIntervalSince(startAll)))
 
     // Concatenate results from all segments.
     let text = results.map(\.text).joined(separator: " ")
