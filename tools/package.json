@@ -8,7 +8,7 @@
     "hex": "bun run src/cli.ts",
     "build": "bun run src/cli.ts release",
     "list": "bun run src/cli.ts list",
-    "version": "bun run src/cli.ts version"
+    "version": "bun run version.ts"
   },
   "bin": {
     "hex": "./src/cli.ts"

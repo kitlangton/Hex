@@ -35,7 +35,6 @@ jobs:
       - name: Build and release
         run: bun run tools/release.ts
         env:
-          VERSION: ${{ github.ref_name }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           TEAM_ID: ${{ secrets.TEAM_ID }}

@@ -23,7 +23,6 @@ const ReleaseConfig = Config.all({
   scheme: Config.string("SCHEME").pipe(Config.withDefault("Hex")),
   plistPath: Config.string("PLIST_PATH").pipe(Config.withDefault("Hex/Info.plist")),
   exportOptions: Config.string("EXPORT_OPTIONS").pipe(Config.withDefault("ExportOptions.plist")),
-  version: Config.string("VERSION").pipe(Config.option),
 
   // AWS credentials (optional - uses ~/.aws/credentials if not provided)
   awsAccessKeyId: Config.string("AWS_ACCESS_KEY_ID").pipe(Config.option),
@@ -482,15 +481,9 @@ const main = Effect.gen(function* () {
   yield* runCommandCheck("mkdir", "-p", buildDir, updatesDir)
   yield* runCommandCheck("rm", "-rf", derivedDataPath)
 
-  // Version management - use VERSION env if provided (from git tag), else bump
-  const newVersion = Option.isSome(config.version)
-    ? config.version.value.replace(/^v/, "") // Strip 'v' prefix if present
-    : bumpVersion(yield* getVersion(config.plistPath), "patch")
-
+  // Read version from Info.plist (should be set via version.ts before release)
+  const newVersion = yield* getVersion(config.plistPath)
   yield* Console.log(`\n📦 Release version: ${newVersion}\n`)
-  yield* updateVersion(config.plistPath, newVersion)
-  yield* updateXcodeVersion(newVersion)
-  yield* incrementBuildNumber(config.plistPath)
 
   // Build and archive
   yield* Console.log(`\n🔨 Building...\n`)
@@ -524,6 +517,9 @@ const main = Effect.gen(function* () {
   // Move DMG to updates dir
   const finalDmgPath = join(updatesDir, dmgFilename)
   yield* runCommandCheck("mv", dmgPath, finalDmgPath)
+
+  // Clean up any .zip files from updates dir (appcast only wants DMGs)
+  yield* runCommandCheck("sh", "-c", `rm -f ${updatesDir}/*.zip`)
 
   // Generate appcast (only DMG in updates dir, not ZIP)
   yield* generateAppcast(updatesDir)
