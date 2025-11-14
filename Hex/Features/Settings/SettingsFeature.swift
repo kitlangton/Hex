@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import ComposableArchitecture
 import Dependencies
 import HexCore
@@ -192,6 +193,9 @@ struct SettingsFeature {
           state.currentPasteLastModifiers = keyEvent.modifiers.union(state.currentPasteLastModifiers)
           let currentModifiers = state.currentPasteLastModifiers
           if let key = keyEvent.key {
+            guard !currentModifiers.isEmpty else {
+              return .none
+            }
             state.$hexSettings.withLock {
               $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: currentModifiers)
             }

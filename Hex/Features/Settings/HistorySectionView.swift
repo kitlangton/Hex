@@ -1,5 +1,6 @@
 import ComposableArchitecture
 import SwiftUI
+import HexCore
 
 struct HistorySectionView: View {
 	@Bindable var store: StoreOf<SettingsFeature>
@@ -49,6 +50,8 @@ struct HistorySectionView: View {
 						.foregroundColor(.secondary)
 						.padding(.leading, 28)
 				}
+
+				PasteLastTranscriptHotkeyRow(store: store)
 			}
 		} header: {
 			Text("History")
@@ -59,5 +62,75 @@ struct HistorySectionView: View {
 					.foregroundColor(.secondary)
 			}
 		}
+	}
+}
+
+private struct PasteLastTranscriptHotkeyRow: View {
+	@Bindable var store: StoreOf<SettingsFeature>
+
+	var body: some View {
+		let pasteHotkey = store.hexSettings.pasteLastTranscriptHotkey
+
+		HStack(alignment: .center, spacing: 12) {
+			Label {
+				VStack(alignment: .leading, spacing: 2) {
+					Text("Paste Last Transcript")
+						.font(.subheadline.weight(.semibold))
+					Text("Quick shortcut to drop your most recent transcription into any app.")
+						.font(.caption)
+						.foregroundColor(.secondary)
+				}
+			} icon: {
+				Image(systemName: "doc.on.clipboard")
+			}
+
+			Spacer()
+
+			Button {
+				store.send(.startSettingPasteLastTranscriptHotkey)
+			} label: {
+				Text(shortcutDescription(for: pasteHotkey))
+					.font(.system(size: 15, weight: .semibold, design: .rounded))
+					.foregroundColor(.primary)
+					.padding(.vertical, 5)
+					.padding(.horizontal, 12)
+					.background(
+						RoundedRectangle(cornerRadius: 10)
+							.fill(store.isSettingPasteLastTranscriptHotkey ? Color.accentColor.opacity(0.15) : Color(NSColor.controlBackgroundColor))
+					)
+					.overlay(
+						RoundedRectangle(cornerRadius: 10)
+							.stroke(Color.gray.opacity(store.isSettingPasteLastTranscriptHotkey ? 0.5 : 0.25))
+					)
+			}
+			.buttonStyle(.plain)
+
+			if store.isSettingPasteLastTranscriptHotkey, pasteHotkey != nil {
+				Button {
+					store.send(.clearPasteLastTranscriptHotkey)
+				} label: {
+					Image(systemName: "xmark.circle.fill")
+						.font(.system(size: 14, weight: .semibold))
+				}
+				.buttonStyle(.plain)
+				.accessibilityLabel("Clear hotkey")
+			}
+		}
+	}
+}
+
+private extension PasteLastTranscriptHotkeyRow {
+	func shortcutDescription(for hotkey: HotKey?) -> String {
+		if store.isSettingPasteLastTranscriptHotkey {
+			let modifiers = store.currentPasteLastModifiers.sorted.map { $0.stringValue }.joined()
+			if modifiers.isEmpty {
+				return "Press shortcut…"
+			}
+			return modifiers
+		}
+		guard let hotkey else { return "Not set" }
+		let modifiers = hotkey.modifiers.sorted.map { $0.stringValue }.joined()
+		let keySymbol = hotkey.key?.toString ?? ""
+		return modifiers + keySymbol
 	}
 }
