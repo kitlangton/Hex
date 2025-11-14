@@ -228,7 +228,8 @@ const cleanBuildFolder = (scheme: string, derivedDataPath: string) =>
         "-configuration",
         "Release",
         "-derivedDataPath",
-        derivedDataPath
+        derivedDataPath,
+        "-skipMacroValidation"
       )
     )
   )
@@ -248,6 +249,7 @@ const buildArchive = (scheme: string, archivePath: string, derivedDataPath: stri
         "Release",
         "-derivedDataPath",
         derivedDataPath,
+        "-skipMacroValidation",
         "CODE_SIGN_STYLE=Automatic"
       )
     )
