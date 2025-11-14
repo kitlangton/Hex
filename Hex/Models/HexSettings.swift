@@ -54,6 +54,7 @@ struct HexSettings: Codable, Equatable {
 	var pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey
 	var hasCompletedModelBootstrap: Bool = false
 	var hasCompletedStorageMigration: Bool = false
+	var textTransformationPipeline: TextTransformationPipeline = .init()
 
 	// Define coding keys to match struct properties
 		enum CodingKeys: String, CodingKey {
@@ -75,6 +76,7 @@ struct HexSettings: Codable, Equatable {
 		case pasteLastTranscriptHotkey
 		case hasCompletedModelBootstrap
 		case hasCompletedStorageMigration
+		case textTransformationPipeline
 	}
 
 	init(
@@ -95,7 +97,8 @@ struct HexSettings: Codable, Equatable {
 		maxHistoryEntries: Int? = nil,
 		pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey,
 		hasCompletedModelBootstrap: Bool = false,
-		hasCompletedStorageMigration: Bool = false
+		hasCompletedStorageMigration: Bool = false,
+		textTransformationPipeline: TextTransformationPipeline = .init()
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.hotkey = hotkey
@@ -115,6 +118,7 @@ struct HexSettings: Codable, Equatable {
 		self.pasteLastTranscriptHotkey = pasteLastTranscriptHotkey
 		self.hasCompletedModelBootstrap = hasCompletedModelBootstrap
 		self.hasCompletedStorageMigration = hasCompletedStorageMigration
+		self.textTransformationPipeline = textTransformationPipeline
 	}
 
 	// Custom decoder that handles missing fields
@@ -153,6 +157,8 @@ struct HexSettings: Codable, Equatable {
 			try container.decodeIfPresent(Bool.self, forKey: .hasCompletedModelBootstrap) ?? false
 		hasCompletedStorageMigration =
 			try container.decodeIfPresent(Bool.self, forKey: .hasCompletedStorageMigration) ?? false
+		textTransformationPipeline =
+			try container.decodeIfPresent(TextTransformationPipeline.self, forKey: .textTransformationPipeline) ?? .init()
 	}
 }
 

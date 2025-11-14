@@ -44,6 +44,9 @@ struct SettingsFeature {
 
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
+    
+    // Text Transformations
+    var textTransformation = TextTransformationFeature.State()
   }
 
   enum Action: BindableAction {
@@ -74,6 +77,9 @@ struct SettingsFeature {
     
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
+    
+    // Text Transformations
+    case textTransformation(TextTransformationFeature.Action)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -86,6 +92,10 @@ struct SettingsFeature {
 
     Scope(state: \.modelDownload, action: \.modelDownload) {
       ModelDownloadFeature()
+    }
+    
+    Scope(state: \.textTransformation, action: \.textTransformation) {
+      TextTransformationFeature()
     }
 
     Reduce { state, action in
@@ -357,6 +367,9 @@ struct SettingsFeature {
           }
         }
         
+        return .none
+        
+      case .textTransformation:
         return .none
       }
     }

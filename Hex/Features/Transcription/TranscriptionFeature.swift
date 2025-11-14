@@ -357,17 +357,25 @@ private extension TranscriptionFeature {
       return .none
     }
 
-    // Compute how long we recorded
+    // Capture values before async closure
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+    let pipeline = state.hexSettings.textTransformationPipeline
+    let sourceAppBundleID = state.sourceAppBundleID
+    let sourceAppName = state.sourceAppName
+    let transcriptionHistory = state.$transcriptionHistory
 
     // Continue with storing the final result in the background
-    return finalizeRecordingAndStoreTranscript(
-      result: result,
-      duration: duration,
-      sourceAppBundleID: state.sourceAppBundleID,
-      sourceAppName: state.sourceAppName,
-      transcriptionHistory: state.$transcriptionHistory
-    )
+    return .run { send in
+      let transformedResult = await pipeline.process(result)
+      await finalizeRecordingAndStoreTranscript(
+        result: transformedResult,
+        duration: duration,
+        sourceAppBundleID: sourceAppBundleID,
+        sourceAppName: sourceAppName,
+        transcriptionHistory: transcriptionHistory,
+        send: send
+      )
+    }
   }
 
   func handleTranscriptionError(
@@ -389,9 +397,9 @@ private extension TranscriptionFeature {
     duration: TimeInterval,
     sourceAppBundleID: String?,
     sourceAppName: String?,
-    transcriptionHistory: Shared<TranscriptionHistory>
-  ) -> Effect<Action> {
-    .run { send in
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    send: Send<Action>
+  ) async {
       do {
         let originalURL = await recording.stopRecording()
         
@@ -453,7 +461,6 @@ private extension TranscriptionFeature {
       } catch {
         await send(.transcriptionError(error))
       }
-    }
   }
 }
 

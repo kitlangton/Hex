@@ -13,6 +13,7 @@ import SwiftUI
 struct AppFeature {
   enum ActiveTab: Equatable {
     case settings
+    case transformations
     case history
     case about
   }
@@ -158,6 +159,13 @@ struct AppView: View {
           .tag(AppFeature.ActiveTab.settings)
 
         Button {
+          store.send(.setActiveTab(.transformations))
+        } label: {
+          Label("Transformations", systemImage: "wand.and.stars")
+        }.buttonStyle(.plain)
+          .tag(AppFeature.ActiveTab.transformations)
+
+        Button {
           store.send(.setActiveTab(.history))
         } label: {
           Label("History", systemImage: "clock")
@@ -176,6 +184,9 @@ struct AppView: View {
       case .settings:
         SettingsView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("Settings")
+      case .transformations:
+        TextTransformationSectionView(store: store.scope(state: \.settings.textTransformation, action: \.settings.textTransformation))
+          .navigationTitle("Text Transformations")
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")
