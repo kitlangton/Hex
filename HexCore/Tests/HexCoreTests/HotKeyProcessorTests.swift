@@ -442,6 +442,26 @@ struct HotKeyProcessorTests {
         )
     }
     
+    // Tests that modifier-only hotkey doesn't trigger when used with other keys (issue #87)
+    @Test
+    func modifierOnly_doesNotTriggerWithOtherKeys() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command, .option]),
+            steps: [
+                // User presses cmd-option-T (keyboard shortcut)
+                ScenarioStep(time: 0.0, key: .t, modifiers: [.command, .option], expectedOutput: nil, expectedIsMatched: false),
+                // Release T but keep modifiers held
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command, .option], expectedOutput: nil, expectedIsMatched: false),
+                // Full release
+                ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Now press just cmd-option (no key) - should trigger
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.command, .option], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Release
+                ScenarioStep(time: 0.4, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+    
     // Tests that partially releasing multiple modifiers counts as full release
     @Test
     func multipleModifiers_partialRelease() throws {
