@@ -14,4 +14,3 @@ ExportOptions.plist
 HexCore/.build
 HexCore/.swiftpm/xcode/xcuserdata/kit.xcuserdatad/xcschemes
 FluidAudio/
-tools

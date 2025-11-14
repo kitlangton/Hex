@@ -1,189 +1,54 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number (e.g., 0.2.4)'
-        required: true
-        type: string
-      build_number:
-        description: 'Build number (e.g., 37)'
-        required: true
-        type: string
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  create-release:
-    name: Build and Create Release
+  release:
     runs-on: macos-15
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.2.app
-      
-    - name: Update version numbers
-      run: |
-        # Update Info.plist
-        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.version }}" Hex/Info.plist
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.build_number }}" Hex/Info.plist
-        
-        # Update project.pbxproj
-        sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = ${{ inputs.version }};/g" Hex.xcodeproj/project.pbxproj
-        sed -i '' "s/CURRENT_PROJECT_VERSION = .*;/CURRENT_PROJECT_VERSION = ${{ inputs.build_number }};/g" Hex.xcodeproj/project.pbxproj
-        
-    - name: Install dependencies
-      run: |
-        brew install create-dmg
-        brew install gh
-        
-    - name: Setup signing
-      env:
-        MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-        MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-        KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
-      run: |
-        # Create temporary keychain
-        security create-keychain -p "$KEYCHAIN_PWD" build.keychain
-        security default-keychain -s build.keychain
-        security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
-        
-        # Import certificate
-        echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
-        security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
-        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
-        
-        # Verify
-        security find-identity -v -p codesigning
-        
-    - name: Resolve dependencies
-      run: |
-        xcodebuild -resolvePackageDependencies \
-          -project Hex.xcodeproj \
-          -scheme Hex
-          
-    - name: Build and Archive
-      run: |
-        xcodebuild clean archive \
-          -project Hex.xcodeproj \
-          -scheme Hex \
-          -configuration Release \
-          -archivePath build/Hex.xcarchive \
-          -destination 'platform=macOS,arch=arm64' \
-          CODE_SIGN_IDENTITY="Apple Development" \
-          DEVELOPMENT_TEAM=${{ secrets.DEVELOPMENT_TEAM }} \
-          ONLY_ACTIVE_ARCH=NO
-          
-    - name: Export Archive
-      run: |
-        xcodebuild -exportArchive \
-          -archivePath build/Hex.xcarchive \
-          -exportPath build/export \
-          -exportOptionsPlist ExportOptions.plist
-          
-    - name: Create DMG
-      run: |
-        cd build/export
-        create-dmg \
-          --volname "Hex ${{ inputs.version }}" \
-          --volicon "Hex.app/Contents/Resources/AppIcon.icns" \
-          --window-pos 200 120 \
-          --window-size 600 400 \
-          --icon-size 100 \
-          --icon "Hex.app" 150 185 \
-          --hide-extension "Hex.app" \
-          --app-drop-link 450 185 \
-          --no-internet-enable \
-          --hdiutil-quiet \
-          "Hex-v${{ inputs.version }}.dmg" \
-          "Hex.app"
-          
-    - name: Notarize DMG
-      env:
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-        TEAM_ID: ${{ secrets.TEAM_ID }}
-      run: |
-        cd build/export
-        
-        # Submit for notarization
-        xcrun notarytool submit "Hex-v${{ inputs.version }}.dmg" \
-          --apple-id "$APPLE_ID" \
-          --password "$APPLE_ID_PASSWORD" \
-          --team-id "$TEAM_ID" \
-          --wait
-          
-        # Staple the notarization
-        xcrun stapler staple "Hex-v${{ inputs.version }}.dmg"
-        
-    - name: Create Sparkle appcast entry
-      run: |
-        cd build/export
-        
-        # Generate Sparkle signature
-        # This requires Sparkle's generate_appcast tool
-        # You'll need to set up Sparkle's private key as a secret
-        
-    - name: Create ZIP archive
-      run: |
-        cd build/export
-        zip -r "Hex-v${{ inputs.version }}.zip" Hex.app
-        
-    - name: Generate changelog
-      id: changelog
-      run: |
-        VERSION="v${{ inputs.version }}"
-        
-        # Read changelog content for this version
-        if [ -f "Hex/Resources/changelog.md" ]; then
-          CHANGELOG=$(awk "/^## $VERSION/{flag=1; next} /^## v[0-9]/{flag=0} flag" Hex/Resources/changelog.md)
-          
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- Various improvements and bug fixes"
-          fi
-          
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        else
-          echo "content=- Initial release" >> $GITHUB_OUTPUT
-        fi
-        
-    - name: Create GitHub Release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release create "v${{ inputs.version }}" \
-          --title "Hex v${{ inputs.version }}" \
-          --notes "## What's New in v${{ inputs.version }}
-          
-${{ steps.changelog.outputs.content }}
+      - name: Checkout
+        uses: actions/checkout@v4
 
-### Installation
+      - name: Setup Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
-1. Download \`Hex-v${{ inputs.version }}.dmg\`
-2. Open the DMG file
-3. Drag Hex.app to your Applications folder
-4. Launch Hex from Applications
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
-### Requirements
+      - name: Install dependencies
+        run: cd tools && bun install
 
-- macOS 15.0 or later
-- Apple Silicon Mac (M1 or later)
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          echo "$MACOS_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -P "$MACOS_CERTIFICATE_PWD" -A
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" login.keychain-db
+          rm /tmp/cert.p12
 
-### Verification
+      - name: Build and release
+        run: bun run tools/release.ts
+        env:
+          VERSION: ${{ github.ref_name }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-This release is signed and notarized by Apple." \
-          "build/export/Hex-v${{ inputs.version }}.dmg" \
-          "build/export/Hex-v${{ inputs.version }}.zip"
-          
-    - name: Update Sparkle appcast
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      run: |
-        # This step would update your Sparkle appcast XML on S3
-        # You'll need to implement this based on your Sparkle setup
-        echo "TODO: Update Sparkle appcast"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Hex $VERSION" \
+            --generate-notes \
+            updates/Hex-$VERSION.dmg \
+            updates/Hex-$VERSION.zip
