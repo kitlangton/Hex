@@ -347,6 +347,54 @@ struct HexTests {
     }
 }
 
+// MARK: - Recording Decision Tests
+
+struct RecordingDecisionTests {
+    private func makeContext(
+        hotkey: HotKey,
+        minimumKeyTime: TimeInterval = 0.2,
+        duration: TimeInterval?
+    ) -> RecordingDecisionEngine.Context {
+        let now = Date(timeIntervalSinceReferenceDate: 0)
+        let start = duration.map { now.addingTimeInterval(-$0) }
+        return RecordingDecisionEngine.Context(
+            hotkey: hotkey,
+            minimumKeyTime: minimumKeyTime,
+            recordingStartTime: start,
+            currentTime: now
+        )
+    }
+
+    @Test
+    func modifierOnlyShortPressIsDiscarded() {
+        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.command]), duration: 0.1)
+        #expect(RecordingDecisionEngine.decide(ctx) == .discardShortRecording)
+    }
+
+    @Test
+    func printableKeyShortPressStillProceeds() {
+        let ctx = makeContext(hotkey: HotKey(key: .quote, modifiers: [.command]), duration: 0.1)
+        #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
+    }
+
+    @Test
+    func longPressModifierOnlyProceeds() {
+        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), duration: 0.3)
+        #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
+    }
+
+    @Test
+    func missingStartTimeDefaultsToShort() {
+        let ctx = RecordingDecisionEngine.Context(
+            hotkey: HotKey(key: nil, modifiers: [.option]),
+            minimumKeyTime: 0.2,
+            recordingStartTime: nil,
+            currentTime: Date(timeIntervalSinceReferenceDate: 0)
+        )
+        #expect(RecordingDecisionEngine.decide(ctx) == .discardShortRecording)
+    }
+}
+
 struct ScenarioStep {
     /// The time offset (in seconds) relative to the scenario start.
     let time: TimeInterval
