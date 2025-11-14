@@ -90,13 +90,13 @@ struct AppFeature {
     .run { send in
       @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
-      
+
       keyEventMonitor.handleKeyEvent { keyEvent in
         // Skip if user is setting a hotkey
         if isSettingPasteLastTranscriptHotkey {
           return false
         }
-        
+
         // Check if this matches the paste last transcript hotkey
         guard let pasteHotkey = hexSettings.pasteLastTranscriptHotkey,
               let key = keyEvent.key,
@@ -104,9 +104,11 @@ struct AppFeature {
               keyEvent.modifiers == pasteHotkey.modifiers else {
           return false
         }
-        
-        // Trigger paste action
-        Task { await send(.pasteLastTranscript) }
+
+        // Trigger paste action - use MainActor to avoid escaping send
+        MainActor.assumeIsolated {
+          send(.pasteLastTranscript)
+        }
         return true // Intercept the key event
       }
     }

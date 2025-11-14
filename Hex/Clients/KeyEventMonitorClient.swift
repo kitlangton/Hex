@@ -12,7 +12,17 @@ private let logger = Logger(subsystem: "com.kitlangton.Hex", category: "KeyEvent
 public extension KeyEvent {
   init(cgEvent: CGEvent, type _: CGEventType) {
     let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
-    let key = cgEvent.type == .keyDown ? Sauce.shared.key(for: keyCode) : nil
+    // Accessing keyboard layout / input source via Sauce must be on main thread.
+    let key: Key?
+    if cgEvent.type == .keyDown {
+      if Thread.isMainThread {
+        key = Sauce.shared.key(for: keyCode)
+      } else {
+        key = DispatchQueue.main.sync { Sauce.shared.key(for: keyCode) }
+      }
+    } else {
+      key = nil
+    }
 
     let modifiers = Modifiers.from(carbonFlags: cgEvent.flags)
     self.init(key: key, modifiers: modifiers)
@@ -54,6 +64,7 @@ class KeyEventMonitorClientLive {
   private var eventTapPort: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: (KeyEvent) -> Bool] = [:]
+  private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
   private var isMonitoring = false
 
   init() {
@@ -68,14 +79,19 @@ class KeyEventMonitorClientLive {
   func listenForKeyPress() -> AsyncThrowingStream<KeyEvent, Error> {
     AsyncThrowingStream { continuation in
       let uuid = UUID()
-      continuations[uuid] = { event in
-        continuation.yield(event)
-        return false
-      }
 
-      // Start monitoring if this is the first subscription
-      if continuations.count == 1 {
-        startMonitoring()
+      queue.async(flags: .barrier) { [weak self] in
+        guard let self = self else { return }
+        self.continuations[uuid] = { event in
+          continuation.yield(event)
+          return false
+        }
+        let shouldStart = self.continuations.count == 1
+
+        // Start monitoring if this is the first subscription
+        if shouldStart {
+          self.startMonitoring()
+        }
       }
 
       // Cleanup on cancellation
@@ -86,11 +102,15 @@ class KeyEventMonitorClientLive {
   }
 
   private func removeContinuation(uuid: UUID) {
-    continuations[uuid] = nil
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.continuations[uuid] = nil
+      let shouldStop = self.continuations.isEmpty
 
-    // Stop monitoring if no more listeners
-    if continuations.isEmpty {
-      stopMonitoring()
+      // Stop monitoring if no more listeners
+      if shouldStop {
+        self.stopMonitoring()
+      }
     }
   }
 
@@ -149,10 +169,15 @@ class KeyEventMonitorClientLive {
   // TODO: Handle removing the handler from the continuations on deinit/cancellation
   func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) {
     let uuid = UUID()
-    continuations[uuid] = handler
 
-    if continuations.count == 1 {
-      startMonitoring()
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.continuations[uuid] = handler
+      let shouldStart = self.continuations.count == 1
+
+      if shouldStart {
+        self.startMonitoring()
+      }
     }
   }
 
@@ -174,9 +199,11 @@ class KeyEventMonitorClientLive {
   }
 
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
-    var handled = false
+    // Read with concurrent access (no barrier)
+    let handlers = queue.sync { Array(continuations.values) }
 
-    for continuation in continuations.values {
+    var handled = false
+    for continuation in handlers {
       if continuation(keyEvent) {
         handled = true
       }
