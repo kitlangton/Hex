@@ -8,8 +8,8 @@
 import { Command } from "@effect/platform"
 import { NodeContext, NodeRuntime } from "@effect/platform-node"
 import { Console, Effect, Config, Secret, Option, pipe } from "effect"
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
-import { readFile } from "fs/promises"
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
+import { readFile, writeFile } from "fs/promises"
 import { join } from "path"
 
 // ============================================================================
@@ -454,12 +454,116 @@ const uploadToS3 = (filePath: string, bucket: string, key: string, config: Relea
   )
 
 /**
+ * Download existing appcast.xml from S3 to preserve version history
+ */
+const downloadExistingAppcast = (bucket: string, updatesDir: string, config: ReleaseConfig) =>
+  pipe(
+    Effect.gen(function* () {
+      const credentials =
+        Option.isSome(config.awsAccessKeyId) && Option.isSome(config.awsSecretAccessKey)
+          ? {
+              accessKeyId: config.awsAccessKeyId.value,
+              secretAccessKey: Secret.value(config.awsSecretAccessKey.value),
+            }
+          : undefined
+
+      const client = new S3Client({
+        region: config.region,
+        ...(credentials && { credentials }),
+      })
+
+      try {
+        const command = new GetObjectCommand({
+          Bucket: bucket,
+          Key: "appcast.xml",
+        })
+        const response = yield* Effect.promise(() => client.send(command))
+        const body = yield* Effect.promise(() => response.Body?.transformToByteArray() ?? new Uint8Array())
+        const appcastPath = join(updatesDir, "appcast.xml")
+        yield* Effect.promise(() => writeFile(appcastPath, body))
+        yield* Console.log("✓ Downloaded existing appcast.xml from S3")
+        return appcastPath
+      } catch (e) {
+        yield* Console.log("ℹ No existing appcast.xml found (first release)")
+        return null
+      }
+    })
+  )
+
+/**
+ * Parse appcast.xml to get last N DMG filenames
+ */
+const parseAppcastForDMGs = (appcastPath: string | null, count: number) =>
+  pipe(
+    Effect.gen(function* () {
+      if (!appcastPath) {
+        return []
+      }
+
+      const content = yield* Effect.promise(() => readFile(appcastPath, "utf-8"))
+      // Extract DMG filenames using regex (Sparkle format: url=".../*.dmg")
+      const dmgMatches = content.matchAll(/url="[^"]*\/([^"/]+\.dmg)"/g)
+      const dmgs = Array.from(dmgMatches, (m) => m[1])
+      // Return last N DMGs (most recent versions)
+      return dmgs.slice(0, count)
+    })
+  )
+
+/**
+ * Download previous DMGs from S3 for delta generation
+ */
+const downloadPreviousDMGs = (
+  bucket: string,
+  updatesDir: string,
+  dmgFilenames: string[],
+  config: ReleaseConfig
+) =>
+  pipe(
+    Effect.gen(function* () {
+      if (dmgFilenames.length === 0) {
+        yield* Console.log("ℹ No previous DMGs to download")
+        return
+      }
+
+      const credentials =
+        Option.isSome(config.awsAccessKeyId) && Option.isSome(config.awsSecretAccessKey)
+          ? {
+              accessKeyId: config.awsAccessKeyId.value,
+              secretAccessKey: Secret.value(config.awsSecretAccessKey.value),
+            }
+          : undefined
+
+      const client = new S3Client({
+        region: config.region,
+        ...(credentials && { credentials }),
+      })
+
+      yield* Console.log(`📥 Downloading ${dmgFilenames.length} previous DMG(s) for delta generation...`)
+
+      for (const filename of dmgFilenames) {
+        try {
+          const command = new GetObjectCommand({
+            Bucket: bucket,
+            Key: filename,
+          })
+          const response = yield* Effect.promise(() => client.send(command))
+          const body = yield* Effect.promise(() => response.Body?.transformToByteArray() ?? new Uint8Array())
+          yield* Effect.promise(() => writeFile(join(updatesDir, filename), body))
+          yield* Console.log(`  ✓ Downloaded ${filename}`)
+        } catch (e) {
+          yield* Console.log(`  ⚠ Could not download ${filename}: ${e}`)
+        }
+      }
+    })
+  )
+
+/**
  * Generate appcast using Sparkle
  */
 const generateAppcast = (updatesDir: string) =>
   pipe(
-    runCommandCheck("./bin/generate_appcast", "--maximum-deltas", "0", updatesDir),
-    Effect.tap(() => Console.log("✓ Generated appcast.xml"))
+    runCommandCheck("./bin/generate_appcast", "--maximum-deltas", "3", updatesDir),
+    Effect.tap(() => Console.log("✓ Generated appcast.xml with delta updates"))
   )
 
 // ============================================================================
@@ -523,7 +627,13 @@ const main = Effect.gen(function* () {
   // Clean up any .zip files from updates dir (appcast only wants DMGs)
   yield* runCommandCheck("sh", "-c", `rm -f ${updatesDir}/*.zip`)
 
-  // Generate appcast (only DMG in updates dir, not ZIP)
+  // Download existing appcast and previous DMGs for delta generation
+  yield* Console.log(`\n📦 Preparing delta updates...\n`)
+  const existingAppcast = yield* downloadExistingAppcast(config.bucket, updatesDir, config)
+  const previousDMGs = yield* parseAppcastForDMGs(existingAppcast, 3)
+  yield* downloadPreviousDMGs(config.bucket, updatesDir, previousDMGs, config)
+
+  // Generate appcast with deltas
   yield* generateAppcast(updatesDir)
 
   // Move ZIP to updates dir after appcast generation
