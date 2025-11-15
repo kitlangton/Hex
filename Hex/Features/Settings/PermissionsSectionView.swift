@@ -1,8 +1,11 @@
 import ComposableArchitecture
+import HexCore
 import SwiftUI
 
 struct PermissionsSectionView: View {
 	@Bindable var store: StoreOf<SettingsFeature>
+	let microphonePermission: PermissionStatus
+	let accessibilityPermission: PermissionStatus
 
 	var body: some View {
 		Section {
@@ -10,20 +13,20 @@ struct PermissionsSectionView: View {
 			HStack {
 				Label("Microphone", systemImage: "mic.fill")
 				Spacer()
-				switch store.microphonePermission {
+				switch microphonePermission {
 				case .granted:
 					Label("Granted", systemImage: "checkmark.circle.fill")
 						.foregroundColor(.green)
 						.labelStyle(.iconOnly)
 				case .denied:
 					Button("Request Permission") {
-						store.send(.requestMicrophonePermission)
+						store.send(.requestMicrophone)
 					}
 					.buttonStyle(.borderedProminent)
 					.tint(.blue)
 				case .notDetermined:
 					Button("Request Permission") {
-						store.send(.requestMicrophonePermission)
+						store.send(.requestMicrophone)
 					}
 					.buttonStyle(.bordered)
 				}
@@ -33,20 +36,20 @@ struct PermissionsSectionView: View {
 			HStack {
 				Label("Accessibility", systemImage: "accessibility")
 				Spacer()
-				switch store.accessibilityPermission {
+				switch accessibilityPermission {
 				case .granted:
 					Label("Granted", systemImage: "checkmark.circle.fill")
 						.foregroundColor(.green)
 						.labelStyle(.iconOnly)
 				case .denied:
 					Button("Request Permission") {
-						store.send(.requestAccessibilityPermission)
+						store.send(.requestAccessibility)
 					}
 					.buttonStyle(.borderedProminent)
 					.tint(.blue)
 				case .notDetermined:
 					Button("Request Permission") {
-						store.send(.requestAccessibilityPermission)
+						store.send(.requestAccessibility)
 					}
 					.buttonStyle(.bordered)
 				}

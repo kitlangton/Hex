@@ -38,10 +38,6 @@ struct SettingsFeature {
     // Available microphones
     var availableInputDevices: [AudioInputDevice] = []
 
-    // Permissions
-    var microphonePermission: PermissionStatus = .notDetermined
-    var accessibilityPermission: PermissionStatus = .notDetermined
-
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
   }
@@ -58,13 +54,11 @@ struct SettingsFeature {
     case toggleOpenOnLogin(Bool)
     case togglePreventSystemSleep(Bool)
     case togglePauseMediaOnRecord(Bool)
-    case checkPermissions
-    case setMicrophonePermission(PermissionStatus)
-    case setAccessibilityPermission(PermissionStatus)
-    case requestMicrophonePermission
-    case requestAccessibilityPermission
-    case accessibilityStatusDidChange
-    
+
+    // Permission delegation (forwarded to AppFeature)
+    case requestMicrophone
+    case requestAccessibility
+
     // Microphone selection
     case loadAvailableInputDevices
     case availableInputDevicesLoaded([AudioInputDevice])
@@ -80,6 +74,7 @@ struct SettingsFeature {
   @Dependency(\.continuousClock) var clock
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
+  @Dependency(\.permissions) var permissions
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -109,7 +104,6 @@ struct SettingsFeature {
 
         // Listen for key events and load microphones (existing + new)
         return .run { send in
-          await send(.checkPermissions)
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
           
@@ -251,68 +245,16 @@ struct SettingsFeature {
         state.$hexSettings.withLock { $0.pauseMediaOnRecord = enabled }
         return .none
 
-      // Permissions
-      case .checkPermissions:
-        // Check microphone
-        return .merge(
-          .run { send in
-            let currentStatus = await checkMicrophonePermission()
-            await send(.setMicrophonePermission(currentStatus))
-          },
-          .run { send in
-            let currentStatus = checkAccessibilityPermission()
-            await send(.setAccessibilityPermission(currentStatus))
-          }
-        )
-
-      case let .setMicrophonePermission(status):
-        state.microphonePermission = status
-        return .none
-
-      case let .setAccessibilityPermission(status):
-        state.accessibilityPermission = status
-        if status == .granted {
-          return .run { _ in
-            await keyEventMonitor.startMonitoring()
-          }
-        } else {
-          return .none
+      // Permission requests
+      case .requestMicrophone:
+        return .run { _ in
+          _ = await permissions.requestMicrophone()
         }
 
-      case .requestMicrophonePermission:
-        return .run { send in
-          let granted = await requestMicrophonePermissionImpl()
-          let status: PermissionStatus = granted ? .granted : .denied
-          await send(.setMicrophonePermission(status))
+      case .requestAccessibility:
+        return .run { _ in
+          await permissions.requestAccessibility()
         }
-
-      case .requestAccessibilityPermission:
-        return .run { send in
-          // First, prompt the user with the system dialog
-          let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-          _ = AXIsProcessTrustedWithOptions(options)
-
-          // Open System Settings
-          NSWorkspace.shared.open(
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-          )
-
-          // Poll for changes every second until granted
-          for await _ in self.clock.timer(interval: .seconds(0.5)) {
-            let newStatus = checkAccessibilityPermission()
-            await send(.setAccessibilityPermission(newStatus))
-
-            // If permission is granted, we can stop polling
-            if newStatus == .granted {
-              break
-            }
-          }
-        }
-
-      case .accessibilityStatusDidChange:
-        let newStatus = checkAccessibilityPermission()
-        state.accessibilityPermission = newStatus
-        return .none
 
       // Model Management
       case let .modelDownload(.selectModel(newModel)):
@@ -361,45 +303,4 @@ struct SettingsFeature {
       }
     }
   }
-}
-
-// MARK: - Permissions Helpers
-
-/// Check current microphone permission
-private func checkMicrophonePermission() async -> PermissionStatus {
-  switch AVCaptureDevice.authorizationStatus(for: .audio) {
-  case .authorized:
-    return .granted
-  case .denied, .restricted:
-    return .denied
-  case .notDetermined:
-    return .notDetermined
-  @unknown default:
-    return .denied
-  }
-}
-
-/// Request microphone permission
-private func requestMicrophonePermissionImpl() async -> Bool {
-  await withCheckedContinuation { continuation in
-    AVCaptureDevice.requestAccess(for: .audio) { granted in
-      continuation.resume(returning: granted)
-    }
-  }
-}
-
-/// Check Accessibility permission on macOS
-/// This implementation checks the actual trust status without showing a prompt
-private func checkAccessibilityPermission() -> PermissionStatus {
-  let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
-  let trusted = AXIsProcessTrustedWithOptions(options)
-  return trusted ? .granted : .denied
-}
-
-// MARK: - Permission Status
-
-enum PermissionStatus: Equatable {
-  case notDetermined
-  case granted
-  case denied
 }

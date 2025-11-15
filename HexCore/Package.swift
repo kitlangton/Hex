@@ -17,6 +17,7 @@ let package = Package(
             dependencies: [
                 "Sauce",
                 .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesMacros", package: "swift-dependencies"),
             ],
             path: "Sources/HexCore"
         ),

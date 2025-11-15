@@ -7,6 +7,7 @@
 
 import ComposableArchitecture
 import Dependencies
+import HexCore
 import SwiftUI
 
 @Reducer
@@ -23,6 +24,15 @@ struct AppFeature {
     var settings: SettingsFeature.State = .init()
     var history: HistoryFeature.State = .init()
     var activeTab: ActiveTab = .settings
+
+    // Permission state
+    var microphonePermission: PermissionStatus = .notDetermined
+    var accessibilityPermission: PermissionStatus = .notDetermined
+
+    // Computed: Are required permissions granted?
+    var hasRequiredPermissions: Bool {
+      microphonePermission == .granted
+    }
   }
 
   enum Action: BindableAction {
@@ -33,11 +43,19 @@ struct AppFeature {
     case setActiveTab(ActiveTab)
     case task
     case pasteLastTranscript
+
+    // Permission actions
+    case checkPermissions
+    case permissionsUpdated(mic: PermissionStatus, acc: PermissionStatus)
+    case appActivated
+    case requestMicrophone
+    case requestAccessibility
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
+  @Dependency(\.permissions) var permissions
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -62,7 +80,8 @@ struct AppFeature {
       case .task:
         return .merge(
           startPasteLastTranscriptMonitoring(),
-          ensureSelectedModelReadiness()
+          ensureSelectedModelReadiness(),
+          startPermissionMonitoring()
         )
         
       case .pasteLastTranscript:
@@ -76,8 +95,10 @@ struct AppFeature {
         
       case .transcription:
         return .none
+
       case .settings:
         return .none
+
       case .history(.navigateToSettings):
         state.activeTab = .settings
         return .none
@@ -86,6 +107,45 @@ struct AppFeature {
       case let .setActiveTab(tab):
         state.activeTab = tab
         return .none
+
+      // Permission handling
+      case .checkPermissions:
+        return .run { send in
+          async let mic = permissions.microphoneStatus()
+          async let acc = permissions.accessibilityStatus()
+          await send(.permissionsUpdated(mic: mic, acc: acc))
+        }
+
+      case let .permissionsUpdated(mic, acc):
+        state.microphonePermission = mic
+        state.accessibilityPermission = acc
+
+        // Start/stop key monitoring based on accessibility permission
+        if acc == .granted {
+          return .run { _ in await keyEventMonitor.startMonitoring() }
+        } else {
+          return .none
+        }
+
+      case .appActivated:
+        // App became active - re-check permissions
+        return .send(.checkPermissions)
+
+      case .requestMicrophone:
+        return .run { send in
+          _ = await permissions.requestMicrophone()
+          await send(.checkPermissions)
+        }
+
+      case .requestAccessibility:
+        return .run { send in
+          await permissions.requestAccessibility()
+          // Poll for status change (macOS doesn't provide callback)
+          for _ in 0..<10 {
+            try? await Task.sleep(for: .seconds(1))
+            await send(.checkPermissions)
+          }
+        }
       }
     }
   }
@@ -141,6 +201,20 @@ struct AppFeature {
       }
     }
   }
+
+  private func startPermissionMonitoring() -> Effect<Action> {
+    .run { send in
+      // Initial check on app launch
+      await send(.checkPermissions)
+
+      // Monitor app activation events
+      for await activation in permissions.observeAppActivation() {
+        if case .didBecomeActive = activation {
+          await send(.appActivated)
+        }
+      }
+    }
+  }
 }
 
 struct AppView: View {
@@ -174,8 +248,12 @@ struct AppView: View {
     } detail: {
       switch store.state.activeTab {
       case .settings:
-        SettingsView(store: store.scope(state: \.settings, action: \.settings))
-          .navigationTitle("Settings")
+        SettingsView(
+          store: store.scope(state: \.settings, action: \.settings),
+          microphonePermission: store.microphonePermission,
+          accessibilityPermission: store.accessibilityPermission
+        )
+        .navigationTitle("Settings")
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")
