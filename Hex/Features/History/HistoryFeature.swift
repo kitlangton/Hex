@@ -193,9 +193,8 @@ struct HistoryFeature {
 				return .none
 
 			case let .copyToClipboard(text):
-				return .run { _ in
-					NSPasteboard.general.clearContents()
-					NSPasteboard.general.setString(text, forType: .string)
+				return .run { [pasteboard] _ in
+					await pasteboard.copy(text)
 				}
 
 			case let .deleteTranscript(id):
