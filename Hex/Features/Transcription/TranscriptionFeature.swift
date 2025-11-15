@@ -11,8 +11,6 @@ import HexCore
 import Inject
 import SwiftUI
 import WhisperKit
-import IOKit
-import IOKit.pwr_mgt
 
 @Reducer
 struct TranscriptionFeature {
@@ -24,7 +22,6 @@ struct TranscriptionFeature {
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
-    var assertionID: IOPMAssertionID?
     var sourceAppBundleID: String?
     var sourceAppName: String?
     @Shared(.hexSettings) var hexSettings: HexSettings
@@ -63,6 +60,7 @@ struct TranscriptionFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.soundEffects) var soundEffect
+  @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
 
   var body: some ReducerOf<Self> {
@@ -266,11 +264,10 @@ private extension TranscriptionFeature {
     print("[Recording] started at \(state.recordingStartTime!)")
 
     // Prevent system sleep during recording
-    if state.hexSettings.preventSystemSleep {
-      preventSystemSleep(&state)
-    }
-
-    return .run { _ in
+    return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
+      if preventSleep {
+        await sleepManagement.preventSleep(reason: "Hex Voice Recording")
+      }
       await recording.startRecording()
       await soundEffect.play(.startRecording)
     }
@@ -282,11 +279,6 @@ private extension TranscriptionFeature {
     let stopTime = now
     let startTime = state.recordingStartTime
     let duration = startTime.map { stopTime.timeIntervalSince($0) } ?? 0
-
-    // Allow system to sleep again by releasing the power management assertion
-    // Always call this, even if the setting is off, to ensure we don't leak assertions
-    //  (e.g. if the setting was toggled off mid-recording)
-    reallowSystemSleep(&state)
 
     let decision = RecordingDecisionEngine.decide(
       .init(
@@ -315,8 +307,11 @@ private extension TranscriptionFeature {
     let language = state.hexSettings.outputLanguage
 
     state.isPrewarming = true
-    
-    return .run { send in
+
+    return .run { [sleepManagement] send in
+      // Allow system to sleep again
+      await sleepManagement.allowSleep()
+
       do {
         await soundEffect.play(.stopRecording)
         let audioURL = await recording.stopRecording()
@@ -465,12 +460,11 @@ private extension TranscriptionFeature {
     state.isRecording = false
     state.isPrewarming = false
 
-    // Allow system to sleep again
-    reallowSystemSleep(&state)
-
     return .merge(
       .cancel(id: CancelID.transcription),
-      .run { _ in
+      .run { [sleepManagement] _ in
+        // Allow system to sleep again
+        await sleepManagement.allowSleep()
         await soundEffect.play(.cancel)
       }
     )
@@ -480,40 +474,11 @@ private extension TranscriptionFeature {
     state.isRecording = false
     state.isPrewarming = false
 
-    // Allow system to sleep again
-    reallowSystemSleep(&state)
-
     // Silently discard - no sound effect
-    return .run { _ in
+    return .run { [sleepManagement] _ in
+      // Allow system to sleep again
+      await sleepManagement.allowSleep()
       _ = await recording.stopRecording()
-    }
-  }
-}
-
-// MARK: - System Sleep Prevention
-
-private extension TranscriptionFeature {
-  func preventSystemSleep(_ state: inout State) {
-    // Prevent system sleep during recording
-    let reasonForActivity = "Hex Voice Recording" as CFString
-    var assertionID: IOPMAssertionID = 0
-    let success = IOPMAssertionCreateWithName(
-      kIOPMAssertionTypeNoDisplaySleep as CFString,
-      IOPMAssertionLevel(kIOPMAssertionLevelOn),
-      reasonForActivity,
-      &assertionID
-    )
-    if success == kIOReturnSuccess {
-      state.assertionID = assertionID
-    }
-  }
-
-  func reallowSystemSleep(_ state: inout State) {
-    if let assertionID = state.assertionID {
-      let releaseSuccess = IOPMAssertionRelease(assertionID)
-      if releaseSuccess == kIOReturnSuccess {
-        state.assertionID = nil
-      }
     }
   }
 }
