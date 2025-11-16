@@ -12,6 +12,8 @@ import Inject
 import SwiftUI
 import WhisperKit
 
+private let transcriptionFeatureLogger = HexLog.transcription
+
 @Reducer
 struct TranscriptionFeature {
   @ObservableState
@@ -253,15 +255,15 @@ private extension TranscriptionFeature {
       }
     }
     state.isRecording = true
-    state.recordingStartTime = Date()
+    let startTime = Date()
+    state.recordingStartTime = startTime
     
     // Capture the active application
     if let activeApp = NSWorkspace.shared.frontmostApplication {
       state.sourceAppBundleID = activeApp.bundleIdentifier
       state.sourceAppName = activeApp.localizedName
     }
-    
-    print("[Recording] started at \(state.recordingStartTime!)")
+    transcriptionFeatureLogger.notice("Recording started at \(startTime, privacy: .public)")
 
     // Prevent system sleep during recording
     return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
@@ -291,12 +293,18 @@ private extension TranscriptionFeature {
       )
     )
 
-    print("[Recording] stopped duration=\(String(format: "%.3f", duration))s start=\(startTime?.description ?? "nil") stop=\(stopTime) decision=\(decision) minimumKeyTime=\(state.hexSettings.minimumKeyTime)s hotkeyHasKey=\(state.hexSettings.hotkey.key != nil)")
+    let startStamp = startTime?.ISO8601Format() ?? "nil"
+    let stopStamp = stopTime.ISO8601Format()
+    let minimumKeyTime = state.hexSettings.minimumKeyTime
+    let hotkeyHasKey = state.hexSettings.hotkey.key != nil
+    transcriptionFeatureLogger.notice(
+      "Recording stopped duration=\(duration, format: .fixed(precision: 3))s start=\(startStamp, privacy: .public) stop=\(stopStamp, privacy: .public) decision=\(String(describing: decision), privacy: .public) minimumKeyTime=\(minimumKeyTime, format: .fixed(precision: 2)) hotkeyHasKey=\(hotkeyHasKey, privacy: .public)"
+    )
 
     guard decision == .proceedToTranscription else {
       // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
       // discard the audio to avoid accidental triggers.
-      print("[Recording] Discarding short recording")
+      transcriptionFeatureLogger.notice("Discarding short recording per decision \(String(describing: decision), privacy: .public)")
       return .run { _ in
         _ = await recording.stopRecording()
       }
@@ -328,10 +336,10 @@ private extension TranscriptionFeature {
         
         let result = try await transcription.transcribe(audioURL, model, decodeOptions) { _ in }
         
-        print("Transcribed audio from URL: \(audioURL) to text: \(result)")
+        transcriptionFeatureLogger.notice("Transcribed audio from \(audioURL.lastPathComponent, privacy: .public) to text length \(result.count, privacy: .public)")
         await send(.transcriptionResult(result))
       } catch {
-        print("Error transcribing audio: \(error)")
+        transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription, privacy: .public)")
         await send(.transcriptionError(error))
       }
     }

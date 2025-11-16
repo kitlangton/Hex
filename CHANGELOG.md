@@ -17,6 +17,7 @@ All notable changes to Hex are documented in this file. The format is based on [
 ### Fixed
 - Printable-key hotkeys (for example `⌘+'`) can now trigger short recordings just like modifier-only chords, so quick phrases aren’t discarded anymore (#113).
 - Fn and other modifier-only hotkeys respect left/right side selection, ignore phantom arrow events, and stop firing when combined with other keys, resolving long-standing regressions (#89, #81, #87).
+- Paste reliability: Hex now waits for the clipboard write to commit before firing ⌘V, so panel apps like Alfred, Raycast, and IntelliBar always receive the latest transcript instead of the previous clipboard contents (#69, #42).
 
 ## 1.4
 

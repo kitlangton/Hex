@@ -8,6 +8,8 @@ import Dependencies
 import Foundation
 import SwiftUI
 
+private let hotKeyLogger = HexLog.hotKey
+
 /// Implements both "Press-and-Hold" and "Double-Tap Lock" in a single state machine.
 ///
 /// Double-tap logic:
@@ -66,7 +68,8 @@ public struct HotKeyProcessor {
     public mutating func process(keyEvent: KeyEvent) -> Output? {
         // 1) ESC => immediate cancel
         if keyEvent.key == .escape {
-            print("ESCAPE HIT IN STATE: \(state)")
+            let currentState = state
+            hotKeyLogger.notice("ESC pressed while state=\(String(describing: currentState), privacy: .public)")
         }
         if keyEvent.key == .escape, state != .idle {
             isDirty = true

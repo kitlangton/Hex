@@ -1,9 +1,12 @@
 import AVFoundation
+import AppKit
 import ComposableArchitecture
 import Dependencies
-import SwiftUI
+import HexCore
 import Inject
-import AppKit
+import SwiftUI
+
+private let historyLogger = HexLog.history
 
 // MARK: - Date Extensions
 
@@ -181,7 +184,7 @@ struct HistoryFeature {
 						}
 					}
 				} catch {
-					print("Error playing audio: \(error)")
+					historyLogger.error("Failed to play audio: \(error.localizedDescription, privacy: .public)")
 					return .none
 				}
 
