@@ -26,9 +26,9 @@ public enum SoundEffect: String, CaseIterable {
 
 @DependencyClient
 public struct SoundEffectsClient {
-  public var play: @Sendable (SoundEffect) async -> Void
-  public var stop: @Sendable (SoundEffect) async -> Void
-  public var stopAll: @Sendable () async -> Void
+  public var play: @Sendable (SoundEffect) -> Void
+  public var stop: @Sendable (SoundEffect) -> Void
+  public var stopAll: @Sendable () -> Void
   public var preloadSounds: @Sendable () async -> Void
 }
 
@@ -37,13 +37,13 @@ extension SoundEffectsClient: DependencyKey {
     let live = SoundEffectsClientLive()
     return SoundEffectsClient(
       play: { soundEffect in
-        await live.play(soundEffect)
+        Task { await live.play(soundEffect) }
       },
       stop: { soundEffect in
-        await live.stop(soundEffect)
+        Task { await live.stop(soundEffect) }
       },
       stopAll: {
-        await live.stopAll()
+        Task { await live.stopAll() }
       },
       preloadSounds: {
         await live.preloadSounds()

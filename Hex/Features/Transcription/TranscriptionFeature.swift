@@ -249,7 +249,7 @@ private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
     guard state.modelBootstrapState.isModelReady else {
       return .run { _ in
-        await soundEffect.play(.cancel)
+        soundEffect.play(.cancel)
       }
     }
     state.isRecording = true
@@ -266,7 +266,7 @@ private extension TranscriptionFeature {
     // Prevent system sleep during recording
     return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
       // Play sound immediately for instant feedback
-      await soundEffect.play(.startRecording)
+      soundEffect.play(.startRecording)
 
       if preventSleep {
         await sleepManagement.preventSleep(reason: "Hex Voice Recording")
@@ -315,7 +315,7 @@ private extension TranscriptionFeature {
       await sleepManagement.allowSleep()
 
       do {
-        await soundEffect.play(.stopRecording)
+        soundEffect.play(.stopRecording)
         let audioURL = await recording.stopRecording()
 
         // Create transcription options with the selected language
@@ -444,7 +444,7 @@ private extension TranscriptionFeature {
 
         // Paste text (and copy if enabled via pasteWithClipboard)
         await pasteboard.paste(result)
-        await soundEffect.play(.pasteTranscript)
+        soundEffect.play(.pasteTranscript)
       } catch {
         await send(.transcriptionError(error))
       }
@@ -465,7 +465,7 @@ private extension TranscriptionFeature {
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
-        await soundEffect.play(.cancel)
+        soundEffect.play(.cancel)
       }
     )
   }
