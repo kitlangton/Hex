@@ -1,8 +1,10 @@
 import ComposableArchitecture
+import Inject
 import SwiftUI
 import HexCore
 
 struct HistorySectionView: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
 
 	var body: some View {
@@ -62,10 +64,12 @@ struct HistorySectionView: View {
 					.foregroundColor(.secondary)
 			}
 		}
+		.enableInjection()
 	}
 }
 
 private struct PasteLastTranscriptHotkeyRow: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
 
 	var body: some View {
@@ -113,13 +117,11 @@ private struct PasteLastTranscriptHotkeyRow: View {
 						.font(.system(size: 14, weight: .semibold))
 				}
 				.buttonStyle(.plain)
-				.accessibilityLabel("Clear hotkey")
 			}
 		}
+		.enableInjection()
 	}
-}
-
-private extension PasteLastTranscriptHotkeyRow {
+	
 	func shortcutDescription(for hotkey: HotKey?) -> String {
 		if store.isSettingPasteLastTranscriptHotkey {
 			let modifiers = store.currentPasteLastModifiers.sorted.map { $0.stringValue }.joined()

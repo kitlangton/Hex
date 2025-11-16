@@ -1,66 +1,75 @@
 import ComposableArchitecture
 import HexCore
+import Inject
 import SwiftUI
 
 struct PermissionsSectionView: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
 	let microphonePermission: PermissionStatus
 	let accessibilityPermission: PermissionStatus
 
 	var body: some View {
 		Section {
-			// Microphone
-			HStack {
-				Label("Microphone", systemImage: "mic.fill")
-				Spacer()
-				switch microphonePermission {
-				case .granted:
-					Label("Granted", systemImage: "checkmark.circle.fill")
-						.foregroundColor(.green)
-						.labelStyle(.iconOnly)
-				case .denied:
-					Button("Request Permission") {
-						store.send(.requestMicrophone)
-					}
-					.buttonStyle(.borderedProminent)
-					.tint(.blue)
-				case .notDetermined:
-					Button("Request Permission") {
-						store.send(.requestMicrophone)
-					}
-					.buttonStyle(.bordered)
-				}
-			}
-
-			// Accessibility
-			HStack {
-				Label("Accessibility", systemImage: "accessibility")
-				Spacer()
-				switch accessibilityPermission {
-				case .granted:
-					Label("Granted", systemImage: "checkmark.circle.fill")
-						.foregroundColor(.green)
-						.labelStyle(.iconOnly)
-				case .denied:
-					Button("Request Permission") {
-						store.send(.requestAccessibility)
-					}
-					.buttonStyle(.borderedProminent)
-					.tint(.blue)
-				case .notDetermined:
-					Button("Request Permission") {
-						store.send(.requestAccessibility)
-					}
-					.buttonStyle(.bordered)
-				}
+			HStack(spacing: 12) {
+				// Microphone
+				permissionCard(
+					title: "Microphone",
+					icon: "mic.fill",
+					status: microphonePermission,
+					action: { store.send(.requestMicrophone) }
+				)
+				
+				// Accessibility
+				permissionCard(
+					title: "Accessibility",
+					icon: "accessibility",
+					status: accessibilityPermission,
+					action: { store.send(.requestAccessibility) }
+				)
 			}
 
 		} header: {
 			Text("Permissions")
-		} footer: {
-			Text("Ensure Hex can access your microphone and system accessibility features.")
-				.font(.footnote)
-				.foregroundColor(.secondary)
 		}
+		.enableInjection()
+	}
+	
+	@ViewBuilder
+	private func permissionCard(
+		title: String,
+		icon: String,
+		status: PermissionStatus,
+		action: @escaping () -> Void
+	) -> some View {
+		HStack(spacing: 8) {
+			Image(systemName: icon)
+				.font(.body)
+				.foregroundStyle(.secondary)
+				.frame(width: 16)
+			
+			Text(title)
+				.font(.body.weight(.medium))
+			
+			Spacer()
+			
+			switch status {
+			case .granted:
+				Image(systemName: "checkmark.circle.fill")
+					.foregroundStyle(.green)
+					.font(.body)
+			case .denied, .notDetermined:
+				Button("Grant") {
+					action()
+				}
+				.buttonStyle(.bordered)
+				.controlSize(.small)
+			}
+		}
+		.padding(.horizontal, 12)
+		.padding(.vertical, 8)
+		.frame(maxWidth: .infinity)
+		.background(Color(nsColor: .controlBackgroundColor))
+		.clipShape(RoundedRectangle(cornerRadius: 8))
 	}
 }

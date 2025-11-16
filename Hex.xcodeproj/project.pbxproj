@@ -12,6 +12,7 @@
 		4765045E2D45900200C7EA60 /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = 4765045D2D45900200C7EA60 /* Pow */; };
 		476BAD3E2D47E7880088C61F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 476BAD3D2D47E7880088C61F /* Sparkle */; };
 		47C08AB62DE9F61B00564AE6 /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 47C08AB52DE9F61B00564AE6 /* Inject */; };
+		47DA69492EC96ABF00C1FF20 /* InjectionNext in Frameworks */ = {isa = PBXBuildFile; productRef = 47DA69482EC96ABF00C1FF20 /* InjectionNext */; };
 		47E05E022D444EE900D26DA6 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		47E05E052D444EF800D26DA6 /* Sauce in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E042D444EF800D26DA6 /* Sauce */; };
 		47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E092D44525B00D26DA6 /* Dependencies */; };
@@ -88,6 +89,7 @@
 				4765045E2D45900200C7EA60 /* Pow in Frameworks */,
 				47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */,
 				47E05E022D444EE900D26DA6 /* ComposableArchitecture in Frameworks */,
+				47DA69492EC96ABF00C1FF20 /* InjectionNext in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -152,11 +154,11 @@
 		47E05DED2D444EC600D26DA6 /* Hex */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 47E05DFD2D444EC700D26DA6 /* Build configuration list for PBXNativeTarget "Hex" */;
-			buildPhases = (
-				47E05DEA2D444EC600D26DA6 /* Sources */,
-				47E05DEB2D444EC600D26DA6 /* Frameworks */,
-				47E05DEC2D444EC600D26DA6 /* Resources */,
-			);
+				buildPhases = (
+					47E05DEA2D444EC600D26DA6 /* Sources */,
+					47E05DEB2D444EC600D26DA6 /* Frameworks */,
+					47E05DEC2D444EC600D26DA6 /* Resources */,
+				);
 			buildRules = (
 			);
 			dependencies = (
@@ -177,6 +179,7 @@
 				47512ABE2E14D8C9000E25BA /* WhisperKit */,
 				476316262E5FB31400913CDE /* HexCore */,
 				47E16A612EC6C9D300885CF7 /* FluidAudio */,
+				47DA69482EC96ABF00C1FF20 /* InjectionNext */,
 			);
 			productName = Hex;
 			productReference = 47E05DEE2D444EC600D26DA6 /* Hex Debug.app */;
@@ -221,6 +224,7 @@
 				47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */,
 				47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				47DA69472EC96ABF00C1FF20 /* XCRemoteSwiftPackageReference "InjectionNext" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 47E05DEF2D444EC600D26DA6 /* Products */;
@@ -454,6 +458,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Hex/Info.plist;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Hex needs to control keyboard events to simulate paste operations.";
@@ -471,6 +481,12 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.kitlangton.Hex.debug;
 				PRODUCT_NAME = "Hex Debug";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -495,6 +511,11 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Hex/Info.plist;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Hex needs to control keyboard events to simulate paste operations.";
@@ -508,6 +529,12 @@
 				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.kitlangton.Hex;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -585,6 +612,14 @@
 				minimumVersion = 1.5.2;
 			};
 		};
+		47DA69472EC96ABF00C1FF20 /* XCRemoteSwiftPackageReference "InjectionNext" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnno1962/InjectionNext";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.4.4;
+			};
+		};
 		47E05E002D444EE900D26DA6 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture";
@@ -651,6 +686,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 47C08AB42DE9F61B00564AE6 /* XCRemoteSwiftPackageReference "Inject" */;
 			productName = Inject;
+		};
+		47DA69482EC96ABF00C1FF20 /* InjectionNext */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47DA69472EC96ABF00C1FF20 /* XCRemoteSwiftPackageReference "InjectionNext" */;
+			productName = InjectionNext;
 		};
 		47E05E012D444EE900D26DA6 /* ComposableArchitecture */ = {
 			isa = XCSwiftPackageProductDependency;

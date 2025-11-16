@@ -1,7 +1,9 @@
 import ComposableArchitecture
+import Inject
 import SwiftUI
 
 struct MicrophoneSelectionSectionView: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
 
 	var body: some View {
@@ -45,5 +47,6 @@ struct MicrophoneSelectionSectionView: View {
 				.font(.footnote)
 				.foregroundColor(.secondary)
 		}
+		.enableInjection()
 	}
 }

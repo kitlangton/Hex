@@ -7,6 +7,7 @@
 import ComposableArchitecture
 import Dependencies
 import IdentifiedCollections
+import Inject
 import SwiftUI
 import Darwin
 
@@ -460,6 +461,7 @@ public struct ModelDownloadFeature {
 // ──────────────────────────────────────────────────────────────────────────
 
 private struct StarRatingView: View {
+	@ObserveInjection var inject
 	let filled: Int
 	let max: Int
 
@@ -476,10 +478,13 @@ private struct StarRatingView: View {
 					.foregroundColor(i < filled ? .blue : .gray.opacity(0.5))
 			}
 		}
+		.enableInjection()
 	}
 }
 
 public struct ModelDownloadView: View {
+    @ObserveInjection var inject
+  
 	@Bindable var store: StoreOf<ModelDownloadFeature>
 
 	public init(store: StoreOf<ModelDownloadFeature>) {
@@ -523,6 +528,7 @@ public struct ModelDownloadView: View {
 		.onAppear {
 			store.send(.fetchModels)
 		}
+		.enableInjection()
 	}
 
 	private var autoDownloadDisplayName: String {
@@ -547,12 +553,14 @@ public struct ModelDownloadView: View {
 // MARK: – Subviews
 
 private struct SimpleHeader: View {
+    @ObserveInjection var inject
     var body: some View {
         HStack {
             Text("Transcription Model")
                 .font(.subheadline.weight(.semibold))
             Spacer()
         }
+        .enableInjection()
     }
 }
 
@@ -561,6 +569,7 @@ private struct SimpleHeader: View {
 // MARK: – Compact Primary Card
 
 private struct PrimaryModelCard: View {
+    @ObserveInjection var inject
     @Bindable var store: StoreOf<ModelDownloadFeature>
 
     private var primary: CuratedModelInfo? {
@@ -619,13 +628,16 @@ private struct PrimaryModelCard: View {
             .padding(14)
             .background( RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)) )
             .overlay( RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.2)) )
+            .enableInjection()
         } else {
             Text("No models found.").font(.caption).foregroundStyle(.secondary)
+                .enableInjection()
         }
     }
 }
 
 private struct CuratedList: View {
+    @ObserveInjection var inject
     @Bindable var store: StoreOf<ModelDownloadFeature>
 
     var body: some View {
@@ -634,10 +646,12 @@ private struct CuratedList: View {
                 CuratedRow(store: store, model: model)
             }
         }
+        .enableInjection()
     }
 }
 
 private struct CuratedRow: View {
+    @ObserveInjection var inject
     @Bindable var store: StoreOf<ModelDownloadFeature>
     let model: CuratedModelInfo
 
@@ -758,54 +772,58 @@ private struct CuratedRow: View {
                 }
             }
         }
+        .enableInjection()
     }
 }
 
 // Removed multilingual/English badge — all curated entries here are multilingual.
 
 private struct FooterView: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<ModelDownloadFeature>
 
 	var body: some View {
-		if store.isDownloading, store.downloadingModelName == store.hexSettings.selectedModel {
-			VStack(alignment: .leading) {
-				Text("Downloading model...")
-					.font(.caption)
-				ProgressView(value: store.downloadProgress)
-					.tint(.blue)
-			}
-		} else {
-			HStack {
-				if let selected = store.curatedModels.first(where: { $0.internalName == store.hexSettings.selectedModel }) {
-					Text("Selected: \(selected.displayName)")
+		Group {
+			if store.isDownloading, store.downloadingModelName == store.hexSettings.selectedModel {
+				VStack(alignment: .leading) {
+					Text("Downloading model...")
 						.font(.caption)
+					ProgressView(value: store.downloadProgress)
+						.tint(.blue)
 				}
-				Spacer()
-				if store.anyModelDownloaded {
-					Button("Show Models Folder") {
-						store.send(.openModelLocation)
+			} else {
+				HStack {
+					if let selected = store.curatedModels.first(where: { $0.internalName == store.hexSettings.selectedModel }) {
+						Text("Selected: \(selected.displayName)")
+							.font(.caption)
 					}
-					.font(.caption)
-					.buttonStyle(.plain)
-					.foregroundStyle(.secondary)
-				}
-				if store.selectedModelIsDownloaded {
-					Button("Delete", role: .destructive) {
-						store.send(.deleteSelectedModel)
+					Spacer()
+					if store.anyModelDownloaded {
+						Button("Show Models Folder") {
+							store.send(.openModelLocation)
+						}
+						.font(.caption)
+						.buttonStyle(.plain)
+						.foregroundStyle(.secondary)
 					}
-					.font(.caption)
-					.buttonStyle(.plain)
-					.foregroundStyle(.secondary)
-				} else if !store.selectedModel.isEmpty {
-					Button("Download") {
-						store.send(.downloadSelectedModel)
+					if store.selectedModelIsDownloaded {
+						Button("Delete", role: .destructive) {
+							store.send(.deleteSelectedModel)
+						}
+						.font(.caption)
+						.buttonStyle(.plain)
+						.foregroundStyle(.secondary)
+					} else if !store.selectedModel.isEmpty {
+						Button("Download") {
+							store.send(.downloadSelectedModel)
+						}
+						.font(.caption)
+						.buttonStyle(.plain)
+						.foregroundStyle(.secondary)
 					}
-					.font(.caption)
-					.buttonStyle(.plain)
-					.foregroundStyle(.secondary)
 				}
 			}
-			.enableInjection()
 		}
+		.enableInjection()
 	}
 }

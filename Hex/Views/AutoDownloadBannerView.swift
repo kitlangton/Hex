@@ -1,6 +1,8 @@
+import Inject
 import SwiftUI
 
 struct AutoDownloadBannerView: View {
+	@ObserveInjection var inject
 	enum Style {
 		case info
 		case error
@@ -58,6 +60,7 @@ struct AutoDownloadBannerView: View {
 				.stroke(accentColor.opacity(style == .error ? 0.4 : 0.25), lineWidth: 1)
 		)
 		.shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+		.enableInjection()
 	}
 
 	private var iconName: String {

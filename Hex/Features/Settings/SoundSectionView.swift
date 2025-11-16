@@ -1,7 +1,9 @@
 import ComposableArchitecture
+import Inject
 import SwiftUI
 
 struct SoundSectionView: View {
+	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
 
 	var body: some View {
@@ -14,5 +16,6 @@ struct SoundSectionView: View {
 		} header: {
 			Text("Sound")
 		}
+		.enableInjection()
 	}
 }
