@@ -481,9 +481,6 @@
     "Recommended" : {
 
     },
-    "Recommended for custom hotkeys to avoid interfering with normal usage" : {
-
-    },
     "Refresh available input devices" : {
 
     },
@@ -681,9 +678,6 @@
       }
     },
     "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
-
-    },
-    "You're using a full keyboard shortcut. Double-tap is recommended." : {
 
     },
     "Your transcription history will appear here." : {

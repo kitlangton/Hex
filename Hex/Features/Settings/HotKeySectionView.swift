@@ -12,14 +12,6 @@ struct HotKeySectionView: View {
             let modifiers = store.isSettingHotKey ? store.currentModifiers : hotKey.modifiers
 
             VStack(spacing: 12) {
-                // Info text for full keyboard shortcut support
-                if hotKey.key != nil {
-                    Text("You're using a full keyboard shortcut. Double-tap is recommended.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-
                 // Hot key view
                 HStack {
                     Spacer()
@@ -38,9 +30,6 @@ struct HotKeySectionView: View {
             if hotKey.key != nil {
                 Label {
                     Toggle("Use double-tap only", isOn: $store.hexSettings.useDoubleTapOnly)
-                    Text("Recommended for custom hotkeys to avoid interfering with normal usage")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 } icon: {
                     Image(systemName: "hand.tap")
                 }
