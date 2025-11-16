@@ -484,25 +484,29 @@ actor RecordingClientLive {
   }
 
   func startRecording() async {
-    // If audio is playing on the default output, pause it.
+    // Pause media in background - don't block recording from starting
     if hexSettings.pauseMediaOnRecord {
-      // First, pause all media applications using their AppleScript interface.
-      pausedPlayers = await pauseAllMediaApplications()
-      // If no specific players were paused, pause generic media using the media key.
-      if pausedPlayers.isEmpty {
-        if await isAudioPlayingOnDefaultOutput() {
-          print("Audio is playing on the default output; pausing it for recording.")
-          await MainActor.run {
-            sendMediaKey()
+      Task {
+        // First, pause all media applications using their AppleScript interface.
+        let paused = await pauseAllMediaApplications()
+        self.updatePausedPlayers(paused)
+
+        // If no specific players were paused, pause generic media using the media key.
+        if paused.isEmpty {
+          if await isAudioPlayingOnDefaultOutput() {
+            print("Audio is playing on the default output; pausing it for recording.")
+            await MainActor.run {
+              sendMediaKey()
+            }
+            self.setDidPauseMedia(true)
+            print("Media was playing; pausing it for recording.")
           }
-          didPauseMedia = true
-          print("Media was playing; pausing it for recording.")
+        } else {
+          print("Paused media players: \(paused.joined(separator: ", "))")
         }
-      } else {
-        print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
       }
     }
-    
+
     // If user has selected a specific microphone, verify it exists and set it as the default input device
     if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
        let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
@@ -518,7 +522,7 @@ actor RecordingClientLive {
     } else {
       print("Using default system microphone")
     }
-      
+
     let settings: [String: Any] = [
       AVFormatIDKey: Int(kAudioFormatLinearPCM),
       AVSampleRateKey: 16000.0,
@@ -546,21 +550,45 @@ actor RecordingClientLive {
     stopMeterTask()
     print("Recording stopped.")
 
-    // Resume media if we previously paused specific players
-    if !pausedPlayers.isEmpty {
-      print("Resuming previously paused players: \(pausedPlayers.joined(separator: ", "))")
-      await resumeMediaApplications(pausedPlayers)
-      pausedPlayers = []
-    }
-    // Resume generic media if we paused it with the media key
-    else if didPauseMedia {
-      await MainActor.run {
-        sendMediaKey()
+    // Resume media in background - don't block stop from completing
+    let playersToResume = pausedPlayers
+    let shouldResumeMedia = didPauseMedia
+
+    if !playersToResume.isEmpty || shouldResumeMedia {
+      Task {
+        // Resume media if we previously paused specific players
+        if !playersToResume.isEmpty {
+          print("Resuming previously paused players: \(playersToResume.joined(separator: ", "))")
+          await resumeMediaApplications(playersToResume)
+        }
+        // Resume generic media if we paused it with the media key
+        else if shouldResumeMedia {
+          await MainActor.run {
+            sendMediaKey()
+          }
+          print("Resuming previously paused media.")
+        }
+
+        // Clear the flags
+        self.clearMediaState()
       }
-      didPauseMedia = false
-      print("Resuming previously paused media.")
     }
+
     return recordingURL
+  }
+
+  // Actor state update helpers
+  private func updatePausedPlayers(_ players: [String]) {
+    pausedPlayers = players
+  }
+
+  private func setDidPauseMedia(_ value: Bool) {
+    didPauseMedia = value
+  }
+
+  private func clearMediaState() {
+    pausedPlayers = []
+    didPauseMedia = false
   }
 
   func startMeterTask() {

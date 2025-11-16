@@ -265,11 +265,13 @@ private extension TranscriptionFeature {
 
     // Prevent system sleep during recording
     return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
+      // Play sound immediately for instant feedback
+      await soundEffect.play(.startRecording)
+
       if preventSleep {
         await sleepManagement.preventSleep(reason: "Hex Voice Recording")
       }
       await recording.startRecording()
-      await soundEffect.play(.startRecording)
     }
   }
 
@@ -373,9 +375,7 @@ private extension TranscriptionFeature {
     state.isPrewarming = false
     state.error = error.localizedDescription
 
-    return .run { _ in
-      await soundEffect.play(.cancel)
-    }
+    return .none
   }
 
   /// Move file to permanent location, create a transcript record, paste text, and play sound.
