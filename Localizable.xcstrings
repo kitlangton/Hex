@@ -48,6 +48,7 @@
     },
     "Accessibility" : {
       "comment" : "Settings -> Accessibility Section headline",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -129,9 +130,6 @@
           }
         }
       }
-    },
-    "Clear hotkey" : {
-
     },
     "Close" : {
       "localizations" : {
@@ -271,6 +269,7 @@
     },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -302,8 +301,12 @@
         }
       }
     },
+    "Grant" : {
+
+    },
     "Granted" : {
       "comment" : "Label title for granted permissions.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -367,6 +370,7 @@
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -499,6 +503,7 @@
     },
     "Request Permission" : {
       "comment" : "Button texts for requesting permissions in settings.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
