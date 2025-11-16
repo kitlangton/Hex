@@ -12,7 +12,6 @@
 		4765045E2D45900200C7EA60 /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = 4765045D2D45900200C7EA60 /* Pow */; };
 		476BAD3E2D47E7880088C61F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 476BAD3D2D47E7880088C61F /* Sparkle */; };
 		47C08AB62DE9F61B00564AE6 /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 47C08AB52DE9F61B00564AE6 /* Inject */; };
-		47DA69492EC96ABF00C1FF20 /* InjectionNext in Frameworks */ = {isa = PBXBuildFile; productRef = 47DA69482EC96ABF00C1FF20 /* InjectionNext */; };
 		47E05E022D444EE900D26DA6 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		47E05E052D444EF800D26DA6 /* Sauce in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E042D444EF800D26DA6 /* Sauce */; };
 		47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E092D44525B00D26DA6 /* Dependencies */; };
@@ -89,7 +88,6 @@
 				4765045E2D45900200C7EA60 /* Pow in Frameworks */,
 				47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */,
 				47E05E022D444EE900D26DA6 /* ComposableArchitecture in Frameworks */,
-				47DA69492EC96ABF00C1FF20 /* InjectionNext in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,7 +177,6 @@
 				47512ABE2E14D8C9000E25BA /* WhisperKit */,
 				476316262E5FB31400913CDE /* HexCore */,
 				47E16A612EC6C9D300885CF7 /* FluidAudio */,
-				47DA69482EC96ABF00C1FF20 /* InjectionNext */,
 			);
 			productName = Hex;
 			productReference = 47E05DEE2D444EC600D26DA6 /* Hex Debug.app */;
@@ -224,7 +221,6 @@
 				47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */,
 				47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */,
-				47DA69472EC96ABF00C1FF20 /* XCRemoteSwiftPackageReference "InjectionNext" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 47E05DEF2D444EC600D26DA6 /* Products */;
@@ -612,14 +608,6 @@
 				minimumVersion = 1.5.2;
 			};
 		};
-		47DA69472EC96ABF00C1FF20 /* XCRemoteSwiftPackageReference "InjectionNext" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/johnno1962/InjectionNext";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.4.4;
-			};
-		};
 		47E05E002D444EE900D26DA6 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture";
@@ -686,11 +674,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 47C08AB42DE9F61B00564AE6 /* XCRemoteSwiftPackageReference "Inject" */;
 			productName = Inject;
-		};
-		47DA69482EC96ABF00C1FF20 /* InjectionNext */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 47DA69472EC96ABF00C1FF20 /* XCRemoteSwiftPackageReference "InjectionNext" */;
-			productName = InjectionNext;
 		};
 		47E05E012D444EE900D26DA6 /* ComposableArchitecture */ = {
 			isa = XCSwiftPackageProductDependency;
