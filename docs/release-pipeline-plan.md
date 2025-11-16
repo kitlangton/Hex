@@ -144,9 +144,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(cat Hex/Info.plist | grep -A1 CFBundleShortVersionString | tail -1 | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+          # release.ts already tags + creates the release with the aggregated changelog.
+          # Keep this step only if we ever skip that behavior in CI.
           gh release create "v$VERSION" \
             --title "Hex v$VERSION" \
-            --generate-notes \
+            --notes-file build/release-notes-$VERSION.md \
             updates/Hex-$VERSION.dmg \
             updates/Hex-$VERSION.zip
 ```
@@ -276,12 +278,17 @@ gh run view <run-id>
 - ZIP for Homebrew cask
 - Both notarized and signed
 
+### Changelog Automation
+**Solved:** Changesets CLI drives SemVer + release notes
+- Contributors run `bunx changeset` to capture a patch/minor/major summary
+- Release tool enforces pending changesets, runs `changeset version`, and copies the aggregated `CHANGELOG.md` into `Hex/Resources/changelog.md`
+- GitHub releases reuse the generated changelog section via `--notes-file`, so Sparkle, the in-app sheet, and GitHub stay identical
+
 ## Remaining Questions
 
-1. **Changelog:** Auto-generate from commits? (currently using `--generate-notes`)
-2. **S3 bucket:** Staging bucket for pre-release testing?
-3. **Rollback:** Failed notarization handling?
-4. **Certificate expiry:** Track and rotate Developer ID cert
+1. **S3 bucket:** Staging bucket for pre-release testing?
+2. **Rollback:** Failed notarization handling?
+3. **Certificate expiry:** Track and rotate Developer ID cert
 
 ## Completed Tasks
 

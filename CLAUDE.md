@@ -119,3 +119,9 @@ FluidAudio models reside under `Application Support/FluidAudio/Models`.
 - Repeated mic prompts during debug: ensure Debug signing uses “Apple Development” so TCC sticks
 - Sandbox network errors (‑1003): add `com.apple.security.network.client = true` (already set)
 - Parakeet not detected: ensure it resides under the container path above; downloading from Hex places it correctly.
+
+## Changelog Workflow Expectations
+
+1. **Always add a changeset:** Any feature, UX change, or bug fix that ships to users must come with a `.changeset/*.md` fragment (run `bunx changeset`). The summary should mention the user-facing impact plus the GitHub issue/PR number (for example, “Improve Fn hotkey stability (#89)”).
+2. **Keep both changelog copies in sync:** After running `changeset version` or touching `CHANGELOG.md`, run `npm run sync-changelog` (or `bun run tools/scripts/sync-changelog.ts`) so the bundled `Hex/Resources/changelog.md` stays identical. The release tool will refuse to continue if the changelog isn’t up to date.
+3. **Reference GitHub issues:** When a change addresses a filed issue, link it in code comments and the changelog entry (`(#123)`) so release notes and Sparkle updates point users back to the discussion.

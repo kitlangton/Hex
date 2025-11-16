@@ -1,0 +1,18 @@
+{
+  "name": "hex-app",
+  "version": "0.3.0",
+  "description": "Release metadata + changelog automation for the Hex macOS app.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "changeset": "changeset",
+    "changeset:add": "changeset",
+    "changeset:status": "changeset status --verbose",
+    "changeset:version": "changeset version",
+    "sync-changelog": "bun run tools/scripts/sync-changelog.ts"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7"
+  }
+}
