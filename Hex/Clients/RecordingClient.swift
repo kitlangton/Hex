@@ -102,28 +102,28 @@ private func isAppInstalled(bundleID: String) -> Bool {
   return workspace.urlForApplication(withBundleIdentifier: bundleID) != nil
 }
 
-/// Get a list of installed media player apps we should control
-private func getInstalledMediaPlayers() -> [String: String] {
+/// Cached list of installed media players (computed once at first access)
+private let installedMediaPlayers: [String: String] = {
   var result: [String: String] = [:]
-  
+
   if isAppInstalled(bundleID: "com.apple.Music") {
     result["Music"] = "com.apple.Music"
   }
-  
+
   if isAppInstalled(bundleID: "com.apple.iTunes") {
     result["iTunes"] = "com.apple.iTunes"
   }
-  
+
   if isAppInstalled(bundleID: "com.spotify.client") {
     result["Spotify"] = "com.spotify.client"
   }
-  
+
   if isAppInstalled(bundleID: "org.videolan.vlc") {
     result["VLC"] = "org.videolan.vlc"
   }
-  
+
   return result
-}
+}()
 
 // Backoff to avoid spamming AppleScript errors on systems without controllable players
 private var mediaControlErrorCount = 0
@@ -131,18 +131,17 @@ private var mediaControlDisabled = false
 
 func pauseAllMediaApplications() async -> [String] {
   if mediaControlDisabled { return [] }
-  // First check which media players are actually installed
-  let installedPlayers = getInstalledMediaPlayers()
-  if installedPlayers.isEmpty {
+  // Use cached list of installed media players
+  if installedMediaPlayers.isEmpty {
     return []
   }
 
-  print("Installed media players: \(installedPlayers.keys.joined(separator: ", "))")
+  print("Installed media players: \(installedMediaPlayers.keys.joined(separator: ", "))")
   
   // Create AppleScript that only targets installed players
   var scriptParts: [String] = ["set pausedPlayers to {}"]
 
-  for (appName, _) in installedPlayers {
+  for (appName, _) in installedMediaPlayers {
     if appName == "VLC" {
       // VLC: check running, then pause if currently playing
       scriptParts.append("""
@@ -207,12 +206,9 @@ func pauseAllMediaApplications() async -> [String] {
 
 func resumeMediaApplications(_ players: [String]) async {
   guard !players.isEmpty else { return }
-  
-  // First check which media players are actually installed
-  let installedPlayers = getInstalledMediaPlayers()
-  
+
   // Only attempt to resume players that are installed
-  let validPlayers = players.filter { installedPlayers.keys.contains($0) }
+  let validPlayers = players.filter { installedMediaPlayers.keys.contains($0) }
   if validPlayers.isEmpty {
     return
   }
@@ -281,15 +277,15 @@ actor RecordingClientLive {
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
-    
+
   @Shared(.hexSettings) var hexSettings: HexSettings
 
   /// Tracks whether media was paused using the media key when recording started.
   private var didPauseMedia: Bool = false
-  
+
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
-  
+
   // Cache to store already-processed device information
   private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
   private var lastDeviceCheck = Date(timeIntervalSince1970: 0)
