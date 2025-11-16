@@ -22,7 +22,12 @@ struct SettingsView: View {
 			}
 
 			ModelSectionView(store: store)
-			LanguageSectionView(store: store)
+			
+			// Only show language picker for WhisperKit models (not Parakeet)
+			if !store.hexSettings.selectedModel.hasPrefix("parakeet-") {
+				LanguageSectionView(store: store)
+			}
+			
 			HotKeySectionView(store: store)
 			SoundSectionView(store: store)
 			GeneralSectionView(store: store)

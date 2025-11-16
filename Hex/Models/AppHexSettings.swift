@@ -3,6 +3,10 @@ import Dependencies
 import Foundation
 import HexCore
 
+// Re-export types so the app target can use them without HexCore prefixes.
+typealias RecordingAudioBehavior = HexCore.RecordingAudioBehavior
+typealias HexSettings = HexCore.HexSettings
+
 // MARK: - URL Extensions
 
 extension URL {

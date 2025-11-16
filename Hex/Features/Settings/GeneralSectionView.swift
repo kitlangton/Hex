@@ -1,4 +1,5 @@
 import ComposableArchitecture
+import HexCore
 import Inject
 import SwiftUI
 
@@ -51,8 +52,9 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
-				VStack(alignment: .leading, spacing: 4) {
+				HStack(alignment: .center) {
 					Text("Audio Behavior while Recording")
+				Spacer()
 					Picker("", selection: Binding(
 						get: { store.hexSettings.recordingAudioBehavior },
 						set: { store.send(.setRecordingAudioBehavior($0)) }

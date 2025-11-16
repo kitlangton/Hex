@@ -6,6 +6,7 @@
 
 import ComposableArchitecture
 import Dependencies
+import HexCore
 import IdentifiedCollections
 import Inject
 import SwiftUI
