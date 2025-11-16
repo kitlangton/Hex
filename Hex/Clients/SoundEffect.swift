@@ -10,6 +10,7 @@ import ComposableArchitecture
 import Dependencies
 import DependenciesMacros
 import Foundation
+import HexCore
 import SwiftUI
 
 // Thank you. Never mind then.What a beautiful idea.
@@ -60,13 +61,14 @@ public extension DependencyValues {
 }
 
 actor SoundEffectsClientLive {
+  private let logger = HexLog.sound
   
   @Shared(.hexSettings) var hexSettings: HexSettings
 
   func play(_ soundEffect: SoundEffect) {
     guard hexSettings.soundEffectsEnabled else { return }
     guard let player = audioPlayers[soundEffect] else {
-      print("Sound not found: \(soundEffect)")
+      logger.error("Requested sound \(soundEffect.rawValue, privacy: .public) not preloaded")
       return
     }
     player.volume = 0.2
@@ -100,7 +102,7 @@ actor SoundEffectsClientLive {
       forResource: soundEffect.fileName,
       withExtension: "mp3"
     ) else {
-      print("Failed to find sound file: \(soundEffect.fileName).mp3")
+      logger.error("Missing sound resource \(soundEffect.fileName, privacy: .public).mp3")
       return
     }
 
@@ -109,7 +111,7 @@ actor SoundEffectsClientLive {
       player.prepareToPlay()
       audioPlayers[soundEffect] = player
     } catch {
-      print("Failed to load sound \(soundEffect): \(error.localizedDescription)")
+      logger.error("Failed to load sound \(soundEffect.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
     }
   }
 }

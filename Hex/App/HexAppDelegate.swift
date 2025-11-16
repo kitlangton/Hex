@@ -1,5 +1,9 @@
 import ComposableArchitecture
+import HexCore
 import SwiftUI
+
+private let appLogger = HexLog.app
+private let cacheLogger = HexLog.caches
 
 class HexAppDelegate: NSObject, NSApplicationDelegate {
 	var invisibleWindow: InvisibleWindow?
@@ -13,14 +17,14 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		// Ensure Parakeet/FluidAudio caches live under Application Support, not ~/.cache
 		configureLocalCaches()
 		if isTesting {
-			print("TESTING")
+			appLogger.debug("Running in testing mode")
 			return
 		}
 
 		Task {
 			await soundEffect.preloadSounds()
 		}
-		print("HexAppDelegate did finish launching")
+		appLogger.info("Application did finish launching")
 
 		// Set activation policy first
 		updateAppMode()
@@ -52,9 +56,9 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
             let cache = support.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
             try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
             setenv("XDG_CACHE_HOME", cache.path, 1)
-            print("[Hex] XDG_CACHE_HOME set to: \(cache.path)")
+            cacheLogger.info("XDG_CACHE_HOME set to \(cache.path, privacy: .private)")
         } catch {
-            print("Warning: failed to configure local caches: \(error)")
+            cacheLogger.error("Failed to configure local caches: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -101,8 +105,8 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 	@MainActor
 	private func updateAppMode() {
-		print("hexSettings.showDockIcon: \(hexSettings.showDockIcon)")
-		if hexSettings.showDockIcon {
+		appLogger.debug("showDockIcon = \(self.hexSettings.showDockIcon, privacy: .public)")
+		if self.hexSettings.showDockIcon {
 			NSApp.setActivationPolicy(.regular)
 		} else {
 			NSApp.setActivationPolicy(.accessory)

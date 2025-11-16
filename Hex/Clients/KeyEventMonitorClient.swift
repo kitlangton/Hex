@@ -4,10 +4,9 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import HexCore
-import os
 import Sauce
 
-private let logger = Logger(subsystem: "com.kitlangton.Hex", category: "KeyEventMonitor")
+private let logger = HexLog.keyEvent
 
 public extension KeyEvent {
   init(cgEvent: CGEvent, type: CGEventType, isFnPressed: Bool) {

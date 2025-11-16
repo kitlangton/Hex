@@ -6,11 +6,16 @@
 //
 
 import AVFoundation
+import Darwin
 import Dependencies
 import DependenciesMacros
 import Foundation
+import HexCore
 import WhisperKit
-import Darwin
+
+private let transcriptionLogger = HexLog.transcription
+private let modelsLogger = HexLog.models
+private let parakeetLogger = HexLog.parakeet
 
 /// A client that downloads and loads WhisperKit models, then transcribes audio files using the loaded model.
 /// Exposes progress callbacks to report overall download-and-load percentage and transcription progress.
@@ -118,7 +123,7 @@ actor TranscriptionClientLive {
     overallProgress.completedUnitCount = 0
     progressCallback(overallProgress)
 
-    print("[TranscriptionClientLive] Processing model: \(variant)")
+    modelsLogger.info("Preparing model download and load for \(variant, privacy: .public)")
 
     // 1) Model download phase (0-50% progress)
     if !(await isModelDownloaded(variant)) {
@@ -168,7 +173,7 @@ actor TranscriptionClientLive {
     // Delete the model directory
     try FileManager.default.removeItem(at: modelFolder)
 
-    print("[TranscriptionClientLive] Deleted model: \(variant)")
+    modelsLogger.info("Deleted model \(variant, privacy: .public)")
   }
 
   /// Returns `true` if the model is already downloaded to the local folder.
@@ -176,7 +181,7 @@ actor TranscriptionClientLive {
   func isModelDownloaded(_ modelName: String) async -> Bool {
     if isParakeet(modelName) {
       let available = await parakeet.isModelAvailable()
-      print("[TranscriptionClientLive] Parakeet available? \(available)")
+      parakeetLogger.debug("Parakeet available? \(available, privacy: .public)")
       return available
     }
     let modelFolderPath = modelPath(for: modelName).path
@@ -234,16 +239,16 @@ actor TranscriptionClientLive {
   ) async throws -> String {
     let startAll = Date()
     if isParakeet(model) {
-      print("[Transcription] Engine=Parakeet model=\(model) url=\(url.lastPathComponent)")
+      transcriptionLogger.notice("Transcribing with Parakeet model=\(model, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
       let startLoad = Date()
       try await downloadAndLoadModel(variant: model) { p in
         progressCallback(p)
       }
-      print(String(format: "[Transcription] Parakeet ensureLoaded took %.2fs", Date().timeIntervalSince(startLoad)))
+      transcriptionLogger.info("Parakeet ensureLoaded took \(Date().timeIntervalSince(startLoad), format: .fixed(precision: 2))s")
       let startTx = Date()
       let text = try await parakeet.transcribe(url)
-      print(String(format: "[Transcription] Parakeet transcribe took %.2fs", Date().timeIntervalSince(startTx)))
-      print(String(format: "[Transcription] Total elapsed %.2fs", Date().timeIntervalSince(startAll)))
+      transcriptionLogger.info("Parakeet transcription took \(Date().timeIntervalSince(startTx), format: .fixed(precision: 2))s")
+      transcriptionLogger.info("Parakeet request total elapsed \(Date().timeIntervalSince(startAll), format: .fixed(precision: 2))s")
       return text
     }
     let model = await resolveVariant(model)
@@ -255,7 +260,7 @@ actor TranscriptionClientLive {
         // Debug logging, or scale as desired:
         progressCallback(p)
       }
-      print(String(format: "[Transcription] WhisperKit ensureLoaded(model=%@) took %.2fs", model, Date().timeIntervalSince(startLoad)))
+      transcriptionLogger.info("WhisperKit ensureLoaded model=\(model, privacy: .public) took \(Date().timeIntervalSince(startLoad), format: .fixed(precision: 2))s")
     }
 
     guard let whisperKit = whisperKit else {
@@ -269,11 +274,11 @@ actor TranscriptionClientLive {
     }
 
     // Perform the transcription.
-    print("[Transcription] Engine=WhisperKit model=\(model) url=\(url.lastPathComponent)")
+    transcriptionLogger.notice("Transcribing with WhisperKit model=\(model, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
     let startTx = Date()
     let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
-    print(String(format: "[Transcription] WhisperKit transcribe took %.2fs", Date().timeIntervalSince(startTx)))
-    print(String(format: "[Transcription] Total elapsed %.2fs", Date().timeIntervalSince(startAll)))
+    transcriptionLogger.info("WhisperKit transcription took \(Date().timeIntervalSince(startTx), format: .fixed(precision: 2))s")
+    transcriptionLogger.info("WhisperKit request total elapsed \(Date().timeIntervalSince(startAll), format: .fixed(precision: 2))s")
 
     // Concatenate results from all segments.
     let text = results.map(\.text).joined(separator: " ")
@@ -345,7 +350,7 @@ actor TranscriptionClientLive {
       return
     }
 
-    print("[TranscriptionClientLive] Downloading model: \(variant)")
+    modelsLogger.info("Downloading model \(variant, privacy: .public)")
 
     // Create parent directories
     let parentDir = modelFolder.deletingLastPathComponent()
@@ -373,7 +378,7 @@ actor TranscriptionClientLive {
       // Move the downloaded snapshot to the final location
       try moveContents(of: tempFolder, to: modelFolder)
 
-      print("[TranscriptionClientLive] Downloaded model to: \(modelFolder.path)")
+      modelsLogger.info("Downloaded model to \(modelFolder.path, privacy: .private)")
     } catch {
       // Clean up any partial download if an error occurred
       if FileManager.default.fileExists(atPath: modelFolder.path) {
@@ -381,7 +386,7 @@ actor TranscriptionClientLive {
       }
 
       // Rethrow the original error
-      print("[TranscriptionClientLive] Error downloading model: \(error.localizedDescription)")
+      modelsLogger.error("Error downloading model \(variant, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw error
     }
   }
@@ -417,7 +422,7 @@ actor TranscriptionClientLive {
     loadingProgress.completedUnitCount = 100
     progressCallback(loadingProgress)
 
-    print("[TranscriptionClientLive] Loaded WhisperKit model: \(modelName)")
+    modelsLogger.info("Loaded WhisperKit model \(modelName, privacy: .public)")
   }
 
   /// Moves all items from `sourceFolder` into `destFolder` (shallow move of directory contents).

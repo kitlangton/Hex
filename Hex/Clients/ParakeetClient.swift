@@ -1,4 +1,5 @@
 import Foundation
+import HexCore
 
 #if canImport(FluidAudio)
 import FluidAudio
@@ -6,6 +7,7 @@ import FluidAudio
 actor ParakeetClient {
   private var asr: AsrManager?
   private var models: AsrModels?
+  private let logger = HexLog.parakeet
 
   func isModelAvailable() async -> Bool {
     if asr != nil { return true }
@@ -25,28 +27,28 @@ actor ParakeetClient {
       // FluidAudio default under Application Support root
       "FluidAudio/Models"
     ]
-    print("[Parakeet] Checking availability. Roots=\(roots.map(\.path))")
+    logger.debug("Checking Parakeet availability \(roots.map(\.path), privacy: .private)")
     for root in roots {
       for vendor in vendorDirs {
         let base = root.appendingPathComponent(vendor, isDirectory: true)
         // 1) Direct expected path
         let direct = base.appendingPathComponent(modelId, isDirectory: true)
         if directoryContainsMLModelC(direct) {
-          print("[Parakeet] Found mlmodelc under \(direct.path)")
+          logger.notice("Found Parakeet cache at \(direct.path, privacy: .private)")
           return true
         }
         // 2) Any folder that starts with the model id
         if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
           for item in items where item.lastPathComponent.hasPrefix(modelId) {
             if directoryContainsMLModelC(item) {
-              print("[Parakeet] Found mlmodelc under \(item.path)")
+              logger.notice("Found Parakeet cache at \(item.path, privacy: .private)")
               return true
             }
           }
         }
       }
     }
-    print("[Parakeet] No cached mlmodelc found.")
+    logger.debug("No Parakeet cache detected")
     return false
   }
 
@@ -64,7 +66,7 @@ actor ParakeetClient {
   func ensureLoaded(progress: @escaping (Progress) -> Void) async throws {
     if asr != nil { return }
     let t0 = Date()
-    print("[Parakeet] ensureLoaded begin (version=v3)")
+    logger.notice("Starting Parakeet load (v3)")
     let p = Progress(totalUnitCount: 100)
     p.completedUnitCount = 1
     progress(p)
@@ -95,7 +97,7 @@ actor ParakeetClient {
     self.asr = manager
     p.completedUnitCount = 100
     progress(p)
-    print(String(format: "[Parakeet] ensureLoaded end (%.2fs)", Date().timeIntervalSince(t0)))
+    logger.notice("Parakeet ensureLoaded completed in \(Date().timeIntervalSince(t0), format: .fixed(precision: 2))s")
   }
 
   private func directorySize(_ dir: URL) -> UInt64? {
@@ -113,9 +115,9 @@ actor ParakeetClient {
   func transcribe(_ url: URL) async throws -> String {
     guard let asr else { throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"]) }
     let t0 = Date()
-    print("[Parakeet] transcribe begin file=\(url.lastPathComponent)")
+    logger.notice("Transcribing with Parakeet file=\(url.lastPathComponent, privacy: .public)")
     let result = try await asr.transcribe(url)
-    print(String(format: "[Parakeet] transcribe end (%.2fs)", Date().timeIntervalSince(t0)))
+    logger.info("Parakeet transcription finished in \(Date().timeIntervalSince(t0), format: .fixed(precision: 2))s")
     return result.text
   }
 

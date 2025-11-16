@@ -12,6 +12,10 @@ import CoreAudio
 import Dependencies
 import DependenciesMacros
 import Foundation
+import HexCore
+
+private let recordingLogger = HexLog.recording
+private let mediaLogger = HexLog.media
 
 /// Represents an audio input device
 struct AudioInputDevice: Identifiable, Equatable {
@@ -59,14 +63,14 @@ class MediaRemoteController {
   init?() {
     // Open the private framework.
     guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW) as UnsafeMutableRawPointer? else {
-      print("Unable to open MediaRemote")
+      mediaLogger.error("Unable to open MediaRemote framework")
       return nil
     }
     mediaRemoteHandle = handle
 
     // Get pointer for the "is playing" function.
     guard let playingPtr = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying") else {
-      print("Unable to find MRMediaRemoteGetNowPlayingApplicationIsPlaying")
+      mediaLogger.error("Unable to find MRMediaRemoteGetNowPlayingApplicationIsPlaying symbol")
       return nil
     }
     mrNowPlayingIsPlaying = unsafeBitCast(playingPtr, to: MRNowPlayingIsPlayingFunc.self)
@@ -136,7 +140,7 @@ func pauseAllMediaApplications() async -> [String] {
     return []
   }
 
-  print("Installed media players: \(installedMediaPlayers.keys.joined(separator: ", "))")
+  mediaLogger.debug("Installed media players: \(installedMediaPlayers.keys.joined(separator: ", "), privacy: .public)")
   
   // Create AppleScript that only targets installed players
   var scriptParts: [String] = ["set pausedPlayers to {}"]
@@ -180,7 +184,7 @@ func pauseAllMediaApplications() async -> [String] {
   var error: NSDictionary?
   guard let resultDescriptor = appleScript?.executeAndReturnError(&error) else {
     if let error = error {
-      print("Error pausing media applications: \(error)")
+      mediaLogger.error("Failed to pause media apps: \(error, privacy: .public)")
       mediaControlErrorCount += 1
       if mediaControlErrorCount >= 3 { mediaControlDisabled = true }
     }
@@ -199,7 +203,7 @@ func pauseAllMediaApplications() async -> [String] {
     }
   }
     
-  print("Paused media players: \(pausedPlayers.joined(separator: ", "))")
+  mediaLogger.notice("Paused media players: \(pausedPlayers.joined(separator: ", "), privacy: .public)")
   
   return pausedPlayers
 }
@@ -242,7 +246,7 @@ func resumeMediaApplications(_ players: [String]) async {
   var error: NSDictionary?
   appleScript?.executeAndReturnError(&error)
   if let error = error {
-    print("Error resuming media applications: \(error)")
+    mediaLogger.error("Failed to resume media apps: \(error, privacy: .public)")
   }
 }
 
@@ -285,6 +289,9 @@ actor RecordingClientLive {
 
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
+
+  /// Tracks previous system volume when muted for recording
+  private var previousVolume: Float?
 
   // Cache to store already-processed device information
   private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
@@ -347,7 +354,7 @@ actor RecordingClientLive {
     )
     
     if status != 0 {
-      print("Error getting audio devices property size: \(status)")
+      recordingLogger.error("AudioObjectGetPropertyDataSize failed: \(status, privacy: .public)")
       return []
     }
     
@@ -365,10 +372,10 @@ actor RecordingClientLive {
       &deviceIDs
     )
     
-    if status != 0 {
-      print("Error getting audio devices: \(status)")
-      return []
-    }
+      if status != 0 {
+        recordingLogger.error("AudioObjectGetPropertyData failed while listing devices: \(status, privacy: .public)")
+        return []
+      }
     
     return deviceIDs
   }
@@ -399,10 +406,10 @@ actor RecordingClientLive {
         deviceName = deviceNamePtr.load(as: CFString?.self)
     }
     
-    if status != 0 {
-      print("Error getting device name: \(status)")
-      return nil
-    }
+      if status != 0 {
+        recordingLogger.error("Failed to fetch device name: \(status, privacy: .public)")
+        return nil
+      }
     
     return deviceName as String?
   }
@@ -469,9 +476,9 @@ actor RecordingClientLive {
     )
     
     if status != 0 {
-      print("Error setting default input device: \(status)")
+      recordingLogger.error("Failed to set default input device: \(status, privacy: .public)")
     } else {
-      print("Successfully set input device to: \(deviceID)")
+      recordingLogger.notice("Selected input device set to \(deviceID, privacy: .public)")
     }
   }
 
@@ -479,9 +486,113 @@ actor RecordingClientLive {
     await AVCaptureDevice.requestAccess(for: .audio)
   }
 
+  // MARK: - Volume Control
+
+  /// Mutes system volume and returns the previous volume level
+  private func muteSystemVolume() async -> Float {
+    let currentVolume = getSystemVolume()
+    setSystemVolume(0)
+    recordingLogger.notice("Muted system volume (was \(currentVolume, format: .fixed(precision: 2)))")
+    return currentVolume
+  }
+
+  /// Restores system volume to the specified level
+  private func restoreSystemVolume(_ volume: Float) async {
+    setSystemVolume(volume)
+    recordingLogger.notice("Restored system volume to \(volume, format: .fixed(precision: 2))")
+  }
+
+  /// Gets the default output device ID
+  private func getDefaultOutputDevice() -> AudioDeviceID? {
+    var deviceID = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    let status = AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject),
+      &address,
+      0,
+      nil,
+      &size,
+      &deviceID
+    )
+
+    if status != 0 {
+      recordingLogger.error("Failed to get default output device: \(status, privacy: .public)")
+      return nil
+    }
+
+    return deviceID
+  }
+
+  /// Gets the current system output volume (0.0 to 1.0)
+  private func getSystemVolume() -> Float {
+    guard let deviceID = getDefaultOutputDevice() else {
+      return 0.0
+    }
+
+    var volume: Float32 = 0.0
+    var size = UInt32(MemoryLayout<Float32>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+      mScope: kAudioDevicePropertyScopeOutput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    let status = AudioObjectGetPropertyData(
+      deviceID,
+      &address,
+      0,
+      nil,
+      &size,
+      &volume
+    )
+
+    if status != 0 {
+      recordingLogger.error("Failed to get system volume: \(status, privacy: .public)")
+      return 0.0
+    }
+
+    return volume
+  }
+
+  /// Sets the system output volume (0.0 to 1.0)
+  private func setSystemVolume(_ volume: Float) {
+    guard let deviceID = getDefaultOutputDevice() else {
+      return
+    }
+
+    var newVolume = volume
+    let size = UInt32(MemoryLayout<Float32>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+      mScope: kAudioDevicePropertyScopeOutput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    let status = AudioObjectSetPropertyData(
+      deviceID,
+      &address,
+      0,
+      nil,
+      size,
+      &newVolume
+    )
+
+    if status != 0 {
+      recordingLogger.error("Failed to set system volume: \(status, privacy: .public)")
+    }
+  }
+
   func startRecording() async {
-    // Pause media in background - don't block recording from starting
-    if hexSettings.pauseMediaOnRecord {
+    // Handle audio behavior based on user preference
+    switch hexSettings.recordingAudioBehavior {
+    case .pauseMedia:
+      // Pause media in background - don't block recording from starting
       Task {
         // First, pause all media applications using their AppleScript interface.
         let paused = await pauseAllMediaApplications()
@@ -490,17 +601,28 @@ actor RecordingClientLive {
         // If no specific players were paused, pause generic media using the media key.
         if paused.isEmpty {
           if await isAudioPlayingOnDefaultOutput() {
-            print("Audio is playing on the default output; pausing it for recording.")
+            mediaLogger.notice("Detected active audio on default output; sending media pause")
             await MainActor.run {
               sendMediaKey()
             }
             self.setDidPauseMedia(true)
-            print("Media was playing; pausing it for recording.")
+            mediaLogger.notice("Paused media via media key fallback")
           }
         } else {
-          print("Paused media players: \(paused.joined(separator: ", "))")
+          mediaLogger.notice("Paused media players: \(paused.joined(separator: ", "), privacy: .public)")
         }
       }
+
+    case .mute:
+      // Mute system volume in background
+      Task {
+        let volume = await self.muteSystemVolume()
+        self.setPreviousVolume(volume)
+      }
+
+    case .doNothing:
+      // No audio handling
+      break
     }
 
     // If user has selected a specific microphone, verify it exists and set it as the default input device
@@ -509,14 +631,14 @@ actor RecordingClientLive {
       // Check if the selected device is still available
       let devices = getAllAudioDevices()
       if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
-        print("Setting selected input device: \(selectedDeviceID)")
+        recordingLogger.debug("Setting selected input device to \(selectedDeviceID, privacy: .public)")
         setInputDevice(deviceID: selectedDeviceID)
       } else {
         // Device no longer available, fall back to system default
-        print("Selected device \(selectedDeviceID) is no longer available, using system default")
+        recordingLogger.notice("Selected device \(selectedDeviceID, privacy: .public) missing; using system default")
       }
     } else {
-      print("Using default system microphone")
+      recordingLogger.debug("Using default system microphone")
     }
 
     let settings: [String: Any] = [
@@ -534,9 +656,9 @@ actor RecordingClientLive {
       recorder?.isMeteringEnabled = true
       recorder?.record()
       startMeterTask()
-      print("Recording started.")
+      recordingLogger.notice("Recording started")
     } catch {
-      print("Could not start recording: \(error)")
+      recordingLogger.error("Failed to start recording: \(error.localizedDescription, privacy: .public)")
     }
   }
 
@@ -544,17 +666,22 @@ actor RecordingClientLive {
     recorder?.stop()
     recorder = nil
     stopMeterTask()
-    print("Recording stopped.")
+    recordingLogger.notice("Recording stopped")
 
-    // Resume media in background - don't block stop from completing
+    // Resume audio in background - don't block stop from completing
     let playersToResume = pausedPlayers
     let shouldResumeMedia = didPauseMedia
+    let volumeToRestore = previousVolume
 
-    if !playersToResume.isEmpty || shouldResumeMedia {
+    if !playersToResume.isEmpty || shouldResumeMedia || volumeToRestore != nil {
       Task {
+        // Restore volume if it was muted
+        if let volume = volumeToRestore {
+          await self.restoreSystemVolume(volume)
+        }
         // Resume media if we previously paused specific players
-        if !playersToResume.isEmpty {
-          print("Resuming previously paused players: \(playersToResume.joined(separator: ", "))")
+        else if !playersToResume.isEmpty {
+          mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "), privacy: .public)")
           await resumeMediaApplications(playersToResume)
         }
         // Resume generic media if we paused it with the media key
@@ -562,7 +689,7 @@ actor RecordingClientLive {
           await MainActor.run {
             sendMediaKey()
           }
-          print("Resuming previously paused media.")
+          mediaLogger.notice("Resuming media via media key")
         }
 
         // Clear the flags
@@ -582,9 +709,14 @@ actor RecordingClientLive {
     didPauseMedia = value
   }
 
+  private func setPreviousVolume(_ volume: Float) {
+    previousVolume = volume
+  }
+
   private func clearMediaState() {
     pausedPlayers = []
     didPauseMedia = false
+    previousVolume = nil
   }
 
   func startMeterTask() {

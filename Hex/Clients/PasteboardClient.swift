@@ -9,8 +9,11 @@ import ComposableArchitecture
 import Dependencies
 import DependenciesMacros
 import Foundation
+import HexCore
 import Sauce
 import SwiftUI
+
+private let pasteboardLogger = HexLog.pasteboard
 
 @DependencyClient
 struct PasteboardClient {
@@ -130,7 +133,7 @@ struct PasteboardClientLive {
         if let scriptObject = NSAppleScript(source: script) {
             let result = scriptObject.executeAndReturnError(&error)
             if let error = error {
-                print("Error executing paste: \(error)")
+                pasteboardLogger.error("AppleScript paste failed: \(error, privacy: .public)")
                 return false
             }
             return result.booleanValue
@@ -159,7 +162,7 @@ struct PasteboardClientLive {
         // show a notification that text is available in clipboard
         if !pasteSucceeded && !hexSettings.copyToClipboard {
             // Keep the transcribed text in clipboard regardless of setting
-            print("Paste operation failed. Text remains in clipboard as fallback.")
+            pasteboardLogger.notice("Paste operation failed; text remains in clipboard as fallback.")
             
             // TODO: Could add a notification here to inform user
             // that text is available in clipboard
@@ -251,7 +254,7 @@ struct PasteboardClientLive {
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
         if let error = error {
-            print("Error executing AppleScript: \(error)")
+            pasteboardLogger.error("Error executing AppleScript typing fallback: \(error, privacy: .public)")
         }
     }
 
