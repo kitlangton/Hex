@@ -72,6 +72,9 @@
         }
       }
     },
+    "Audio Behavior while Recording" : {
+
+    },
     "Become a Sponsor" : {
 
     },
@@ -213,6 +216,9 @@
           }
         }
       }
+    },
+    "Do Nothing" : {
+
     },
     "Download" : {
 
@@ -392,6 +398,9 @@
     "Multilingual" : {
 
     },
+    "Mute Volume" : {
+
+    },
     "No models found." : {
       "comment" : "Replacement text in transcription model section when no available models are found",
       "localizations" : {
@@ -445,8 +454,12 @@
     "Paste Last Transcript" : {
 
     },
+    "Pause Media" : {
+
+    },
     "Pause Media while Recording" : {
       "comment" : "Label for general setting whether to pause media while recording.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

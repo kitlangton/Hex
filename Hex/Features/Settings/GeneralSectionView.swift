@@ -51,15 +51,23 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
-				Toggle(
-					"Pause Media while Recording",
-					isOn: Binding(
-						get: { store.hexSettings.pauseMediaOnRecord },
-						set: { store.send(.togglePauseMediaOnRecord($0)) }
-					)
-				)
+				VStack(alignment: .leading, spacing: 4) {
+					Text("Audio Behavior while Recording")
+					Picker("", selection: Binding(
+						get: { store.hexSettings.recordingAudioBehavior },
+						set: { store.send(.setRecordingAudioBehavior($0)) }
+					)) {
+						Label("Pause Media", systemImage: "pause")
+							.tag(RecordingAudioBehavior.pauseMedia)
+						Label("Mute Volume", systemImage: "speaker.slash")
+							.tag(RecordingAudioBehavior.mute)
+						Label("Do Nothing", systemImage: "hand.raised.slash")
+							.tag(RecordingAudioBehavior.doNothing)
+					}
+					.pickerStyle(.menu)
+				}
 			} icon: {
-				Image(systemName: "pause")
+				Image(systemName: "speaker.wave.2")
 			}
 		} header: {
 			Text("General")

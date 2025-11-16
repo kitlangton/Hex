@@ -8,6 +8,8 @@ import Sauce
 import ServiceManagement
 import SwiftUI
 
+private let settingsLogger = HexLog.settings
+
 extension SharedReaderKey
   where Self == InMemoryKey<Bool>.Default
 {
@@ -53,7 +55,7 @@ struct SettingsFeature {
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
     case togglePreventSystemSleep(Bool)
-    case togglePauseMediaOnRecord(Bool)
+    case setRecordingAudioBehavior(RecordingAudioBehavior)
 
     // Permission delegation (forwarded to AppFeature)
     case requestMicrophone
@@ -102,7 +104,7 @@ struct SettingsFeature {
         {
           state.languages = IdentifiedArray(uniqueElements: languages)
         } else {
-          print("Failed to load languages")
+          settingsLogger.error("Failed to load languages JSON from bundle")
         }
 
         // Listen for key events and load microphones (existing + new)
@@ -244,8 +246,8 @@ struct SettingsFeature {
         state.$hexSettings.withLock { $0.preventSystemSleep = enabled }
         return .none
 
-      case let .togglePauseMediaOnRecord(enabled):
-        state.$hexSettings.withLock { $0.pauseMediaOnRecord = enabled }
+      case let .setRecordingAudioBehavior(behavior):
+        state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
         return .none
 
       // Permission requests

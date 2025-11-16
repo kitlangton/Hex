@@ -24,7 +24,10 @@ let package = Package(
         .testTarget(
             name: "HexCoreTests",
             dependencies: ["HexCore"],
-            path: "Tests/HexCoreTests"
+            path: "Tests/HexCoreTests",
+            resources: [
+                .copy("Fixtures")
+            ]
         ),
     ]
 )

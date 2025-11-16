@@ -128,6 +128,31 @@ public struct Modifier: Identifiable, Codable, Equatable, Hashable, Comparable, 
     if side == .either || other.side == .either { return true }
     return side == other.side
   }
+
+  private enum CodingKeys: String, CodingKey {
+    case kind
+    case side
+  }
+
+  public init(from decoder: Decoder) throws {
+    if let single = try? decoder.singleValueContainer() {
+      if let legacyRaw = try? single.decode(String.self), let kind = Kind(rawValue: legacyRaw) {
+        self.init(kind: kind, side: .either)
+        return
+      }
+    }
+
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let kind = try container.decode(Kind.self, forKey: .kind)
+    let side = try container.decodeIfPresent(Side.self, forKey: .side) ?? .either
+    self.init(kind: kind, side: side)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(kind, forKey: .kind)
+    try container.encode(side, forKey: .side)
+  }
 }
 
 public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Sendable {
@@ -293,7 +318,7 @@ private enum DeviceModifierMask {
   static let rightControl: UInt64 = 0x00002000
 }
 
-public struct HotKey: Codable, Equatable {
+public struct HotKey: Codable, Equatable, Sendable {
   public var key: Key?
   public var modifiers: Modifiers
 

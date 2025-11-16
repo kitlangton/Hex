@@ -62,6 +62,8 @@ The app uses **The Composable Architecture (TCA)** for state management. Key arc
 
 5. **Permissions**: Requires audio input and automation entitlements (see `Hex.entitlements`)
 
+6. **Logging**: All diagnostics should use the unified logging helper `HexLog` (`HexCore/Sources/HexCore/Logging.swift`). Pick an existing category (e.g., `.transcription`, `.recording`, `.settings`) or add a new case so Console predicates stay consistent. Avoid `print` and prefer privacy annotations (`, privacy: .private`) for anything potentially sensitive like transcript text or file paths.
+
 ## Models (2025‑11)
 
 - Default: Parakeet TDT v3 (multilingual) via FluidAudio

@@ -13,6 +13,7 @@ All notable changes to Hex are documented in this file. The format is based on [
 - Model downloads now surface the failing host/domain in their error message so DNS or network issues are easier to debug (#112).
 - Recording starts ~200–700 ms faster: start sounds play immediately, media pausing runs off the main actor, and transcription errors skip the extra cancel chime for less audio clutter (#113).
 - The transcription overlay tracks the active window so UI hints stay anchored to whichever app currently has focus.
+- HexSettings now lives inside HexCore with fixture-based migration tests, giving us a single source of truth for future settings changes.
 
 ### Fixed
 - Printable-key hotkeys (for example `⌘+'`) can now trigger short recordings just like modifier-only chords, so quick phrases aren’t discarded anymore (#113).

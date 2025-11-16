@@ -1,0 +1,35 @@
+{
+  "soundEffectsEnabled": false,
+  "hotkey": {
+    "key": null,
+    "modifiers": {
+      "modifiers": [
+        "option"
+      ]
+    }
+  },
+  "openOnLogin": true,
+  "showDockIcon": false,
+  "selectedModel": "whisper-large-v3",
+  "useClipboardPaste": false,
+  "preventSystemSleep": true,
+  "pauseMediaOnRecord": true,
+  "minimumKeyTime": 0.25,
+  "copyToClipboard": true,
+  "useDoubleTapOnly": true,
+  "outputLanguage": "en",
+  "selectedMicrophoneID": "builtin:mic",
+  "saveTranscriptionHistory": false,
+  "maxHistoryEntries": 10,
+  "pasteLastTranscriptHotkey": {
+    "key": "v",
+    "modifiers": {
+      "modifiers": [
+        "option",
+        "shift"
+      ]
+    }
+  },
+  "hasCompletedModelBootstrap": true,
+  "hasCompletedStorageMigration": true
+}

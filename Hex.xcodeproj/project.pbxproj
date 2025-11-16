@@ -154,11 +154,11 @@
 		47E05DED2D444EC600D26DA6 /* Hex */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 47E05DFD2D444EC700D26DA6 /* Build configuration list for PBXNativeTarget "Hex" */;
-				buildPhases = (
-					47E05DEA2D444EC600D26DA6 /* Sources */,
-					47E05DEB2D444EC600D26DA6 /* Frameworks */,
-					47E05DEC2D444EC600D26DA6 /* Resources */,
-				);
+			buildPhases = (
+				47E05DEA2D444EC600D26DA6 /* Sources */,
+				47E05DEB2D444EC600D26DA6 /* Frameworks */,
+				47E05DEC2D444EC600D26DA6 /* Resources */,
+			);
 			buildRules = (
 			);
 			dependencies = (
