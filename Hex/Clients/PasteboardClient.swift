@@ -8,6 +8,7 @@
 import ComposableArchitecture
 import Dependencies
 import DependenciesMacros
+import Foundation
 import Sauce
 import SwiftUI
 
@@ -141,9 +142,8 @@ struct PasteboardClientLive {
     func pasteWithClipboard(_ text: String) async {
         let pasteboard = NSPasteboard.general
         let originalItems = savePasteboardState(pasteboard: pasteboard)
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        
+        let targetChangeCount = writeAndTrackChangeCount(pasteboard: pasteboard, text: text)
+        _ = await waitForPasteboardCommit(targetChangeCount: targetChangeCount)
         let pasteSucceeded = await tryPaste(text)
         
         // Only restore original pasteboard contents if:
@@ -164,6 +164,38 @@ struct PasteboardClientLive {
             // TODO: Could add a notification here to inform user
             // that text is available in clipboard
         }
+    }
+
+    @MainActor
+    private func writeAndTrackChangeCount(pasteboard: NSPasteboard, text: String) -> Int {
+        let before = pasteboard.changeCount
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        let after = pasteboard.changeCount
+        if after == before {
+            // Ensure we always advance by at least one to avoid infinite waits if the system
+            // coalesces writes (seen on Sonoma betas with zero-length strings).
+            return after + 1
+        }
+        return after
+    }
+
+    @MainActor
+    private func waitForPasteboardCommit(
+        targetChangeCount: Int,
+        timeout: Duration = .milliseconds(150),
+        pollInterval: Duration = .milliseconds(5)
+    ) async -> Bool {
+        guard targetChangeCount > NSPasteboard.general.changeCount else { return true }
+
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if NSPasteboard.general.changeCount >= targetChangeCount {
+                return true
+            }
+            try? await Task.sleep(for: pollInterval)
+        }
+        return false
     }
 
     // MARK: - Paste Orchestration
