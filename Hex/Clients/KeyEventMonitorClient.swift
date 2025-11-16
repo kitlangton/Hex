@@ -10,7 +10,7 @@ import Sauce
 private let logger = Logger(subsystem: "com.kitlangton.Hex", category: "KeyEventMonitor")
 
 public extension KeyEvent {
-  init(cgEvent: CGEvent, type _: CGEventType) {
+  init(cgEvent: CGEvent, type: CGEventType, isFnPressed: Bool) {
     let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
     // Accessing keyboard layout / input source via Sauce must be on main thread.
     let key: Key?
@@ -24,7 +24,10 @@ public extension KeyEvent {
       key = nil
     }
 
-    let modifiers = Modifiers.from(carbonFlags: cgEvent.flags)
+    var modifiers = Modifiers.from(carbonFlags: cgEvent.flags)
+    if !isFnPressed {
+      modifiers = modifiers.removing(kind: .fn)
+    }
     self.init(key: key, modifiers: modifiers)
   }
 }
@@ -71,6 +74,8 @@ class KeyEventMonitorClientLive {
   private var inputContinuations: [UUID: (InputEvent) -> Bool] = [:]
   private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
   private var isMonitoring = false
+  private let enableModifierDiagnostics = ProcessInfo.processInfo.environment["HEX_DIAG_MODIFIERS"] == "1"
+  private var isFnPressed = false
 
   init() {
     logger.info("Initializing HotKeyClient with CGEvent tap.")
@@ -123,6 +128,10 @@ class KeyEventMonitorClientLive {
     guard !isMonitoring else { return }
     isMonitoring = true
 
+    if enableModifierDiagnostics {
+      logger.info("ModifierDiag enabled; logging flagsChanged events.")
+    }
+
     // Create an event tap at the HID level to capture keyDown, keyUp, flagsChanged, and mouse events
     let eventMask =
       ((1 << CGEventType.keyDown.rawValue) 
@@ -153,8 +162,11 @@ class KeyEventMonitorClientLive {
             return handled ? nil : Unmanaged.passUnretained(cgEvent)
           }
 
+          hotKeyClientLive.updateFnStateIfNeeded(type: type, cgEvent: cgEvent)
+
           // Otherwise it's a keyboard event
-          let keyEvent = KeyEvent(cgEvent: cgEvent, type: type)
+          let keyEvent = KeyEvent(cgEvent: cgEvent, type: type, isFnPressed: hotKeyClientLive.isFnPressed)
+          hotKeyClientLive.logModifierDiagnostics(eventType: type, cgEvent: cgEvent, keyEvent: keyEvent)
           let handledByKeyHandler = hotKeyClientLive.processKeyEvent(keyEvent)
           let handledByInputHandler = hotKeyClientLive.processInputEvent(.keyboard(keyEvent))
 
@@ -256,5 +268,65 @@ class KeyEventMonitorClientLive {
     }
 
     return handled
+  }
+}
+
+// MARK: - Diagnostics
+extension KeyEventMonitorClientLive {
+  private func updateFnStateIfNeeded(type: CGEventType, cgEvent: CGEvent) {
+    guard type == .flagsChanged else { return }
+    let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
+    guard keyCode == kVK_Function else { return }
+    isFnPressed = cgEvent.flags.contains(.maskSecondaryFn)
+  }
+
+  private enum DeviceModifierMask: UInt64 {
+    case leftControl = 0x00000001
+    case leftShift = 0x00000002
+    case rightShift = 0x00000004
+    case leftCommand = 0x00000008
+    case rightCommand = 0x00000010
+    case leftOption = 0x00000020
+    case rightOption = 0x00000040
+    case rightControl = 0x00002000
+  }
+
+  private func logModifierDiagnostics(eventType: CGEventType, cgEvent: CGEvent, keyEvent: KeyEvent) {
+    guard enableModifierDiagnostics, eventType == .flagsChanged else { return }
+
+    let keyCode = cgEvent.getIntegerValueField(.keyboardEventKeycode)
+    let flags = cgEvent.flags.rawValue
+    let keyCodeHex = String(format: "0x%02llX", keyCode)
+    let flagsHex = String(format: "0x%08llX", flags)
+
+    logger.info(
+      "ModifierDiag type=\(eventType.rawValue, privacy: .public) keyCode=\(keyCodeHex, privacy: .public) flags=\(flagsHex, privacy: .public) devices=\(self.deviceSideDescription(flags: flags), privacy: .public) mods=\(self.modifiersDescription(keyEvent.modifiers), privacy: .public)"
+    )
+  }
+
+  private func deviceSideDescription(flags: UInt64) -> String {
+    var sides: [String] = []
+    if flags & DeviceModifierMask.leftControl.rawValue != 0 { sides.append("leftControl") }
+    if flags & DeviceModifierMask.leftShift.rawValue != 0 { sides.append("leftShift") }
+    if flags & DeviceModifierMask.rightShift.rawValue != 0 { sides.append("rightShift") }
+    if flags & DeviceModifierMask.leftCommand.rawValue != 0 { sides.append("leftCommand") }
+    if flags & DeviceModifierMask.rightCommand.rawValue != 0 { sides.append("rightCommand") }
+    if flags & DeviceModifierMask.leftOption.rawValue != 0 { sides.append("leftOption") }
+    if flags & DeviceModifierMask.rightOption.rawValue != 0 { sides.append("rightOption") }
+    if flags & DeviceModifierMask.rightControl.rawValue != 0 { sides.append("rightControl") }
+    return sides.isEmpty ? "-" : sides.joined(separator: ",")
+  }
+
+  private func modifiersDescription(_ modifiers: Modifiers) -> String {
+    let names = modifiers.sorted.map { modifier -> String in
+      switch modifier.kind {
+      case .command: return modifier.side == .either ? "command" : "command-\(modifier.side.displayName.lowercased())"
+      case .option: return modifier.side == .either ? "option" : "option-\(modifier.side.displayName.lowercased())"
+      case .shift: return modifier.side == .either ? "shift" : "shift-\(modifier.side.displayName.lowercased())"
+      case .control: return modifier.side == .either ? "control" : "control-\(modifier.side.displayName.lowercased())"
+      case .fn: return "fn"
+      }
+    }
+    return names.isEmpty ? "-" : names.joined(separator: "+")
   }
 }

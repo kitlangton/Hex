@@ -97,10 +97,10 @@ struct MenuBarCopyLastTranscriptButton: View {
 
   private func toEventModifiers(_ modifiers: Modifiers) -> SwiftUI.EventModifiers {
     var result: SwiftUI.EventModifiers = []
-    if modifiers.contains(.command) { result.insert(.command) }
-    if modifiers.contains(.option) { result.insert(.option) }
-    if modifiers.contains(.shift) { result.insert(.shift) }
-    if modifiers.contains(.control) { result.insert(.control) }
+    if modifiers.contains(kind: .command) { result.insert(.command) }
+    if modifiers.contains(kind: .option) { result.insert(.option) }
+    if modifiers.contains(kind: .shift) { result.insert(.shift) }
+    if modifiers.contains(kind: .control) { result.insert(.control) }
     return result
   }
 }

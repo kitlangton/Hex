@@ -24,6 +24,18 @@ struct HotKeySectionView: View {
                 .onTapGesture {
                     store.send(.startSettingHotKey)
                 }
+
+                if !store.isSettingHotKey,
+                   hotKey.key == nil,
+                   !hotKey.modifiers.isEmpty {
+                    ModifierSideControls(
+                        modifiers: hotKey.modifiers,
+                        onSelect: { kind, side in
+                            store.send(.setModifierSide(kind, side))
+                        }
+                    )
+                    .transition(.opacity)
+                }
             }
 
             // Double-tap toggle (for key+modifier combinations)
@@ -47,5 +59,38 @@ struct HotKeySectionView: View {
             }
         }
         
+    }
+}
+
+private struct ModifierSideControls: View {
+    var modifiers: Modifiers
+    var onSelect: (Modifier.Kind, Modifier.Side) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(modifiers.kinds, id: \.self) { kind in
+                if kind.supportsSideSelection {
+                    let binding = Binding<Modifier.Side>(
+                        get: { modifiers.side(for: kind) ?? .either },
+                        set: { onSelect(kind, $0) }
+                    )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(kind.symbol) \(kind.displayName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Picker("Modifier side", selection: binding) {
+                            ForEach(Modifier.Side.allCases, id: \.self) { side in
+                                Text(side.displayName)
+                                    .tag(side)
+                                    .disabled(!kind.supportsSideSelection && side != .either)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+            }
+        }
     }
 }

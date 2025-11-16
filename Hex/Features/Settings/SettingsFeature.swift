@@ -68,6 +68,9 @@ struct SettingsFeature {
     
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
+
+    // Modifier configuration
+    case setModifierSide(Modifier.Kind, Modifier.Side)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -191,7 +194,7 @@ struct SettingsFeature {
               return .none
             }
             state.$hexSettings.withLock {
-              $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: currentModifiers)
+              $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: currentModifiers.erasingSides())
             }
             state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
             state.currentPasteLastModifiers = []
@@ -213,14 +216,14 @@ struct SettingsFeature {
         if let key = keyEvent.key {
           state.$hexSettings.withLock {
             $0.hotkey.key = key
-            $0.hotkey.modifiers = currentModifiers
+            $0.hotkey.modifiers = currentModifiers.erasingSides()
           }
           state.$isSettingHotKey.withLock { $0 = false }
           state.currentModifiers = []
         } else if keyEvent.modifiers.isEmpty {
           state.$hexSettings.withLock {
             $0.hotkey.key = nil
-            $0.hotkey.modifiers = currentModifiers
+            $0.hotkey.modifiers = currentModifiers.erasingSides()
           }
           state.$isSettingHotKey.withLock { $0 = false }
           state.currentModifiers = []
@@ -299,6 +302,13 @@ struct SettingsFeature {
           }
         }
         
+        return .none
+
+      case let .setModifierSide(kind, side):
+        guard state.hexSettings.hotkey.key == nil else { return .none }
+        state.$hexSettings.withLock {
+          $0.hotkey.modifiers = $0.hotkey.modifiers.setting(kind: kind, to: side)
+        }
         return .none
       }
     }

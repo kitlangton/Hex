@@ -263,14 +263,10 @@ extension HotKeyProcessor {
     // MARK: - Helpers
 
     private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
-        // For hotkeys that include a key, both the key and modifiers must match exactly
         if hotkey.key != nil {
-            return e.key == hotkey.key && e.modifiers == hotkey.modifiers
+            return e.key == hotkey.key && e.modifiers.matchesExactly(hotkey.modifiers)
         } else {
-            // For modifier-only hotkeys, require exact match
-            // - Exact modifiers (no extra modifiers)
-            // - No key pressed
-            return e.key == nil && hotkey.modifiers == e.modifiers
+            return e.key == nil && e.modifiers.matchesExactly(hotkey.modifiers)
         }
     }
 
