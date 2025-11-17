@@ -113,14 +113,7 @@ public struct Modifier: Identifiable, Codable, Equatable, Hashable, Comparable, 
   }
 
   public var stringValue: String {
-    switch side {
-    case .either:
-      return kind.symbol
-    case .left:
-      return "\(kind.symbol)L"
-    case .right:
-      return "\(kind.symbol)R"
-    }
+    kind.symbol
   }
 
   func matches(_ other: Modifier) -> Bool {

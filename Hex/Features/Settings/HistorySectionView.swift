@@ -75,12 +75,12 @@ private struct PasteLastTranscriptHotkeyRow: View {
 	var body: some View {
 		let pasteHotkey = store.hexSettings.pasteLastTranscriptHotkey
 
-		HStack(alignment: .center, spacing: 12) {
+		VStack(alignment: .leading, spacing: 12) {
 			Label {
 				VStack(alignment: .leading, spacing: 2) {
 					Text("Paste Last Transcript")
 						.font(.subheadline.weight(.semibold))
-					Text("Quick shortcut to drop your most recent transcription into any app.")
+					Text("Assign a shortcut (modifier + key) to instantly paste your last transcription.")
 						.font(.caption)
 						.foregroundColor(.secondary)
 				}
@@ -88,51 +88,42 @@ private struct PasteLastTranscriptHotkeyRow: View {
 				Image(systemName: "doc.on.clipboard")
 			}
 
-			Spacer()
+			let key = store.isSettingPasteLastTranscriptHotkey ? nil : pasteHotkey?.key
+			let modifiers = store.isSettingPasteLastTranscriptHotkey ? store.currentPasteLastModifiers : (pasteHotkey?.modifiers ?? .init(modifiers: []))
 
-			Button {
-				store.send(.startSettingPasteLastTranscriptHotkey)
-			} label: {
-				Text(shortcutDescription(for: pasteHotkey))
-					.font(.system(size: 15, weight: .semibold, design: .rounded))
-					.foregroundColor(.primary)
-					.padding(.vertical, 5)
-					.padding(.horizontal, 12)
-					.background(
-						RoundedRectangle(cornerRadius: 10)
-							.fill(store.isSettingPasteLastTranscriptHotkey ? Color.accentColor.opacity(0.15) : Color(NSColor.controlBackgroundColor))
-					)
-					.overlay(
-						RoundedRectangle(cornerRadius: 10)
-							.stroke(Color.gray.opacity(store.isSettingPasteLastTranscriptHotkey ? 0.5 : 0.25))
-					)
+			HStack {
+				Spacer()
+				ZStack {
+					HotKeyView(modifiers: modifiers, key: key, isActive: store.isSettingPasteLastTranscriptHotkey)
+
+					if !store.isSettingPasteLastTranscriptHotkey, pasteHotkey == nil {
+						Text("Not set")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+					}
+				}
+				.contentShape(Rectangle())
+				.onTapGesture {
+					store.send(.startSettingPasteLastTranscriptHotkey)
+				}
+				Spacer()
 			}
-			.buttonStyle(.plain)
 
-			if store.isSettingPasteLastTranscriptHotkey, pasteHotkey != nil {
+			if store.isSettingPasteLastTranscriptHotkey {
+				Text("Use at least one modifier (⌘, ⌥, ⇧, ⌃) plus a key.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			} else if pasteHotkey != nil {
 				Button {
 					store.send(.clearPasteLastTranscriptHotkey)
 				} label: {
-					Image(systemName: "xmark.circle.fill")
-						.font(.system(size: 14, weight: .semibold))
+					Label("Clear shortcut", systemImage: "xmark.circle")
 				}
-				.buttonStyle(.plain)
+				.buttonStyle(.borderless)
+				.font(.caption)
+				.foregroundStyle(.secondary)
 			}
 		}
 		.enableInjection()
-	}
-	
-	func shortcutDescription(for hotkey: HotKey?) -> String {
-		if store.isSettingPasteLastTranscriptHotkey {
-			let modifiers = store.currentPasteLastModifiers.sorted.map { $0.stringValue }.joined()
-			if modifiers.isEmpty {
-				return "Press shortcut…"
-			}
-			return modifiers
-		}
-		guard let hotkey else { return "Not set" }
-		let modifiers = hotkey.modifiers.sorted.map { $0.stringValue }.joined()
-		let keySymbol = hotkey.key?.toString ?? ""
-		return modifiers + keySymbol
 	}
 }
