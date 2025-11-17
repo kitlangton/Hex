@@ -9,6 +9,7 @@
     "release": "cd tools && bun run build",
     "changeset": "changeset",
     "changeset:add": "changeset",
+    "changeset:add-ai": "bun run tools/scripts/add-changeset.ts",
     "changeset:status": "changeset status --verbose",
     "changeset:version": "changeset version",
     "sync-changelog": "bun run tools/scripts/sync-changelog.ts"
