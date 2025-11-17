@@ -43,7 +43,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		selectedModel: String = ParakeetModel.multilingualV3.identifier,
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
-		recordingAudioBehavior: RecordingAudioBehavior = .pauseMedia,
+		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
 		minimumKeyTime: Double = 0.2,
 		copyToClipboard: Bool = false,
 		useDoubleTapOnly: Bool = false,
