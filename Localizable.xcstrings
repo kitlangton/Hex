@@ -703,6 +703,9 @@
         }
       }
     },
+    "Volume" : {
+
+    },
     "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
 
     },

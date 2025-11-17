@@ -8,6 +8,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 
 		XCTAssertEqual(decoded.recordingAudioBehavior, .pauseMedia, "Legacy pauseMediaOnRecord bool should map to pauseMedia behavior")
 		XCTAssertEqual(decoded.soundEffectsEnabled, false)
+		XCTAssertEqual(decoded.soundEffectsVolume, HexSettings.baseSoundEffectsVolume)
 		XCTAssertEqual(decoded.openOnLogin, true)
 		XCTAssertEqual(decoded.showDockIcon, false)
 		XCTAssertEqual(decoded.selectedModel, "whisper-large-v3")

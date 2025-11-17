@@ -62,18 +62,20 @@ public extension DependencyValues {
 
 actor SoundEffectsClientLive {
   private let logger = HexLog.sound
+  private let baselineVolume = HexSettings.baseSoundEffectsVolume
   
   @Shared(.hexSettings) var hexSettings: HexSettings
 
   func play(_ soundEffect: SoundEffect) {
-    guard hexSettings.soundEffectsEnabled else { return }
-    guard let player = audioPlayers[soundEffect] else {
-      logger.error("Requested sound \(soundEffect.rawValue, privacy: .public) not preloaded")
-      return
-    }
-    player.volume = 0.2
-    player.currentTime = 0
-    player.play()
+	guard hexSettings.soundEffectsEnabled else { return }
+	guard let player = audioPlayers[soundEffect] else {
+		logger.error("Requested sound \(soundEffect.rawValue, privacy: .public) not preloaded")
+		return
+	}
+	let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
+	player.volume = Float(clampedVolume)
+	player.currentTime = 0
+	player.play()
   }
 
   func stop(_ soundEffect: SoundEffect) {
