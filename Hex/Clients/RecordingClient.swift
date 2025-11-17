@@ -53,12 +53,20 @@ struct Meter: Equatable {
 
 // Define function pointer types for the MediaRemote functions.
 typealias MRNowPlayingIsPlayingFunc = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
+typealias MRMediaRemoteSendCommandFunc = @convention(c) (Int32, CFDictionary?) -> Void
+
+enum MediaRemoteCommand: Int32 {
+  case play = 0
+  case pause = 1
+  case togglePlayPause = 2
+}
 
 /// Wraps a few MediaRemote functions.
 @Observable
 class MediaRemoteController {
   private var mediaRemoteHandle: UnsafeMutableRawPointer?
   private var mrNowPlayingIsPlaying: MRNowPlayingIsPlayingFunc?
+  private var mrSendCommand: MRMediaRemoteSendCommandFunc?
 
   init?() {
     // Open the private framework.
@@ -74,6 +82,12 @@ class MediaRemoteController {
       return nil
     }
     mrNowPlayingIsPlaying = unsafeBitCast(playingPtr, to: MRNowPlayingIsPlayingFunc.self)
+
+    if let commandPtr = dlsym(handle, "MRMediaRemoteSendCommand") {
+      mrSendCommand = unsafeBitCast(commandPtr, to: MRMediaRemoteSendCommandFunc.self)
+    } else {
+      mediaLogger.error("Unable to find MRMediaRemoteSendCommand symbol")
+    }
   }
 
   deinit {
@@ -84,11 +98,20 @@ class MediaRemoteController {
 
   /// Asynchronously refreshes the "is playing" status.
   func isMediaPlaying() async -> Bool {
-    await withCheckedContinuation { continuation in
-      mrNowPlayingIsPlaying?(DispatchQueue.main) {  isPlaying in
+    guard let isPlayingFunc = mrNowPlayingIsPlaying else { return false }
+    return await withCheckedContinuation { continuation in
+      isPlayingFunc(DispatchQueue.main) { isPlaying in
         continuation.resume(returning: isPlaying)
       }
     }
+  }
+
+  func send(_ command: MediaRemoteCommand) -> Bool {
+    guard let sendCommand = mrSendCommand else {
+      return false
+    }
+    sendCommand(command.rawValue, nil)
+    return true
   }
 }
 
@@ -97,7 +120,7 @@ private let mediaRemoteController = MediaRemoteController()
 
 func isAudioPlayingOnDefaultOutput() async -> Bool {
   // Refresh the state before checking
-  await mediaRemoteController?.isMediaPlaying() ?? false
+  return await mediaRemoteController?.isMediaPlaying() ?? false
 }
 
 /// Check if an application is installed by looking for its bundle
@@ -286,6 +309,9 @@ actor RecordingClientLive {
 
   /// Tracks whether media was paused using the media key when recording started.
   private var didPauseMedia: Bool = false
+
+  /// Tracks whether media was toggled via MediaRemote
+  private var didPauseViaMediaRemote: Bool = false
 
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
@@ -594,6 +620,10 @@ actor RecordingClientLive {
     case .pauseMedia:
       // Pause media in background - don't block recording from starting
       Task {
+        if await self.pauseUsingMediaRemoteIfPossible() {
+          return
+        }
+
         // First, pause all media applications using their AppleScript interface.
         let paused = await pauseAllMediaApplications()
         self.updatePausedPlayers(paused)
@@ -671,9 +701,10 @@ actor RecordingClientLive {
     // Resume audio in background - don't block stop from completing
     let playersToResume = pausedPlayers
     let shouldResumeMedia = didPauseMedia
+    let shouldResumeViaMediaRemote = didPauseViaMediaRemote
     let volumeToRestore = previousVolume
 
-    if !playersToResume.isEmpty || shouldResumeMedia || volumeToRestore != nil {
+    if !playersToResume.isEmpty || shouldResumeMedia || shouldResumeViaMediaRemote || volumeToRestore != nil {
       Task {
         // Restore volume if it was muted
         if let volume = volumeToRestore {
@@ -683,6 +714,16 @@ actor RecordingClientLive {
         else if !playersToResume.isEmpty {
           mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "), privacy: .public)")
           await resumeMediaApplications(playersToResume)
+        }
+        else if shouldResumeViaMediaRemote {
+          if mediaRemoteController?.send(.play) == true {
+            mediaLogger.notice("Resuming media via MediaRemote")
+          } else {
+            mediaLogger.error("Failed to resume via MediaRemote; falling back to media key")
+            await MainActor.run {
+              sendMediaKey()
+            }
+          }
         }
         // Resume generic media if we paused it with the media key
         else if shouldResumeMedia {
@@ -709,6 +750,10 @@ actor RecordingClientLive {
     didPauseMedia = value
   }
 
+  private func setDidPauseViaMediaRemote(_ value: Bool) {
+    didPauseViaMediaRemote = value
+  }
+
   private func setPreviousVolume(_ volume: Float) {
     previousVolume = volume
   }
@@ -716,7 +761,29 @@ actor RecordingClientLive {
   private func clearMediaState() {
     pausedPlayers = []
     didPauseMedia = false
+    didPauseViaMediaRemote = false
     previousVolume = nil
+  }
+
+  @discardableResult
+  private func pauseUsingMediaRemoteIfPossible() async -> Bool {
+    guard let controller = mediaRemoteController else {
+      return false
+    }
+
+    let isPlaying = await controller.isMediaPlaying()
+    guard isPlaying else {
+      return false
+    }
+
+    guard controller.send(.pause) else {
+      mediaLogger.error("Failed to send MediaRemote pause command")
+      return false
+    }
+
+    setDidPauseViaMediaRemote(true)
+    mediaLogger.notice("Paused media via MediaRemote")
+    return true
   }
 
   func startMeterTask() {
