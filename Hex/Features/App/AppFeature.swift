@@ -5,6 +5,7 @@
 //  Created by Kit Langton on 1/26/25.
 //
 
+import AppKit
 import ComposableArchitecture
 import Dependencies
 import HexCore
@@ -24,15 +25,12 @@ struct AppFeature {
     var settings: SettingsFeature.State = .init()
     var history: HistoryFeature.State = .init()
     var activeTab: ActiveTab = .settings
+    @Shared(.hexSettings) var hexSettings: HexSettings
+    @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
 
     // Permission state
     var microphonePermission: PermissionStatus = .notDetermined
     var accessibilityPermission: PermissionStatus = .notDetermined
-
-    // Computed: Are required permissions granted?
-    var hasRequiredPermissions: Bool {
-      microphonePermission == .granted
-    }
   }
 
   enum Action: BindableAction {
@@ -50,6 +48,7 @@ struct AppFeature {
     case appActivated
     case requestMicrophone
     case requestAccessibility
+    case modelStatusEvaluated(Bool)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -119,13 +118,7 @@ struct AppFeature {
       case let .permissionsUpdated(mic, acc):
         state.microphonePermission = mic
         state.accessibilityPermission = acc
-
-        // Start/stop key monitoring based on accessibility permission
-        if acc == .granted {
-          return .run { _ in await keyEventMonitor.startMonitoring() }
-        } else {
-          return .none
-        }
+        return .none
 
       case .appActivated:
         // App became active - re-check permissions
@@ -146,6 +139,9 @@ struct AppFeature {
             await send(.checkPermissions)
           }
         }
+
+      case .modelStatusEvaluated:
+        return .none
       }
     }
   }
@@ -155,7 +151,7 @@ struct AppFeature {
       @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
-      keyEventMonitor.handleKeyEvent { keyEvent in
+      let token = keyEventMonitor.handleKeyEvent { keyEvent in
         // Skip if user is setting a hotkey
         if isSettingPasteLastTranscriptHotkey {
           return false
@@ -165,7 +161,7 @@ struct AppFeature {
         guard let pasteHotkey = hexSettings.pasteLastTranscriptHotkey,
               let key = keyEvent.key,
               key == pasteHotkey.key,
-              keyEvent.modifiers == pasteHotkey.modifiers else {
+              keyEvent.modifiers.matchesExactly(pasteHotkey.modifiers) else {
           return false
         }
 
@@ -175,15 +171,30 @@ struct AppFeature {
         }
         return true // Intercept the key event
       }
+
+      defer { token.cancel() }
+
+      await withTaskCancellationHandler {
+        do {
+          try await Task.sleep(nanoseconds: .max)
+        } catch {
+          // Expected on cancellation
+        }
+      } onCancel: {
+        token.cancel()
+      }
     }
   }
 
   private func ensureSelectedModelReadiness() -> Effect<Action> {
-    .run { _ in
+    .run { send in
       @Shared(.hexSettings) var hexSettings: HexSettings
       @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
       let selectedModel = hexSettings.selectedModel
-      guard !selectedModel.isEmpty else { return }
+      guard !selectedModel.isEmpty else {
+        await send(.modelStatusEvaluated(false))
+        return
+      }
       let isReady = await transcription.isModelDownloaded(selectedModel)
       $modelBootstrapState.withLock { state in
         state.modelIdentifier = selectedModel
@@ -193,12 +204,12 @@ struct AppFeature {
         state.isModelReady = isReady
         if isReady {
           state.lastError = nil
-          state.isAutoDownloading = false
           state.progress = 1
-        } else if !state.isAutoDownloading {
+        } else {
           state.progress = 0
         }
       }
+      await send(.modelStatusEvaluated(isReady))
     }
   }
 
@@ -213,6 +224,7 @@ struct AppFeature {
           await send(.appActivated)
         }
       }
+
     }
   }
 }
@@ -228,22 +240,25 @@ struct AppView: View {
           store.send(.setActiveTab(.settings))
         } label: {
           Label("Settings", systemImage: "gearshape")
-        }.buttonStyle(.plain)
-          .tag(AppFeature.ActiveTab.settings)
+        }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.settings)
 
         Button {
           store.send(.setActiveTab(.history))
         } label: {
           Label("History", systemImage: "clock")
-        }.buttonStyle(.plain)
-          .tag(AppFeature.ActiveTab.history)
-          
+        }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.history)
+
         Button {
           store.send(.setActiveTab(.about))
         } label: {
           Label("About", systemImage: "info.circle")
-        }.buttonStyle(.plain)
-          .tag(AppFeature.ActiveTab.about)
+        }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.about)
       }
     } detail: {
       switch store.state.activeTab {
@@ -261,9 +276,6 @@ struct AppView: View {
         AboutView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("About")
       }
-    }
-    .task {
-      await store.send(.task).finish()
     }
     .enableInjection()
   }

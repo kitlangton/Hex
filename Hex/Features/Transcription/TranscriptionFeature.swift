@@ -154,7 +154,7 @@ private extension TranscriptionFeature {
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
-      keyEventMonitor.handleInputEvent { inputEvent in
+      let token = keyEventMonitor.handleInputEvent { inputEvent in
         // Skip if the user is currently setting a hotkey
         if isSettingHotKey {
           return false
@@ -224,6 +224,18 @@ private extension TranscriptionFeature {
             return false
           }
         }
+      }
+
+      defer { token.cancel() }
+
+      await withTaskCancellationHandler {
+        do {
+          try await Task.sleep(nanoseconds: .max)
+        } catch {
+          // Cancellation expected
+        }
+      } onCancel: {
+        token.cancel()
       }
     }
   }
@@ -473,6 +485,8 @@ private extension TranscriptionFeature {
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
+        // Stop the recording to release microphone access
+        _ = await recording.stopRecording()
         soundEffect.play(.cancel)
       }
     )

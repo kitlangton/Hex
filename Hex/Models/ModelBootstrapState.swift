@@ -1,9 +1,8 @@
 import ComposableArchitecture
 
 struct ModelBootstrapState: Equatable {
-	var isAutoDownloading: Bool = false
-	var isModelReady: Bool = true
-	var progress: Double = 1
+    var isModelReady: Bool = true
+    var progress: Double = 1
 	var lastError: String?
 	var modelIdentifier: String?
 	var modelDisplayName: String?
