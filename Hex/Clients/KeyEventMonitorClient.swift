@@ -112,8 +112,8 @@ class KeyEventMonitorClientLive {
     self.stopMonitoring()
   }
 
-  private var hasRequiredPermissions: Bool {
-    queue.sync { accessibilityTrusted && inputMonitoringTrusted }
+  private var hasAccessibilityPermission: Bool {
+    queue.sync { accessibilityTrusted }
   }
 
   private var hasHandlers: Bool {
@@ -130,7 +130,6 @@ class KeyEventMonitorClientLive {
     queue.sync {
       wantsMonitoring
         && accessibilityTrusted
-        && inputMonitoringTrusted
         && !(continuations.isEmpty && inputContinuations.isEmpty)
     }
   }
@@ -349,9 +348,8 @@ class KeyEventMonitorClientLive {
       return
     }
 
-    guard inputMonitoringTrusted else {
-      logger.error("Cannot start key event monitoring (reason: \(reason)); input monitoring permission is not granted.")
-      return
+    if !inputMonitoringTrusted {
+      logger.error("Input Monitoring permission missing; continuing with Accessibility-only tap (reason: \(reason)).")
     }
 
     let eventMask =
@@ -382,7 +380,7 @@ class KeyEventMonitorClientLive {
             return Unmanaged.passUnretained(cgEvent)
           }
 
-          guard hotKeyClientLive.hasRequiredPermissions else {
+          guard hotKeyClientLive.hasAccessibilityPermission else {
             return Unmanaged.passUnretained(cgEvent)
           }
 
@@ -520,6 +518,23 @@ extension KeyEventMonitorClientLive {
         granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
       }
     }
+    if !granted {
+      logger.error("IOHIDRequestAccess denied; opening Input Monitoring System Settings panel.")
+      openInputMonitoringSettings()
+    }
     return granted
+  }
+
+  private func openInputMonitoringSettings() {
+    guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") else {
+      return
+    }
+    if Thread.isMainThread {
+      NSWorkspace.shared.open(url)
+    } else {
+      DispatchQueue.main.async {
+        NSWorkspace.shared.open(url)
+      }
+    }
   }
 }

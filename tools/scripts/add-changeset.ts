@@ -25,7 +25,7 @@ if (args.length < 2) {
 const [type, ...summaryParts] = args;
 const summary = summaryParts.join(" ");
 
-if (!["patch", "minor", "major"].includes(type)) {
+if (!type || !["patch", "minor", "major"].includes(type)) {
   console.error(`Invalid type: ${type}. Must be patch, minor, or major.`);
   process.exit(1);
 }
