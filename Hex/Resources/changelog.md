@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4
+
+### Patch Changes
+
+- Fix hotkey monitoring on macOS Sequoia 15.7.1 by properly handling Input Monitoring permissions (#122, #124)
+
 ## 0.5.3
 
 ### Patch Changes
