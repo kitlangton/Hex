@@ -24,6 +24,10 @@ struct CuratedRow: View {
 		store.recommendedModel == model.internalName
 	}
 
+	var recommendationBadge: ModelDownloadFeature.State.RecommendationBadge? {
+		store.recommendationBadges[model.internalName]
+	}
+
 	var body: some View {
 		Button(action: { store.send(.selectModel(model.internalName)) }) {
 			HStack(alignment: .center, spacing: 12) {
@@ -36,7 +40,17 @@ struct CuratedRow: View {
 					HStack(spacing: 6) {
 						Text(model.displayName)
 							.font(.headline)
-						if isRecommended {
+						if let badge = recommendationBadge {
+							Text(badge.text)
+								.font(.caption2.weight(.semibold))
+								.foregroundStyle(badge.isPrimary ? Color.white : Color.accentColor)
+								.padding(.horizontal, 6)
+								.padding(.vertical, 2)
+								.background(
+									Capsule()
+										.fill(badge.isPrimary ? Color.accentColor : Color.accentColor.opacity(0.15))
+								)
+						} else if isRecommended {
 							Text("Recommended")
 								.font(.caption2.weight(.semibold))
 								.foregroundStyle(.white)
@@ -128,4 +142,3 @@ struct CuratedRow: View {
 		.enableInjection()
 	}
 }
-

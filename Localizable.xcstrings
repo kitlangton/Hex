@@ -72,6 +72,9 @@
         }
       }
     },
+    "Assign a shortcut (modifier + key) to instantly paste your last transcription." : {
+
+    },
     "Audio Behavior while Recording" : {
 
     },
@@ -133,6 +136,9 @@
           }
         }
       }
+    },
+    "Clear shortcut" : {
+
     },
     "Close" : {
       "localizations" : {
@@ -261,16 +267,10 @@
         }
       }
     },
-    "Downloading model..." : {
-
-    },
     "Downloading… %lld%%" : {
 
     },
     "Enable in Settings" : {
-
-    },
-    "English only" : {
 
     },
     "Ensure Hex can access your microphone and system accessibility features." : {
@@ -395,14 +395,12 @@
     "Modifier side" : {
 
     },
-    "Multilingual" : {
-
-    },
     "Mute Volume" : {
 
     },
     "No models found." : {
       "comment" : "Replacement text in transcription model section when no available models are found",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -422,6 +420,9 @@
           }
         }
       }
+    },
+    "Not set" : {
+
     },
     "Oldest entries will be automatically deleted when limit is reached" : {
 
@@ -502,9 +503,6 @@
         }
       }
     },
-    "Quick shortcut to drop your most recent transcription into any app." : {
-
-    },
     "Quit" : {
 
     },
@@ -546,9 +544,6 @@
           }
         }
       }
-    },
-    "Selected: %@" : {
-
     },
     "Settings" : {
       "comment" : "title for settings view.",
@@ -596,7 +591,10 @@
     "Show in Finder" : {
 
     },
-    "Show Models Folder" : {
+    "Show less" : {
+
+    },
+    "Show more" : {
 
     },
     "Sound" : {
@@ -658,7 +656,7 @@
     "Unlimited" : {
 
     },
-    "Use" : {
+    "Use at least one modifier (⌘, ⌥, ⇧, ⌃) plus a key." : {
 
     },
     "Use clipboard to insert" : {
