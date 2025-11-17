@@ -259,11 +259,19 @@ public struct ModelDownloadFeature {
 			}
 
 		case let .modelsLoaded(recommended, available):
-			// Prefer Parakeet as recommended if present
-			let parakeet = "parakeet-tdt-0.6b-v3-coreml"
-			let availablePlus = available + (available.contains(where: { $0.name == parakeet }) ? [] : [ModelInfo(name: parakeet, isDownloaded: false)])
+			// Ensure our curated Parakeet options are visible even if WhisperKit doesn't list them
+			var availablePlus = available
+			for model in ParakeetModel.allCases.reversed() {
+				if !availablePlus.contains(where: { $0.name == model.identifier }) {
+					availablePlus.insert(ModelInfo(name: model.identifier, isDownloaded: false), at: 0)
+				}
+			}
 
-			state.recommendedModel = availablePlus.contains(where: { $0.name == parakeet }) ? parakeet : recommended
+			if availablePlus.contains(where: { $0.name == state.preferredParakeetIdentifier }) {
+				state.recommendedModel = state.preferredParakeetIdentifier
+			} else {
+				state.recommendedModel = recommended
+			}
 			state.availableModels = IdentifiedArrayOf(uniqueElements: availablePlus)
 
 			// If the selected model is a pattern, resolve it now to the first available match
@@ -426,3 +434,31 @@ public struct ModelDownloadFeature {
 	}
 }
 
+extension ModelDownloadFeature.State {
+	struct RecommendationBadge: Equatable {
+		let text: String
+		let isPrimary: Bool
+	}
+
+	var recommendationBadges: [String: RecommendationBadge] {
+		var badges: [String: RecommendationBadge] = [:]
+		for model in ParakeetModel.allCases {
+			badges[model.identifier] = RecommendationBadge(
+				text: model.recommendationLabel,
+				isPrimary: model.isEnglishOnly ? prefersEnglishParakeet : !prefersEnglishParakeet
+			)
+		}
+		return badges
+	}
+
+	var preferredParakeetIdentifier: String {
+		(prefersEnglishParakeet ? ParakeetModel.englishV2 : ParakeetModel.multilingualV3).identifier
+	}
+
+	private var prefersEnglishParakeet: Bool {
+		guard let language = hexSettings.outputLanguage?.lowercased(), !language.isEmpty else {
+			return false
+		}
+		return language.hasPrefix("en")
+	}
+}

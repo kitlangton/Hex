@@ -174,6 +174,7 @@ struct SettingsFeature {
 
       case .startSettingPasteLastTranscriptHotkey:
         state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = true }
+        state.currentPasteLastModifiers = .init(modifiers: [])
         return .none
         
       case .clearPasteLastTranscriptHotkey:

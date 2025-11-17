@@ -8,7 +8,7 @@ struct SettingsView: View {
 	@Bindable var store: StoreOf<SettingsFeature>
 	let microphonePermission: PermissionStatus
 	let accessibilityPermission: PermissionStatus
-
+  
 	var body: some View {
 		Form {
 			PermissionsSectionView(
@@ -17,6 +17,7 @@ struct SettingsView: View {
 				accessibilityPermission: accessibilityPermission
 			)
 
+          
 			if microphonePermission == .granted && !store.availableInputDevices.isEmpty {
 				MicrophoneSelectionSectionView(store: store)
 			}
