@@ -153,9 +153,14 @@ struct PasteboardClientLive {
         // 1. Copying to clipboard is disabled AND
         // 2. The paste operation succeeded
         if !hexSettings.copyToClipboard && pasteSucceeded {
-            try? await Task.sleep(for: .seconds(0.1))
-            pasteboard.clearContents()
-            restorePasteboardState(pasteboard: pasteboard, savedItems: originalItems)
+            let savedItems = originalItems
+            Task { @MainActor in
+                // Give slower apps (e.g., Claude, Warp) a short window to read the plain-text entry
+                // before we repopulate the clipboard with the user's previous rich data.
+                try? await Task.sleep(for: .milliseconds(500))
+                pasteboard.clearContents()
+                restorePasteboardState(pasteboard: pasteboard, savedItems: savedItems)
+            }
         }
         
         // If we failed to paste AND user doesn't want clipboard retention,
