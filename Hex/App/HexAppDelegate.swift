@@ -37,10 +37,19 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			object: nil
 		)
 
+		// Start long-running app effects (global hotkeys, permissions, etc.)
+		startLifecycleTasksIfNeeded()
+
 		// Then present main views
 		presentMainView()
 		presentSettingsView()
 		NSApp.activate(ignoringOtherApps: true)
+	}
+
+	private func startLifecycleTasksIfNeeded() {
+		Task { @MainActor in
+			await HexApp.appStore.send(.task).finish()
+		}
 	}
 
 	/// Sets XDG_CACHE_HOME so FluidAudio stores models under our app's
@@ -89,10 +98,10 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		)
 		settingsWindow.titleVisibility = .visible
 		settingsWindow.contentView = NSHostingView(rootView: settingsView)
-		settingsWindow.makeKeyAndOrderFront(nil)
 		settingsWindow.isReleasedWhenClosed = false
 		settingsWindow.center()
-        settingsWindow.toolbarStyle = NSWindow.ToolbarStyle.unified
+		settingsWindow.toolbarStyle = NSWindow.ToolbarStyle.unified
+		settingsWindow.makeKeyAndOrderFront(nil)
 		NSApp.activate(ignoringOtherApps: true)
 		self.settingsWindow = settingsWindow
 	}

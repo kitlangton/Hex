@@ -48,6 +48,8 @@ struct HexApp: App {
 						appDelegate.presentSettingsView()
 					}.keyboardShortcut(",")
 				}
+
+				CommandGroup(replacing: .help) {}
 			}
 	}
 }
