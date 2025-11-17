@@ -102,7 +102,7 @@ actor TranscriptionClientLive {
   func downloadAndLoadModel(variant: String, progressCallback: @escaping (Progress) -> Void) async throws {
     // If Parakeet, use Parakeet client path
     if isParakeet(variant) {
-      try await parakeet.ensureLoaded(progress: progressCallback)
+      try await parakeet.ensureLoaded(modelName: variant, progress: progressCallback)
       currentModelName = variant
       return
     }
@@ -153,7 +153,7 @@ actor TranscriptionClientLive {
   /// Deletes a model from disk if it exists
   func deleteModel(variant: String) async throws {
     if isParakeet(variant) {
-      try await parakeet.deleteCaches()
+      try await parakeet.deleteCaches(modelName: variant)
       if currentModelName == variant { unloadCurrentModel() }
       return
     }
@@ -180,7 +180,7 @@ actor TranscriptionClientLive {
   /// Performs a thorough check to ensure the model files are actually present and usable.
   func isModelDownloaded(_ modelName: String) async -> Bool {
     if isParakeet(modelName) {
-      let available = await parakeet.isModelAvailable()
+      let available = await parakeet.isModelAvailable(modelName)
       parakeetLogger.debug("Parakeet available? \(available, privacy: .public)")
       return available
     }
@@ -223,7 +223,9 @@ actor TranscriptionClientLive {
   func getAvailableModels() async throws -> [String] {
     var names = try await WhisperKit.fetchAvailableModels()
     #if canImport(FluidAudio)
-    if !names.contains("parakeet-tdt-0.6b-v3-coreml") { names.insert("parakeet-tdt-0.6b-v3-coreml", at: 0) }
+    for model in ParakeetModel.allCases.reversed() {
+      if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
+    }
     #endif
     return names
   }
@@ -306,7 +308,7 @@ actor TranscriptionClientLive {
   }
 
   private func isParakeet(_ name: String) -> Bool {
-    name.hasPrefix("parakeet-")
+    ParakeetModel(rawValue: name) != nil
   }
 
   /// Creates or returns the local folder (on disk) for a given `variant` model.

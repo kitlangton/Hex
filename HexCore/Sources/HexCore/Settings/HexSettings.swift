@@ -40,7 +40,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hotkey: HotKey = .init(key: nil, modifiers: [.option]),
 		openOnLogin: Bool = false,
 		showDockIcon: Bool = true,
-		selectedModel: String = "parakeet-tdt-0.6b-v3-coreml",
+		selectedModel: String = ParakeetModel.multilingualV3.identifier,
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
 		recordingAudioBehavior: RecordingAudioBehavior = .pauseMedia,

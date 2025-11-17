@@ -7,39 +7,34 @@ import FluidAudio
 actor ParakeetClient {
   private var asr: AsrManager?
   private var models: AsrModels?
+  private var currentVariant: ParakeetModel?
   private let logger = HexLog.parakeet
+  private let vendorDirs = [
+    // Our app-specific cache path convention (under XDG or com.kitlangton.Hex/cache)
+    "fluidaudio/Models",
+    "FluidAudio/Models",
+    // FluidAudio default under Application Support root
+    "FluidAudio/Models"
+  ]
 
-  func isModelAvailable() async -> Bool {
-    if asr != nil { return true }
+  func isModelAvailable(_ modelName: String) async -> Bool {
+    guard let variant = ParakeetModel(rawValue: modelName) else {
+      logger.error("Unknown Parakeet variant requested: \(modelName, privacy: .public)")
+      return false
+    }
+    if currentVariant == variant, asr != nil { return true }
     let fm = FileManager.default
-    // Candidate roots (in priority order): XDG, AppSupport cache, AppSupport, ~/.cache
-    let xdg = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].flatMap { URL(fileURLWithPath: $0, isDirectory: true) }
-    let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-    let appCache = appSupport?.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
-    let userCache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache", isDirectory: true)
-
-    let roots = [xdg, appCache, appSupport, userCache].compactMap { $0 }
-    let modelId = "parakeet-tdt-0.6b-v3-coreml"
-    let vendorDirs = [
-      // Our app-specific cache path convention (under XDG or com.kitlangton.Hex/cache)
-      "fluidaudio/Models",
-      "FluidAudio/Models",
-      // FluidAudio default under Application Support root
-      "FluidAudio/Models"
-    ]
-    logger.debug("Checking Parakeet availability \(roots.map(\.path), privacy: .private)")
-    for root in roots {
+    logger.debug("Checking Parakeet availability variant=\(variant.identifier, privacy: .public)")
+    for root in candidateRoots() {
       for vendor in vendorDirs {
         let base = root.appendingPathComponent(vendor, isDirectory: true)
-        // 1) Direct expected path
-        let direct = base.appendingPathComponent(modelId, isDirectory: true)
+        let direct = base.appendingPathComponent(variant.identifier, isDirectory: true)
         if directoryContainsMLModelC(direct) {
           logger.notice("Found Parakeet cache at \(direct.path, privacy: .private)")
           return true
         }
-        // 2) Any folder that starts with the model id
         if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
-          for item in items where item.lastPathComponent.hasPrefix(modelId) {
+          for item in items where item.lastPathComponent.hasPrefix(variant.identifier) {
             if directoryContainsMLModelC(item) {
               logger.notice("Found Parakeet cache at \(item.path, privacy: .private)")
               return true
@@ -48,7 +43,7 @@ actor ParakeetClient {
         }
       }
     }
-    logger.debug("No Parakeet cache detected")
+    logger.debug("No Parakeet cache detected variant=\(variant.identifier, privacy: .public)")
     return false
   }
 
@@ -63,10 +58,21 @@ actor ParakeetClient {
     return false
   }
 
-  func ensureLoaded(progress: @escaping (Progress) -> Void) async throws {
-    if asr != nil { return }
+  func ensureLoaded(modelName: String, progress: @escaping (Progress) -> Void) async throws {
+    guard let variant = ParakeetModel(rawValue: modelName) else {
+      throw NSError(
+        domain: "Parakeet",
+        code: -4,
+        userInfo: [NSLocalizedDescriptionKey: "Unsupported Parakeet variant: \(modelName)"]
+      )
+    }
+    if currentVariant == variant, asr != nil { return }
+    if currentVariant != variant {
+      asr = nil
+      models = nil
+    }
     let t0 = Date()
-    logger.notice("Starting Parakeet load (v3)")
+    logger.notice("Starting Parakeet load variant=\(variant.identifier, privacy: .public)")
     let p = Progress(totalUnitCount: 100)
     p.completedUnitCount = 1
     progress(p)
@@ -74,7 +80,7 @@ actor ParakeetClient {
     // Best-effort progress polling while FluidAudio downloads
     let fm = FileManager.default
     let support = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-    let faDir = support?.appendingPathComponent("FluidAudio/Models/parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
+    let faDir = support?.appendingPathComponent("FluidAudio/Models/\(variant.identifier)", isDirectory: true)
     let pollTask = Task {
       while p.completedUnitCount < 95 {
         try? await Task.sleep(nanoseconds: 250_000_000)
@@ -88,13 +94,14 @@ actor ParakeetClient {
       }
     }
 
-    // Download + load Parakeet TDT v3 (returns when all assets are present)
-    let models = try await AsrModels.downloadAndLoad(version: .v3)
+    // Download + load the requested variant (returns when all assets are present)
+    let models = try await AsrModels.downloadAndLoad(version: variant.asrVersion)
     self.models = models
     pollTask.cancel()
     let manager = AsrManager(config: .init())
     try await manager.initialize(models: models)
     self.asr = manager
+    self.currentVariant = variant
     p.completedUnitCount = 100
     progress(p)
     logger.notice("Parakeet ensureLoaded completed in \(Date().timeIntervalSince(t0), format: .fixed(precision: 2))s")
@@ -122,37 +129,23 @@ actor ParakeetClient {
   }
 
   // Delete cached Parakeet models from known locations and reset state
-  func deleteCaches() async throws {
+  func deleteCaches(modelName: String) async throws {
+    guard let variant = ParakeetModel(rawValue: modelName) else { return }
     let fm = FileManager.default
-    let modelId = "parakeet-tdt-0.6b-v3-coreml"
-
-    // Candidate roots (same order used for detection)
-    let xdg = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].flatMap { URL(fileURLWithPath: $0, isDirectory: true) }
-    let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-    let appCache = appSupport?.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
-    let userCache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache", isDirectory: true)
-
-    // Vendor prefixes we consider
-    let vendors = [
-      "fluidaudio/Models",
-      "FluidAudio/Models",
-      // FluidAudio default under Application Support root
-      "FluidAudio/Models"
-    ]
 
     var removedAny = false
-    for root in [xdg, appCache, appSupport, userCache].compactMap({ $0 }) {
-      for vendor in vendors {
+    for root in candidateRoots() {
+      for vendor in vendorDirs {
         let base = root.appendingPathComponent(vendor, isDirectory: true)
         // Remove exact match
-        let direct = base.appendingPathComponent(modelId, isDirectory: true)
+        let direct = base.appendingPathComponent(variant.identifier, isDirectory: true)
         if fm.fileExists(atPath: direct.path) {
           try? fm.removeItem(at: direct)
           removedAny = true
         }
         // Remove any prefixed folders
         if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
-          for item in items where item.lastPathComponent.hasPrefix(modelId) {
+          for item in items where item.lastPathComponent.hasPrefix(variant.identifier) {
             try? fm.removeItem(at: item)
             removedAny = true
           }
@@ -164,6 +157,27 @@ actor ParakeetClient {
     if removedAny {
       self.asr = nil
       self.models = nil
+      if currentVariant == variant {
+        currentVariant = nil
+      }
+    }
+  }
+
+  private func candidateRoots() -> [URL] {
+    let fm = FileManager.default
+    let xdg = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].flatMap { URL(fileURLWithPath: $0, isDirectory: true) }
+    let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+    let appCache = appSupport?.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
+    let userCache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache", isDirectory: true)
+    return [xdg, appCache, appSupport, userCache].compactMap { $0 }
+  }
+}
+
+private extension ParakeetModel {
+  var asrVersion: AsrModelVersion {
+    switch self {
+    case .englishV2: return .v2
+    case .multilingualV3: return .v3
     }
   }
 }
@@ -171,8 +185,8 @@ actor ParakeetClient {
 #else
 
 actor ParakeetClient {
-  func isModelAvailable() async -> Bool { false }
-  func ensureLoaded(progress: @escaping (Progress) -> Void) async throws {
+  func isModelAvailable(_ modelName: String) async -> Bool { false }
+  func ensureLoaded(modelName: String, progress: @escaping (Progress) -> Void) async throws {
     throw NSError(
       domain: "Parakeet",
       code: -2,
@@ -180,6 +194,7 @@ actor ParakeetClient {
     )
   }
   func transcribe(_ url: URL) async throws -> String { throw NSError(domain: "Parakeet", code: -3, userInfo: [NSLocalizedDescriptionKey: "Parakeet not available"]) }
+  func deleteCaches(modelName: String) async throws {}
 }
 
 #endif
