@@ -23,6 +23,10 @@ public enum SoundEffect: String, CaseIterable {
   public var fileName: String {
     self.rawValue
   }
+
+  var fileExtension: String {
+    "mp3"
+  }
 }
 
 @DependencyClient
@@ -63,27 +67,33 @@ public extension DependencyValues {
 actor SoundEffectsClientLive {
   private let logger = HexLog.sound
   private let baselineVolume = HexSettings.baseSoundEffectsVolume
-  
+
+  private let engine = AVAudioEngine()
   @Shared(.hexSettings) var hexSettings: HexSettings
+  private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
+  private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
+  private var isEngineRunning = false
 
   func play(_ soundEffect: SoundEffect) {
 	guard hexSettings.soundEffectsEnabled else { return }
-	guard let player = audioPlayers[soundEffect] else {
+	guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
 		logger.error("Requested sound \(soundEffect.rawValue, privacy: .public) not preloaded")
 		return
 	}
+	prepareEngineIfNeeded()
 	let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
 	player.volume = Float(clampedVolume)
-	player.currentTime = 0
+	player.stop()
+	player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
 	player.play()
   }
 
   func stop(_ soundEffect: SoundEffect) {
-    audioPlayers[soundEffect]?.stop()
+    playerNodes[soundEffect]?.stop()
   }
 
   func stopAll() {
-    audioPlayers.values.forEach { $0.stop() }
+    playerNodes.values.forEach { $0.stop() }
   }
 
   func preloadSounds() async {
@@ -92,28 +102,61 @@ actor SoundEffectsClientLive {
     for soundEffect in SoundEffect.allCases {
       loadSound(soundEffect)
     }
+    prepareEngineIfNeeded()
 
     isSetup = true
   }
 
-  private var audioPlayers: [SoundEffect: AVAudioPlayer] = [:]
   private var isSetup = false
 
   private func loadSound(_ soundEffect: SoundEffect) {
     guard let url = Bundle.main.url(
       forResource: soundEffect.fileName,
-      withExtension: "mp3"
+      withExtension: soundEffect.fileExtension
     ) else {
-      logger.error("Missing sound resource \(soundEffect.fileName, privacy: .public).mp3")
+      logger.error("Missing sound resource \(soundEffect.fileName, privacy: .public).\(soundEffect.fileExtension, privacy: .public)")
       return
     }
 
     do {
-      let player = try AVAudioPlayer(contentsOf: url)
-      player.prepareToPlay()
-      audioPlayers[soundEffect] = player
+      let file = try AVAudioFile(forReading: url)
+      let frameCount = AVAudioFrameCount(file.length)
+      guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
+        logger.error("Failed to allocate buffer for \(soundEffect.rawValue, privacy: .public)")
+        return
+      }
+      try file.read(into: buffer)
+      audioBuffers[soundEffect] = buffer
+
+      let player = AVAudioPlayerNode()
+      engine.attach(player)
+      engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
+      playerNodes[soundEffect] = player
     } catch {
       logger.error("Failed to load sound \(soundEffect.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
     }
+  }
+
+  private func prepareEngineIfNeeded() {
+    if !isEngineRunning || !engine.isRunning {
+      engine.prepare()
+      if #available(macOS 13.0, *) {
+        engine.isAutoShutdownEnabled = false
+      }
+      do {
+        try engine.start()
+        isEngineRunning = true
+      } catch {
+        logger.error("Failed to start AVAudioEngine: \(error.localizedDescription, privacy: .public)")
+      }
+    }
+  }
+
+  deinit {
+    playerNodes.values.forEach {
+      $0.stop()
+      engine.detach($0)
+    }
+    engine.stop()
   }
 }
