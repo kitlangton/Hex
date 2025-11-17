@@ -5,7 +5,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>0.5.4</string>
 	<key>CFBundleVersion</key>
-	<string>55</string>
+	<string>56</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>Hex needs accessibility access to monitor keyboard events for hotkey detection.</string>
 	<key>NSAppTransportSecurity</key>
