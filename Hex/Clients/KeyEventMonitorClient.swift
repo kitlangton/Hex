@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon
 import Dependencies
 import DependenciesMacros
@@ -7,6 +8,20 @@ import HexCore
 import Sauce
 
 private let logger = HexLog.keyEvent
+
+struct KeyEventMonitorToken: Sendable {
+  private let cancelHandler: @Sendable () -> Void
+
+  init(cancel: @escaping @Sendable () -> Void) {
+    self.cancelHandler = cancel
+  }
+
+  func cancel() {
+    cancelHandler()
+  }
+
+  static let noop = KeyEventMonitorToken(cancel: {})
+}
 
 public extension KeyEvent {
   init(cgEvent: CGEvent, type: CGEventType, isFnPressed: Bool) {
@@ -34,9 +49,10 @@ public extension KeyEvent {
 @DependencyClient
 struct KeyEventMonitorClient {
   var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
-  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> Void = { _ in }
-  var handleInputEvent: @Sendable (@escaping (InputEvent) -> Bool) -> Void = { _ in }
+  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
+  var handleInputEvent: @Sendable (@escaping (InputEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
   var startMonitoring: @Sendable () async -> Void = {}
+  var stopMonitoring: @Sendable () -> Void = {}
 }
 
 extension KeyEventMonitorClient: DependencyKey {
@@ -54,6 +70,9 @@ extension KeyEventMonitorClient: DependencyKey {
       },
       startMonitoring: {
         live.startMonitoring()
+      },
+      stopMonitoring: {
+        live.stopMonitoring()
       }
     )
   }
@@ -73,8 +92,12 @@ class KeyEventMonitorClientLive {
   private var inputContinuations: [UUID: (InputEvent) -> Bool] = [:]
   private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
   private var isMonitoring = false
-  private let enableModifierDiagnostics = ProcessInfo.processInfo.environment["HEX_DIAG_MODIFIERS"] == "1"
+  private var wantsMonitoring = false
+  private var accessibilityTrusted = false
+  private var trustMonitorTask: Task<Void, Never>?
   private var isFnPressed = false
+
+  private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
   init() {
     logger.info("Initializing HotKeyClient with CGEvent tap.")
@@ -82,6 +105,24 @@ class KeyEventMonitorClientLive {
 
   deinit {
     self.stopMonitoring()
+  }
+
+  private var isAccessibilityTrusted: Bool {
+    queue.sync { accessibilityTrusted }
+  }
+
+  private var hasHandlers: Bool {
+    queue.sync { !(continuations.isEmpty && inputContinuations.isEmpty) }
+  }
+
+  private func setMonitoringIntent(_ value: Bool) {
+    queue.async(flags: .barrier) { [weak self] in
+      self?.wantsMonitoring = value
+    }
+  }
+
+  private func desiredMonitoringState() -> Bool {
+    queue.sync { wantsMonitoring && accessibilityTrusted && !(continuations.isEmpty && inputContinuations.isEmpty) }
   }
 
   /// Provide a stream of key events.
@@ -105,36 +146,178 @@ class KeyEventMonitorClientLive {
 
       // Cleanup on cancellation
       continuation.onTermination = { [weak self] _ in
-        self?.removeContinuation(uuid: uuid)
+        self?.removeHandlerContinuation(uuid: uuid)
       }
     }
   }
 
-  private func removeContinuation(uuid: UUID) {
+  private func removeHandlerContinuation(uuid: UUID) {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.continuations[uuid] = nil
-      let shouldStop = self.continuations.isEmpty && self.inputContinuations.isEmpty
+      if self.continuations.isEmpty && self.inputContinuations.isEmpty {
+        self.stopMonitoring()
+      }
+    }
+  }
 
-      // Stop monitoring if no more listeners
-      if shouldStop {
+  private func removeInputContinuation(uuid: UUID) {
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.inputContinuations[uuid] = nil
+      if self.continuations.isEmpty && self.inputContinuations.isEmpty {
         self.stopMonitoring()
       }
     }
   }
 
   func startMonitoring() {
-    guard !isMonitoring else { return }
-    isMonitoring = true
+    setMonitoringIntent(true)
+    startTrustMonitorIfNeeded()
+    setTrustedFlag(AXIsProcessTrusted())
+    Task { [weak self] in
+      await self?.refreshMonitoringState(reason: "startMonitoring")
+    }
+  }
+  // TODO: Handle removing the handler from the continuations on deinit/cancellation
+  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken {
+    let uuid = UUID()
 
-    if enableModifierDiagnostics {
-      logger.info("ModifierDiag enabled; logging flagsChanged events.")
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.continuations[uuid] = handler
+      let shouldStart = self.continuations.count == 1 && self.inputContinuations.isEmpty
+
+      if shouldStart {
+        self.startMonitoring()
+      }
     }
 
-    // Create an event tap at the HID level to capture keyDown, keyUp, flagsChanged, and mouse events
+    return KeyEventMonitorToken { [weak self] in
+      self?.removeHandlerContinuation(uuid: uuid)
+    }
+  }
+
+  func handleInputEvent(_ handler: @escaping (InputEvent) -> Bool) -> KeyEventMonitorToken {
+    let uuid = UUID()
+
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self = self else { return }
+      self.inputContinuations[uuid] = handler
+      let shouldStart = self.inputContinuations.count == 1 && self.continuations.isEmpty
+
+      if shouldStart {
+        self.startMonitoring()
+      }
+    }
+
+    return KeyEventMonitorToken { [weak self] in
+      self?.removeInputContinuation(uuid: uuid)
+    }
+  }
+
+  func stopMonitoring() {
+    setMonitoringIntent(false)
+    Task { [weak self] in
+      await self?.refreshMonitoringState(reason: "stopMonitoring")
+    }
+    cancelTrustMonitorIfNeeded()
+  }
+
+  private func startTrustMonitorIfNeeded() {
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self else { return }
+      guard self.trustMonitorTask == nil else { return }
+      self.trustMonitorTask = Task { [weak self] in
+        await self?.watchAccessibilityTrust()
+      }
+    }
+  }
+
+  private func cancelTrustMonitorIfNeeded() {
+    queue.async(flags: .barrier) { [weak self] in
+      guard let self else { return }
+      guard !self.wantsMonitoring else { return }
+      self.trustMonitorTask?.cancel()
+      self.trustMonitorTask = nil
+    }
+  }
+
+  // no separate helper; handled inline above
+
+  private func watchAccessibilityTrust() async {
+    var lastTrusted = AXIsProcessTrusted()
+    await handleTrustChange(isTrusted: lastTrusted, reason: "initial")
+
+    while !Task.isCancelled {
+      try? await Task.sleep(nanoseconds: trustCheckIntervalNanoseconds)
+      let currentTrusted = AXIsProcessTrusted()
+      if currentTrusted != lastTrusted {
+        await handleTrustChange(isTrusted: currentTrusted, reason: currentTrusted ? "regained" : "revoked")
+        lastTrusted = currentTrusted
+      } else if currentTrusted {
+        await ensureTapIsRunning()
+      }
+    }
+  }
+
+  private func handleTrustChange(isTrusted: Bool, reason: String) async {
+    setTrustedFlag(isTrusted)
+    if isTrusted {
+      logger.notice("Accessibility trust regained (\(reason)).")
+    } else {
+      logger.error("Accessibility trust lost (\(reason)); suspending tap.")
+    }
+    await refreshMonitoringState(reason: "trust_\(reason)")
+  }
+
+  private func ensureTapIsRunning() async {
+    guard desiredMonitoringState() else { return }
+    await activateTapOnMain(reason: "watchdog_keepalive")
+  }
+
+  private func refreshMonitoringState(reason: String) async {
+    let shouldMonitor = desiredMonitoringState()
+    if shouldMonitor {
+      await activateTapOnMain(reason: reason)
+    } else {
+      await deactivateTapOnMain(reason: reason)
+    }
+  }
+
+  private func setTrustedFlag(_ trusted: Bool) {
+    queue.async(flags: .barrier) { [weak self] in
+      self?.accessibilityTrusted = trusted
+    }
+  }
+
+  private func activateTapOnMain(reason: String) async {
+    await MainActor.run {
+      self.activateTapIfNeeded(reason: reason)
+    }
+  }
+
+  private func deactivateTapOnMain(reason: String) async {
+    await MainActor.run {
+      self.deactivateTap(reason: reason)
+    }
+  }
+
+  @MainActor
+  private func activateTapIfNeeded(reason: String) {
+    guard !isMonitoring else { return }
+    guard hasHandlers else { return }
+
+    let trusted = AXIsProcessTrusted()
+    setTrustedFlag(trusted)
+    guard trusted else {
+      logger.error("Cannot start key event monitoring (reason: \(reason)); accessibility permission is not granted.")
+      return
+    }
+
     let eventMask =
-      ((1 << CGEventType.keyDown.rawValue) 
-       | (1 << CGEventType.keyUp.rawValue) 
+      ((1 << CGEventType.keyDown.rawValue)
+       | (1 << CGEventType.keyUp.rawValue)
        | (1 << CGEventType.flagsChanged.rawValue)
        | (1 << CGEventType.leftMouseDown.rawValue)
        | (1 << CGEventType.rightMouseDown.rawValue)
@@ -155,78 +338,49 @@ class KeyEventMonitorClientLive {
             return Unmanaged.passUnretained(cgEvent)
           }
 
-          // Check if it's a mouse event
+          if type == .tapDisabledByUserInput || type == .tapDisabledByTimeout {
+            hotKeyClientLive.handleTapDisabledEvent(type)
+            return Unmanaged.passUnretained(cgEvent)
+          }
+
+          guard hotKeyClientLive.isAccessibilityTrusted else {
+            return Unmanaged.passUnretained(cgEvent)
+          }
+
           if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-            let handled = hotKeyClientLive.processInputEvent(.mouseClick)
-            return handled ? nil : Unmanaged.passUnretained(cgEvent)
+            _ = hotKeyClientLive.processInputEvent(.mouseClick)
+            return Unmanaged.passUnretained(cgEvent)
           }
 
           hotKeyClientLive.updateFnStateIfNeeded(type: type, cgEvent: cgEvent)
 
-          // Otherwise it's a keyboard event
           let keyEvent = KeyEvent(cgEvent: cgEvent, type: type, isFnPressed: hotKeyClientLive.isFnPressed)
-          hotKeyClientLive.logModifierDiagnostics(eventType: type, cgEvent: cgEvent, keyEvent: keyEvent)
           let handledByKeyHandler = hotKeyClientLive.processKeyEvent(keyEvent)
           let handledByInputHandler = hotKeyClientLive.processInputEvent(.keyboard(keyEvent))
 
-          if handledByKeyHandler || handledByInputHandler {
-            return nil
-          } else {
-            return Unmanaged.passUnretained(cgEvent)
-          }
+          return (handledByKeyHandler || handledByInputHandler) ? nil : Unmanaged.passUnretained(cgEvent)
         },
         userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
       )
     else {
-      isMonitoring = false
-      logger.error("Failed to create event tap.")
+      logger.error("Failed to create event tap (reason: \(reason)).")
       return
     }
 
     eventTapPort = eventTap
 
-    // Create a RunLoop source and add it to the current run loop
     let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
     self.runLoopSource = runLoopSource
 
     CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
     CGEvent.tapEnable(tap: eventTap, enable: true)
-
-    logger.info("Started monitoring key events via CGEvent tap.")
+    isMonitoring = true
+    logger.info("Started monitoring key events via CGEvent tap (reason: \(reason)).")
   }
 
-  // TODO: Handle removing the handler from the continuations on deinit/cancellation
-  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) {
-    let uuid = UUID()
-
-    queue.async(flags: .barrier) { [weak self] in
-      guard let self = self else { return }
-      self.continuations[uuid] = handler
-      let shouldStart = self.continuations.count == 1 && self.inputContinuations.isEmpty
-
-      if shouldStart {
-        self.startMonitoring()
-      }
-    }
-  }
-
-  func handleInputEvent(_ handler: @escaping (InputEvent) -> Bool) {
-    let uuid = UUID()
-
-    queue.async(flags: .barrier) { [weak self] in
-      guard let self = self else { return }
-      self.inputContinuations[uuid] = handler
-      let shouldStart = self.inputContinuations.count == 1 && self.continuations.isEmpty
-
-      if shouldStart {
-        self.startMonitoring()
-      }
-    }
-  }
-
-  private func stopMonitoring() {
-    guard isMonitoring else { return }
-    isMonitoring = false
+  @MainActor
+  private func deactivateTap(reason: String) {
+    guard isMonitoring || eventTapPort != nil else { return }
 
     if let runLoopSource = runLoopSource {
       CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
@@ -238,7 +392,17 @@ class KeyEventMonitorClientLive {
       self.eventTapPort = nil
     }
 
-    logger.info("Stopped monitoring key events via CGEvent tap.")
+    isMonitoring = false
+    logger.info("Suspended key event monitoring (reason: \(reason)).")
+  }
+
+  private func handleTapDisabledEvent(_ type: CGEventType) {
+    let reason = type == .tapDisabledByTimeout ? "timeout" : "userInput"
+    logger.error("Event tap disabled by \(reason); scheduling restart.")
+    Task { [weak self] in
+      guard let self else { return }
+      await self.refreshMonitoringState(reason: "tap_disabled_\(reason)")
+    }
   }
 
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
@@ -270,62 +434,11 @@ class KeyEventMonitorClientLive {
   }
 }
 
-// MARK: - Diagnostics
 extension KeyEventMonitorClientLive {
   private func updateFnStateIfNeeded(type: CGEventType, cgEvent: CGEvent) {
     guard type == .flagsChanged else { return }
     let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
     guard keyCode == kVK_Function else { return }
     isFnPressed = cgEvent.flags.contains(.maskSecondaryFn)
-  }
-
-  private enum DeviceModifierMask: UInt64 {
-    case leftControl = 0x00000001
-    case leftShift = 0x00000002
-    case rightShift = 0x00000004
-    case leftCommand = 0x00000008
-    case rightCommand = 0x00000010
-    case leftOption = 0x00000020
-    case rightOption = 0x00000040
-    case rightControl = 0x00002000
-  }
-
-  private func logModifierDiagnostics(eventType: CGEventType, cgEvent: CGEvent, keyEvent: KeyEvent) {
-    guard enableModifierDiagnostics, eventType == .flagsChanged else { return }
-
-    let keyCode = cgEvent.getIntegerValueField(.keyboardEventKeycode)
-    let flags = cgEvent.flags.rawValue
-    let keyCodeHex = String(format: "0x%02llX", keyCode)
-    let flagsHex = String(format: "0x%08llX", flags)
-
-    logger.info(
-      "ModifierDiag type=\(eventType.rawValue, privacy: .public) keyCode=\(keyCodeHex, privacy: .public) flags=\(flagsHex, privacy: .public) devices=\(self.deviceSideDescription(flags: flags), privacy: .public) mods=\(self.modifiersDescription(keyEvent.modifiers), privacy: .public)"
-    )
-  }
-
-  private func deviceSideDescription(flags: UInt64) -> String {
-    var sides: [String] = []
-    if flags & DeviceModifierMask.leftControl.rawValue != 0 { sides.append("leftControl") }
-    if flags & DeviceModifierMask.leftShift.rawValue != 0 { sides.append("leftShift") }
-    if flags & DeviceModifierMask.rightShift.rawValue != 0 { sides.append("rightShift") }
-    if flags & DeviceModifierMask.leftCommand.rawValue != 0 { sides.append("leftCommand") }
-    if flags & DeviceModifierMask.rightCommand.rawValue != 0 { sides.append("rightCommand") }
-    if flags & DeviceModifierMask.leftOption.rawValue != 0 { sides.append("leftOption") }
-    if flags & DeviceModifierMask.rightOption.rawValue != 0 { sides.append("rightOption") }
-    if flags & DeviceModifierMask.rightControl.rawValue != 0 { sides.append("rightControl") }
-    return sides.isEmpty ? "-" : sides.joined(separator: ",")
-  }
-
-  private func modifiersDescription(_ modifiers: Modifiers) -> String {
-    let names = modifiers.sorted.map { modifier -> String in
-      switch modifier.kind {
-      case .command: return modifier.side == .either ? "command" : "command-\(modifier.side.displayName.lowercased())"
-      case .option: return modifier.side == .either ? "option" : "option-\(modifier.side.displayName.lowercased())"
-      case .shift: return modifier.side == .either ? "shift" : "shift-\(modifier.side.displayName.lowercased())"
-      case .control: return modifier.side == .either ? "control" : "control-\(modifier.side.displayName.lowercased())"
-      case .fn: return "fn"
-      }
-    }
-    return names.isEmpty ? "-" : names.joined(separator: "+")
   }
 }
