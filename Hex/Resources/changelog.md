@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.3
+
+### Patch Changes
+
+- Fix Sparkle update delivery by regenerating appcast with correct bundle versions and updating release tooling to prevent duplicate CFBundleVersion issues
+
+## 0.5.2
+
+### Patch Changes
+
+- Fix Sparkle update delivery by regenerating appcast with correct bundle versions and updating release tooling to prevent duplicate CFBundleVersion issues
+
 ## 0.5.1
 
 ### Patch Changes
