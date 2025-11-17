@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.5
+
+### Patch Changes
+
+- 0045f28: Fix recording chime latency by switching to AVAudioEngine with pre-loaded buffers
+- 7f6c5db: Actually request macOS Input Monitoring permission when installing the key event tap so Sequoia users can record hotkeys again (#122, #124).
+
 ## 0.5.4
 
 ### Patch Changes
