@@ -8,13 +8,15 @@ struct SettingsView: View {
 	@Bindable var store: StoreOf<SettingsFeature>
 	let microphonePermission: PermissionStatus
 	let accessibilityPermission: PermissionStatus
+	let inputMonitoringPermission: PermissionStatus
   
 	var body: some View {
 		Form {
 			PermissionsSectionView(
 				store: store,
 				microphonePermission: microphonePermission,
-				accessibilityPermission: accessibilityPermission
+				accessibilityPermission: accessibilityPermission,
+				inputMonitoringPermission: inputMonitoringPermission
 			)
 
           

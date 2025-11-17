@@ -38,6 +38,11 @@ public struct PermissionClient: Sendable {
   /// Uses `AXIsProcessTrusted` which is a fast, synchronous check.
   public var accessibilityStatus: @Sendable () -> PermissionStatus = { .notDetermined }
 
+  /// Check the current input monitoring permission status (synchronous).
+  ///
+  /// Uses `IOHIDCheckAccess` to determine whether we can listen for global keyboard events.
+  public var inputMonitoringStatus: @Sendable () -> PermissionStatus = { .notDetermined }
+
   /// Request microphone permission from the user.
   ///
   /// If permission is `.notDetermined`, this will show the system permission dialog.
@@ -52,6 +57,11 @@ public struct PermissionClient: Sendable {
   /// Accessibility privacy panel. The user must manually enable the app in Settings.
   public var requestAccessibility: @Sendable () async -> Void = {}
 
+  /// Request input monitoring permission from the user.
+  ///
+  /// Triggers the consent dialog introduced in macOS Sequoia when listening for keyboard events.
+  public var requestInputMonitoring: @Sendable () async -> Bool = { false }
+
   /// Open System Settings to the microphone privacy panel.
   ///
   /// Useful when permission is denied and the user needs to manually change it.
@@ -61,6 +71,9 @@ public struct PermissionClient: Sendable {
   ///
   /// Useful when permission is denied and the user needs to manually change it.
   public var openAccessibilitySettings: @Sendable () async -> Void = {}
+
+  /// Open System Settings to the Input Monitoring privacy panel.
+  public var openInputMonitoringSettings: @Sendable () async -> Void = {}
 
   /// Observe app activation events.
   ///

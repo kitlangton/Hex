@@ -31,6 +31,7 @@ struct AppFeature {
     // Permission state
     var microphonePermission: PermissionStatus = .notDetermined
     var accessibilityPermission: PermissionStatus = .notDetermined
+    var inputMonitoringPermission: PermissionStatus = .notDetermined
   }
 
   enum Action: BindableAction {
@@ -44,10 +45,11 @@ struct AppFeature {
 
     // Permission actions
     case checkPermissions
-    case permissionsUpdated(mic: PermissionStatus, acc: PermissionStatus)
+    case permissionsUpdated(mic: PermissionStatus, acc: PermissionStatus, input: PermissionStatus)
     case appActivated
     case requestMicrophone
     case requestAccessibility
+    case requestInputMonitoring
     case modelStatusEvaluated(Bool)
   }
 
@@ -112,12 +114,14 @@ struct AppFeature {
         return .run { send in
           async let mic = permissions.microphoneStatus()
           async let acc = permissions.accessibilityStatus()
-          await send(.permissionsUpdated(mic: mic, acc: acc))
+          async let input = permissions.inputMonitoringStatus()
+          await send(.permissionsUpdated(mic: mic, acc: acc, input: input))
         }
 
-      case let .permissionsUpdated(mic, acc):
+      case let .permissionsUpdated(mic, acc, input):
         state.microphonePermission = mic
         state.accessibilityPermission = acc
+        state.inputMonitoringPermission = input
         return .none
 
       case .appActivated:
@@ -134,6 +138,15 @@ struct AppFeature {
         return .run { send in
           await permissions.requestAccessibility()
           // Poll for status change (macOS doesn't provide callback)
+          for _ in 0..<10 {
+            try? await Task.sleep(for: .seconds(1))
+            await send(.checkPermissions)
+          }
+        }
+
+      case .requestInputMonitoring:
+        return .run { send in
+          _ = await permissions.requestInputMonitoring()
           for _ in 0..<10 {
             try? await Task.sleep(for: .seconds(1))
             await send(.checkPermissions)
@@ -266,7 +279,8 @@ struct AppView: View {
         SettingsView(
           store: store.scope(state: \.settings, action: \.settings),
           microphonePermission: store.microphonePermission,
-          accessibilityPermission: store.accessibilityPermission
+          accessibilityPermission: store.accessibilityPermission,
+          inputMonitoringPermission: store.inputMonitoringPermission
         )
         .navigationTitle("Settings")
       case .history:

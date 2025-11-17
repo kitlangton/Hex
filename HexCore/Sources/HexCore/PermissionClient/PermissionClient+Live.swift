@@ -2,6 +2,8 @@
 import AVFoundation
 import Dependencies
 import Foundation
+import IOKit
+import IOKit.hidsystem
 
 extension PermissionClient: DependencyKey {
   public static var liveValue: Self {
@@ -9,10 +11,13 @@ extension PermissionClient: DependencyKey {
     return Self(
       microphoneStatus: { await live.microphoneStatus() },
       accessibilityStatus: { live.accessibilityStatus() },
+      inputMonitoringStatus: { live.inputMonitoringStatus() },
       requestMicrophone: { await live.requestMicrophone() },
       requestAccessibility: { await live.requestAccessibility() },
+      requestInputMonitoring: { await live.requestInputMonitoring() },
       openMicrophoneSettings: { await live.openMicrophoneSettings() },
       openAccessibilitySettings: { await live.openAccessibilitySettings() },
+      openInputMonitoringSettings: { await live.openInputMonitoringSettings() },
       observeAppActivation: { live.observeAppActivation() }
     )
   }
@@ -95,6 +100,10 @@ actor PermissionClientLive {
     return AXIsProcessTrustedWithOptions(options) ? .granted : .denied
   }
 
+  nonisolated func inputMonitoringStatus() -> PermissionStatus {
+    mapIOHIDAccess(IOHIDCheckAccess(kIOHIDRequestTypeListenEvent))
+  }
+
   func requestAccessibility() async {
     // First, trigger the system prompt (on main actor for safety)
     await MainActor.run {
@@ -106,6 +115,18 @@ actor PermissionClientLive {
     await openAccessibilitySettings()
   }
 
+  func requestInputMonitoring() async -> Bool {
+    let granted = await MainActor.run {
+      IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+    }
+
+    if !granted {
+      await openInputMonitoringSettings()
+    }
+
+    return granted
+  }
+
   func openAccessibilitySettings() async {
     await MainActor.run {
       _ = NSWorkspace.shared.open(
@@ -114,9 +135,28 @@ actor PermissionClientLive {
     }
   }
 
+  func openInputMonitoringSettings() async {
+    await MainActor.run {
+      _ = NSWorkspace.shared.open(
+        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!
+      )
+    }
+  }
+
   // MARK: - Reactive Monitoring
 
   nonisolated func observeAppActivation() -> AsyncStream<AppActivation> {
     activationStream
+  }
+
+  private nonisolated func mapIOHIDAccess(_ access: IOHIDAccessType) -> PermissionStatus {
+    switch access {
+    case kIOHIDAccessTypeGranted:
+      return .granted
+    case kIOHIDAccessTypeDenied:
+      return .denied
+    default:
+      return .notDetermined
+    }
   }
 }

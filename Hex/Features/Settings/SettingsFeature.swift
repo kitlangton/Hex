@@ -60,6 +60,7 @@ struct SettingsFeature {
     // Permission delegation (forwarded to AppFeature)
     case requestMicrophone
     case requestAccessibility
+    case requestInputMonitoring
 
     // Microphone selection
     case loadAvailableInputDevices
@@ -260,6 +261,11 @@ struct SettingsFeature {
       case .requestAccessibility:
         return .run { _ in
           await permissions.requestAccessibility()
+        }
+
+      case .requestInputMonitoring:
+        return .run { _ in
+          _ = await permissions.requestInputMonitoring()
         }
 
       // Model Management

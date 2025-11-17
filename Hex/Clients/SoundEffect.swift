@@ -136,7 +136,6 @@ actor SoundEffectsClientLive {
       logger.error("Failed to load sound \(soundEffect.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
     }
   }
-
   private func prepareEngineIfNeeded() {
     if !isEngineRunning || !engine.isRunning {
       engine.prepare()
@@ -150,13 +149,5 @@ actor SoundEffectsClientLive {
         logger.error("Failed to start AVAudioEngine: \(error.localizedDescription, privacy: .public)")
       }
     }
-  }
-
-  deinit {
-    playerNodes.values.forEach {
-      $0.stop()
-      engine.detach($0)
-    }
-    engine.stop()
   }
 }

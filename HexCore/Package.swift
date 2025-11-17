@@ -19,7 +19,10 @@ let package = Package(
                 .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "DependenciesMacros", package: "swift-dependencies"),
             ],
-            path: "Sources/HexCore"
+            path: "Sources/HexCore",
+            linkerSettings: [
+                .linkedFramework("IOKit")
+            ]
         ),
         .testTarget(
             name: "HexCoreTests",

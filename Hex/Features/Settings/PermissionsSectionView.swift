@@ -8,6 +8,7 @@ struct PermissionsSectionView: View {
 	@Bindable var store: StoreOf<SettingsFeature>
 	let microphonePermission: PermissionStatus
 	let accessibilityPermission: PermissionStatus
+	let inputMonitoringPermission: PermissionStatus
 
 	var body: some View {
 		Section {
@@ -20,14 +21,17 @@ struct PermissionsSectionView: View {
 					action: { store.send(.requestMicrophone) }
 				)
 				
-				// Accessibility
-				permissionCard(
-					title: "Accessibility",
-					icon: "accessibility",
-					status: accessibilityPermission,
-					action: { store.send(.requestAccessibility) }
-				)
-			}
+			// Accessibility + Keyboard
+			permissionCard(
+				title: "Accessibility",
+				icon: "accessibility",
+				status: combinedAccessibilityStatus,
+				action: {
+					store.send(.requestAccessibility)
+					store.send(.requestInputMonitoring)
+				}
+			)
+		}
 
 		} header: {
 			Text("Permissions")
@@ -50,6 +54,9 @@ struct PermissionsSectionView: View {
 			
 			Text(title)
 				.font(.body.weight(.medium))
+				.lineLimit(1)
+				.truncationMode(.tail)
+				.layoutPriority(1)
 			
 			Spacer()
 			
@@ -71,5 +78,15 @@ struct PermissionsSectionView: View {
 		.frame(maxWidth: .infinity)
 		.background(Color(nsColor: .controlBackgroundColor))
 		.clipShape(RoundedRectangle(cornerRadius: 8))
+	}
+
+	private var combinedAccessibilityStatus: PermissionStatus {
+		if accessibilityPermission == .granted && inputMonitoringPermission == .granted {
+			return .granted
+		}
+		if accessibilityPermission == .denied || inputMonitoringPermission == .denied {
+			return .denied
+		}
+		return .notDetermined
 	}
 }
