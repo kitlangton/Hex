@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.1
+
+### Patch Changes
+
+- Fix Sparkle appcast generation by cleaning duplicate bundle versions and updating release pipeline to preserve last 3 DMGs for delta generation
+
+## 0.5.0
+
+### Minor Changes
+
+- 049592c: Add support for multiple Parakeet model variants: choose between English-only (v2) or multilingual (v3) based on your transcription needs.
+
+### Patch Changes
+
+- aca9ad5: Fix microphone access retained when recording canceled with ESC (#117)
+- 049592c: Polish paste-last-transcript hotkey UI with improved layout and clearer instructions.
+- 049592c: Improve hotkey reliability with accessibility trust monitoring and automatic recovery from tap disabled events (#89, #81, #87).
+- 049592c: Improve media pausing reliability by using MediaRemote API instead of simulated keyboard events.
+- 049592c: Fix menu bar rendering issue where items appeared as single embedded view instead of separate clickable menu items.
+- 1b9bd52: Optimize recorder startup by keeping AVAudioRecorder primed between sessions, eliminating ~500ms latency for successive recordings
+- 55fb4f8: Add a sound effects volume slider beneath the toggle so users can fine-tune feedback relative to the existing 20% baseline, keeping 100% at the legacy loudness (#000).
+
 ## 0.4.0
 
 ### Minor Changes

@@ -106,6 +106,23 @@ Submit to:
 - **Personal tap**: `homebrew-hex` (easier)
 - **Official cask**: PR to `homebrew/homebrew-cask`
 
+## Critical Constraints
+
+### CFBundleVersion Requirements
+
+**NEVER manually edit CFBundleVersion or reuse build numbers.** The release pipeline automatically increments CFBundleVersion with each release to ensure Sparkle can properly generate the appcast feed.
+
+- `updates/` directory must only contain DMGs with strictly increasing CFBundleVersion values
+- Duplicate build numbers will block appcast generation and break updates for existing users
+- The release script preserves the last 3 DMGs in `updates/` for delta generation
+- Older versions are automatically moved to `updates/old_updates/`
+
+If you accidentally create a release with a duplicate CFBundleVersion:
+1. Delete the problematic DMG from `updates/`
+2. Move any other old DMGs to `updates/old_updates/`
+3. Regenerate appcast: `./bin/generate_appcast --maximum-deltas 3 updates`
+4. Re-upload cleaned artifacts to S3
+
 ## Troubleshooting
 
 ### Notarization fails
@@ -122,6 +139,12 @@ Submit to:
 - Check Xcode version (16.2)
 - Verify code signing setup
 - Check certificate validity
+
+### Sparkle updates not appearing
+- Verify appcast.xml lists versions in descending CFBundleVersion order
+- Check that CFBundleVersion values are unique and strictly increasing
+- Ensure no duplicate build numbers exist in updates/
+- Test feed URL: https://hex-updates.s3.amazonaws.com/appcast.xml
 
 ## Files
 
