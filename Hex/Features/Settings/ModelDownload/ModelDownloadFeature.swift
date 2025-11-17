@@ -435,22 +435,6 @@ public struct ModelDownloadFeature {
 }
 
 extension ModelDownloadFeature.State {
-	struct RecommendationBadge: Equatable {
-		let text: String
-		let isPrimary: Bool
-	}
-
-	var recommendationBadges: [String: RecommendationBadge] {
-		var badges: [String: RecommendationBadge] = [:]
-		for model in ParakeetModel.allCases {
-			badges[model.identifier] = RecommendationBadge(
-				text: model.recommendationLabel,
-				isPrimary: model.isEnglishOnly ? prefersEnglishParakeet : !prefersEnglishParakeet
-			)
-		}
-		return badges
-	}
-
 	var preferredParakeetIdentifier: String {
 		(prefersEnglishParakeet ? ParakeetModel.englishV2 : ParakeetModel.multilingualV3).identifier
 	}

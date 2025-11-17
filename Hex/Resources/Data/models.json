@@ -1,16 +1,16 @@
 [
   {
-    "displayName": "Parakeet TDT v3",
-    "internalName": "parakeet-tdt-0.6b-v3-coreml",
-    "size": "Multilingual",
+    "displayName": "Parakeet TDT v2 (English)",
+    "internalName": "parakeet-tdt-0.6b-v2-coreml",
+    "size": "English",
     "accuracyStars": 5,
     "speedStars": 5,
     "storageSize": "650MB"
   },
   {
-    "displayName": "Parakeet TDT v2 (English)",
-    "internalName": "parakeet-tdt-0.6b-v2-coreml",
-    "size": "English",
+    "displayName": "Parakeet TDT v3",
+    "internalName": "parakeet-tdt-0.6b-v3-coreml",
+    "size": "Multilingual",
     "accuracyStars": 5,
     "speedStars": 5,
     "storageSize": "650MB"
