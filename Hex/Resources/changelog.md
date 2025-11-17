@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.6
+
+### Patch Changes
+
+- a1eb1d0: Restore hotkeys when Input Monitoring permission is missing (#122, #124)
+- 1ee452a: Add non-interactive changeset creation for AI agents
+- 68475f5: Fix clipboard restore timing for slow apps – increased delay from 100ms to 500ms to prevent paste failures in apps that read clipboard asynchronously (e.g., Claude, Warp)
+
 ## 0.5.5
 
 ### Patch Changes

@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import CoreGraphics
 import Dependencies
 import DependenciesMacros
 import Foundation
@@ -510,18 +511,25 @@ extension KeyEventMonitorClientLive {
   }
 
   private func requestInputMonitoringPrompt() -> Bool {
-    var granted = false
-    if Thread.isMainThread {
-      granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-    } else {
-      DispatchQueue.main.sync {
-        granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+    let request: () -> Bool = {
+      if CGPreflightListenEventAccess() {
+        return true
       }
+      return CGRequestListenEventAccess()
     }
+
+    let granted: Bool
+    if Thread.isMainThread {
+      granted = request()
+    } else {
+      granted = DispatchQueue.main.sync(execute: request)
+    }
+
     if !granted {
-      logger.error("IOHIDRequestAccess denied; opening Input Monitoring System Settings panel.")
+      logger.error("Input Monitoring permission denied; opening System Settings.")
       openInputMonitoringSettings()
     }
+
     return granted
   }
 

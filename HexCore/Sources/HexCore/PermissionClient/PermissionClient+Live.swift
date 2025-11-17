@@ -1,5 +1,6 @@
 @preconcurrency import AppKit
 import AVFoundation
+import CoreGraphics
 import Dependencies
 import Foundation
 import IOKit
@@ -117,7 +118,10 @@ actor PermissionClientLive {
 
   func requestInputMonitoring() async -> Bool {
     let granted = await MainActor.run {
-      IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+      if CGPreflightListenEventAccess() {
+        return true
+      }
+      return CGRequestListenEventAccess()
     }
 
     if !granted {
