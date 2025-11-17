@@ -96,6 +96,7 @@ class KeyEventMonitorClientLive {
   private var accessibilityTrusted = false
   private var trustMonitorTask: Task<Void, Never>?
   private var isFnPressed = false
+  private var hasPromptedForAccessibilityTrust = false
 
   private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
@@ -174,7 +175,7 @@ class KeyEventMonitorClientLive {
   func startMonitoring() {
     setMonitoringIntent(true)
     startTrustMonitorIfNeeded()
-    setTrustedFlag(AXIsProcessTrusted())
+    refreshTrustedFlag(promptIfUntrusted: true)
     Task { [weak self] in
       await self?.refreshMonitoringState(reason: "startMonitoring")
     }
@@ -246,12 +247,12 @@ class KeyEventMonitorClientLive {
   // no separate helper; handled inline above
 
   private func watchAccessibilityTrust() async {
-    var lastTrusted = AXIsProcessTrusted()
+    var lastTrusted = currentAccessibilityTrust()
     await handleTrustChange(isTrusted: lastTrusted, reason: "initial")
 
     while !Task.isCancelled {
       try? await Task.sleep(nanoseconds: trustCheckIntervalNanoseconds)
-      let currentTrusted = AXIsProcessTrusted()
+      let currentTrusted = currentAccessibilityTrust()
       if currentTrusted != lastTrusted {
         await handleTrustChange(isTrusted: currentTrusted, reason: currentTrusted ? "regained" : "revoked")
         lastTrusted = currentTrusted
@@ -308,7 +309,7 @@ class KeyEventMonitorClientLive {
     guard !isMonitoring else { return }
     guard hasHandlers else { return }
 
-    let trusted = AXIsProcessTrusted()
+    let trusted = currentAccessibilityTrust()
     setTrustedFlag(trusted)
     guard trusted else {
       logger.error("Cannot start key event monitoring (reason: \(reason)); accessibility permission is not granted.")
@@ -440,5 +441,24 @@ extension KeyEventMonitorClientLive {
     let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
     guard keyCode == kVK_Function else { return }
     isFnPressed = cgEvent.flags.contains(.maskSecondaryFn)
+  }
+
+  private func refreshTrustedFlag(promptIfUntrusted: Bool) {
+    var trusted = currentAccessibilityTrust()
+    if !trusted && promptIfUntrusted && !hasPromptedForAccessibilityTrust {
+      trusted = requestAccessibilityTrustPrompt()
+      hasPromptedForAccessibilityTrust = true
+    }
+    setTrustedFlag(trusted)
+  }
+
+  private func currentAccessibilityTrust() -> Bool {
+    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+    return AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary)
+  }
+
+  private func requestAccessibilityTrustPrompt() -> Bool {
+    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+    return AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
   }
 }
