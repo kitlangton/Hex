@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "release": "cd tools && bun run build",
     "changeset": "changeset",
     "changeset:add": "changeset",
     "changeset:status": "changeset status --verbose",
