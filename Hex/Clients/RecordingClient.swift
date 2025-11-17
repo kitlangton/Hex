@@ -30,6 +30,7 @@ struct RecordingClient {
   var requestMicrophoneAccess: @Sendable () async -> Bool = { false }
   var observeAudioLevel: @Sendable () async -> AsyncStream<Meter> = { AsyncStream { _ in } }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
+  var warmUpRecorder: @Sendable () async -> Void = {}
 }
 
 extension RecordingClient: DependencyKey {
@@ -40,7 +41,8 @@ extension RecordingClient: DependencyKey {
       stopRecording: { await live.stopRecording() },
       requestMicrophoneAccess: { await live.requestMicrophoneAccess() },
       observeAudioLevel: { await live.observeAudioLevel() },
-      getAvailableInputDevices: { await live.getAvailableInputDevices() }
+      getAvailableInputDevices: { await live.getAvailableInputDevices() },
+      warmUpRecorder: { await live.warmUpRecorder() }
     )
   }
 }
@@ -302,6 +304,16 @@ private func sendMediaKey() {
 actor RecordingClientLive {
   private var recorder: AVAudioRecorder?
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
+  private var isRecorderPrimedForNextSession = false
+  private let recorderSettings: [String: Any] = [
+    AVFormatIDKey: Int(kAudioFormatLinearPCM),
+    AVSampleRateKey: 16000.0,
+    AVNumberOfChannelsKey: 1,
+    AVLinearPCMBitDepthKey: 32,
+    AVLinearPCMIsFloatKey: true,
+    AVLinearPCMIsBigEndianKey: false,
+    AVLinearPCMIsNonInterleaved: false,
+  ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
 
@@ -671,20 +683,12 @@ actor RecordingClientLive {
       recordingLogger.debug("Using default system microphone")
     }
 
-    let settings: [String: Any] = [
-      AVFormatIDKey: Int(kAudioFormatLinearPCM),
-      AVSampleRateKey: 16000.0,
-      AVNumberOfChannelsKey: 1,
-      AVLinearPCMBitDepthKey: 32,
-      AVLinearPCMIsFloatKey: true,
-      AVLinearPCMIsBigEndianKey: false,
-      AVLinearPCMIsNonInterleaved: false,
-    ]
-
     do {
-      recorder = try AVAudioRecorder(url: recordingURL, settings: settings)
-      recorder?.isMeteringEnabled = true
-      recorder?.record()
+      let recorder = try ensureRecorderReadyForRecording()
+      guard recorder.record() else {
+        recordingLogger.error("AVAudioRecorder refused to start recording")
+        return
+      }
       startMeterTask()
       recordingLogger.notice("Recording started")
     } catch {
@@ -693,10 +697,33 @@ actor RecordingClientLive {
   }
 
   func stopRecording() async -> URL {
+    let wasRecording = recorder?.isRecording == true
     recorder?.stop()
-    recorder = nil
     stopMeterTask()
-    recordingLogger.notice("Recording stopped")
+    if wasRecording {
+      recordingLogger.notice("Recording stopped")
+    } else {
+      recordingLogger.notice("stopRecording() called while recorder was idle")
+    }
+
+    var exportedURL = recordingURL
+    var didCopyRecording = false
+    do {
+      exportedURL = try duplicateCurrentRecording()
+      didCopyRecording = true
+    } catch {
+      isRecorderPrimedForNextSession = false
+      recordingLogger.error("Failed to copy recording: \(error.localizedDescription, privacy: .public)")
+    }
+
+    if didCopyRecording {
+      do {
+        try primeRecorderForNextSession()
+      } catch {
+        isRecorderPrimedForNextSession = false
+        recordingLogger.error("Failed to prime recorder: \(error.localizedDescription, privacy: .public)")
+      }
+    }
 
     // Resume audio in background - don't block stop from completing
     let playersToResume = pausedPlayers
@@ -738,7 +765,7 @@ actor RecordingClientLive {
       }
     }
 
-    return recordingURL
+    return exportedURL
   }
 
   // Actor state update helpers
@@ -786,6 +813,65 @@ actor RecordingClientLive {
     return true
   }
 
+  private enum RecorderPreparationError: Error {
+    case failedToPrepareRecorder
+    case missingRecordingOnDisk
+  }
+
+  private func ensureRecorderReadyForRecording() throws -> AVAudioRecorder {
+    let recorder = try recorderOrCreate()
+
+    if !isRecorderPrimedForNextSession {
+      guard recorder.prepareToRecord() else {
+        throw RecorderPreparationError.failedToPrepareRecorder
+      }
+    }
+
+    isRecorderPrimedForNextSession = false
+    return recorder
+  }
+
+  private func recorderOrCreate() throws -> AVAudioRecorder {
+    if let recorder {
+      return recorder
+    }
+
+    let recorder = try AVAudioRecorder(url: recordingURL, settings: recorderSettings)
+    recorder.isMeteringEnabled = true
+    self.recorder = recorder
+    return recorder
+  }
+
+  private func duplicateCurrentRecording() throws -> URL {
+    let fm = FileManager.default
+
+    guard fm.fileExists(atPath: recordingURL.path) else {
+      throw RecorderPreparationError.missingRecordingOnDisk
+    }
+
+    let exportURL = recordingURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("hex-recording-\(UUID().uuidString).wav")
+
+    if fm.fileExists(atPath: exportURL.path) {
+      try fm.removeItem(at: exportURL)
+    }
+
+    try fm.copyItem(at: recordingURL, to: exportURL)
+    return exportURL
+  }
+
+  private func primeRecorderForNextSession() throws {
+    let recorder = try recorderOrCreate()
+    guard recorder.prepareToRecord() else {
+      isRecorderPrimedForNextSession = false
+      throw RecorderPreparationError.failedToPrepareRecorder
+    }
+
+    isRecorderPrimedForNextSession = true
+    recordingLogger.debug("Recorder primed for next session")
+  }
+
   func startMeterTask() {
     meterTask = Task {
       while !Task.isCancelled, let r = self.recorder, r.isRecording {
@@ -807,6 +893,14 @@ actor RecordingClientLive {
 
   func observeAudioLevel() -> AsyncStream<Meter> {
     meterStream
+  }
+
+  func warmUpRecorder() async {
+    do {
+      try primeRecorderForNextSession()
+    } catch {
+      recordingLogger.error("Failed to warm up recorder: \(error.localizedDescription, privacy: .public)")
+    }
   }
 }
 
