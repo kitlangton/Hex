@@ -33,6 +33,30 @@ struct PermissionsSectionView: View {
 			)
 		}
 
+		if store.hotkeyPermissionState.inputMonitoring != .granted {
+			VStack(alignment: .leading, spacing: 6) {
+				Label {
+					Text("Input Monitoring is required so Hex can listen for your hotkey.")
+						.font(.callout)
+						.foregroundStyle(.primary)
+				} icon: {
+					Image(systemName: "exclamationmark.triangle.fill")
+						.foregroundStyle(.yellow)
+				}
+
+				Button {
+					store.send(.requestInputMonitoring)
+				} label: {
+					Text("Open Input Monitoring Settings")
+				}
+				.buttonStyle(.borderedProminent)
+				.controlSize(.small)
+			}
+			.padding(12)
+			.background(Color(nsColor: .controlBackgroundColor))
+			.clipShape(RoundedRectangle(cornerRadius: 10))
+		}
+
 		} header: {
 			Text("Permissions")
 		}

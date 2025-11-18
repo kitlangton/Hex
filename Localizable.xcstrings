@@ -380,6 +380,9 @@
     "Input Device" : {
 
     },
+    "Input Monitoring is required so Hex can listen for your hotkey." : {
+
+    },
     "Maximum History Entries" : {
 
     },
@@ -434,6 +437,9 @@
 
     },
     "Oldest entries will be automatically deleted when limit is reached" : {
+
+    },
+    "Open Input Monitoring Settings" : {
 
     },
     "Open on Login" : {

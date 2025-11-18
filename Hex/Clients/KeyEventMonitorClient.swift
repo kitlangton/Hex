@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import ComposableArchitecture
 import CoreGraphics
 import Dependencies
 import DependenciesMacros
@@ -103,6 +104,7 @@ class KeyEventMonitorClientLive {
   private var trustMonitorTask: Task<Void, Never>?
   private var isFnPressed = false
   private var hasPromptedForAccessibilityTrust = false
+  @Shared(.hotkeyPermissionState) private var hotkeyPermissionState: HotkeyPermissionState
 
   private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
@@ -114,8 +116,8 @@ class KeyEventMonitorClientLive {
     self.stopMonitoring()
   }
 
-  private var hasAccessibilityPermission: Bool {
-    queue.sync { accessibilityTrusted }
+  private var hasRequiredPermissions: Bool {
+    queue.sync { accessibilityTrusted && inputMonitoringTrusted }
   }
 
   private var hasHandlers: Bool {
@@ -132,6 +134,7 @@ class KeyEventMonitorClientLive {
     queue.sync {
       wantsMonitoring
         && accessibilityTrusted
+        && inputMonitoringTrusted
         && !(continuations.isEmpty && inputContinuations.isEmpty)
     }
   }
@@ -306,7 +309,7 @@ class KeyEventMonitorClientLive {
         logger.error("Accessibility permission missing (\(reason)); suspending tap.")
       }
       if !input {
-        logger.error("Input Monitoring permission missing (\(reason)); continuing anyway so macOS can re-prompt.")
+        logger.error("Input Monitoring permission missing (\(reason)); waiting for approval before restarting hotkeys.")
       }
     }
     await refreshMonitoringState(reason: "trust_\(reason)")
@@ -330,6 +333,15 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       self?.accessibilityTrusted = accessibility
       self?.inputMonitoringTrusted = input
+    }
+    recordSharedPermissionState(accessibility: accessibility, input: input)
+  }
+
+  private func recordSharedPermissionState(accessibility: Bool, input: Bool) {
+    $hotkeyPermissionState.withLock {
+      $0.accessibility = accessibility ? .granted : .denied
+      $0.inputMonitoring = input ? .granted : .denied
+      $0.lastUpdated = Date()
     }
   }
 
@@ -359,9 +371,10 @@ class KeyEventMonitorClientLive {
       return
     }
 
-    if !inputMonitoringTrusted {
-      logger.error("Input Monitoring permission missing; continuing with Accessibility-only tap so macOS can prompt (reason: \(reason)).")
+    guard inputMonitoringTrusted else {
+      logger.error("Input Monitoring permission missing; cannot start key event monitoring (reason: \(reason)).")
       diagLogger.warning("Input monitoring missing", metadata: ["context": .string(reason)])
+      return
     }
 
     let eventMask =
@@ -392,7 +405,7 @@ class KeyEventMonitorClientLive {
             return Unmanaged.passUnretained(cgEvent)
           }
 
-          guard hotKeyClientLive.hasAccessibilityPermission else {
+          guard hotKeyClientLive.hasRequiredPermissions else {
             return Unmanaged.passUnretained(cgEvent)
           }
 
