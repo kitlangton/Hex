@@ -42,6 +42,10 @@ struct SettingsFeature {
 
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
+
+    // Diagnostics
+    var isExportingLogs = false
+    var logExportStatus: LogExportStatus?
   }
 
   enum Action: BindableAction {
@@ -74,6 +78,12 @@ struct SettingsFeature {
 
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
+
+    // Diagnostics
+    case exportLogsButtonTapped
+    case logExportFinished(URL)
+    case logExportFailed(String)
+    case logExportCancelled
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -81,6 +91,7 @@ struct SettingsFeature {
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
   @Dependency(\.permissions) var permissions
+  @Dependency(\.logExporter) var logExporter
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -322,7 +333,48 @@ struct SettingsFeature {
           $0.hotkey.modifiers = $0.hotkey.modifiers.setting(kind: kind, to: side)
         }
         return .none
+
+      case .exportLogsButtonTapped:
+        guard !state.isExportingLogs else { return .none }
+        state.isExportingLogs = true
+        state.logExportStatus = nil
+        return .run { send in
+          do {
+            if let url = try await logExporter.exportLogs(30) {
+              await send(.logExportFinished(url))
+            } else {
+              await send(.logExportCancelled)
+            }
+          } catch {
+            await send(.logExportFailed(error.localizedDescription))
+          }
+        }
+
+      case let .logExportFinished(url):
+        state.isExportingLogs = false
+        state.logExportStatus = .success(url.path)
+        return .run { _ in
+          await MainActor.run {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+          }
+        }
+
+      case .logExportCancelled:
+        state.isExportingLogs = false
+        return .none
+
+      case let .logExportFailed(message):
+        state.isExportingLogs = false
+        state.logExportStatus = .failure(message)
+        return .none
       }
     }
+  }
+}
+
+extension SettingsFeature.State {
+  enum LogExportStatus: Equatable {
+    case success(String)
+    case failure(String)
   }
 }
