@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.8
+
+### Patch Changes
+
+- 03b81c7: Let the hotkey tap start even when Input Monitoring is missing so Sequoia users get prompts again, while keeping the accessibility watchdog (#122 #124). Add a spoken “force quit Hex now” escape hatch in case permissions clobber input.
+
 ## 0.5.7
 
 ### Patch Changes
