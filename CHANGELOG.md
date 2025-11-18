@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.12
+
+### Patch Changes
+
+- 471310c: Fix Input Monitoring permission enforcement for hotkey reliability
+
 ## 0.5.11
 
 ### Patch Changes
