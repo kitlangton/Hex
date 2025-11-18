@@ -429,6 +429,9 @@
     "Maximum History Entries" : {
 
     },
+    "MCP Tools:" : {
+
+    },
     "Microphone" : {
       "comment" : "Microphone permission.",
       "extractionState" : "stale",

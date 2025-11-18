@@ -3,6 +3,7 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import HexCore
+import OSLog
 import UniformTypeIdentifiers
 
 @DependencyClient
@@ -26,18 +27,14 @@ extension DependencyValues {
 }
 
 private struct LogExportClientLive {
-  func exportLogs(lastMinutes _: Int) async throws -> URL? {
+  func exportLogs(lastMinutes minutes: Int) async throws -> URL? {
     guard let destination = try await presentSavePanel() else {
       return nil
     }
 
-    let fileURL = DiagnosticsLogging.logFileURL
-    if !FileManager.default.fileExists(atPath: fileURL.path) {
-      FileManager.default.createFile(atPath: fileURL.path, contents: nil)
-    }
-
-    let data = try Data(contentsOf: fileURL)
-    try data.write(to: destination, options: .atomic)
+    let normalizedMinutes = max(1, minutes)
+    let payload = try collectLogs(lastMinutes: normalizedMinutes)
+    try payload.write(to: destination, atomically: true, encoding: .utf8)
     return destination
   }
 
@@ -64,6 +61,29 @@ private struct LogExportClientLive {
     return "Hex-Logs-\(formatter.string(from: Date())).log"
   }
 
+  private func collectLogs(lastMinutes minutes: Int) throws -> String {
+    let store = try OSLogStore(scope: .currentProcessIdentifier)
+    let startDate = Date().addingTimeInterval(-Double(minutes) * 60)
+    let position = try store.position(date: startDate)
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+    var lines: [String] = []
+    for entry in try store.getEntries(at: position) {
+      guard let logEntry = entry as? OSLogEntryLog else { continue }
+      guard logEntry.subsystem == HexLog.subsystem else { continue }
+
+      let timestamp = formatter.string(from: logEntry.date)
+      let level = logEntry.level.displayName
+      lines.append("[\(timestamp)] \(level) \(logEntry.category): \(logEntry.composedMessage)")
+    }
+
+    if lines.isEmpty {
+      lines.append("No Hex log entries captured in the last \(minutes) minute(s).")
+    }
+    return lines.joined(separator: "\n")
+  }
+
 }
 
 enum LogExportError: LocalizedError {
@@ -74,5 +94,26 @@ enum LogExportError: LocalizedError {
     case .noDestination:
       return "Unable to determine the save location."
   }
+  }
+}
+
+private extension OSLogEntryLog.Level {
+  var displayName: String {
+    switch self {
+    case .undefined:
+      return "UNDEFINED"
+    case .debug:
+      return "DEBUG"
+    case .info:
+      return "INFO"
+    case .notice:
+      return "NOTICE"
+    case .error:
+      return "ERROR"
+    case .fault:
+      return "FAULT"
+    @unknown default:
+      return "UNKNOWN"
+    }
   }
 }

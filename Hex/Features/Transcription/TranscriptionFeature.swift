@@ -68,6 +68,7 @@ struct TranscriptionFeature {
   @Dependency(\.soundEffects) var soundEffect
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
+  @Dependency(\.hexToolServer) var hexToolServer
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -459,9 +460,15 @@ private extension TranscriptionFeature {
     return .run { send in
       do {
         transcriptionFeatureLogger.info("Processing with \(pipeline.transformations.count) transformations, \(providers.count) providers")
+        let toolServer = hexToolServer
         let executor = TextTransformationPipeline.Executor { config, input in
           transcriptionFeatureLogger.info("Running LLM transformation with provider: \(config.providerID)")
-          return try await runClaudeCode(config: config, input: input, providers: providers)
+          return try await runClaudeCode(
+            config: config,
+            input: input,
+            providers: providers,
+            toolServer: toolServer
+          )
         }
         let transformed = await pipeline.process(textToProcess, executor: executor)
         transcriptionFeatureLogger.info("Transformed text from \(textToProcess.count) to \(transformed.count) chars")
@@ -626,7 +633,8 @@ struct TranscriptionView: View {
 private func runClaudeCode(
   config: LLMTransformationConfig,
   input: String,
-  providers: [LLMProvider]
+  providers: [LLMProvider],
+  toolServer: HexToolServerClient
 ) async throws -> String {
   transcriptionFeatureLogger.info("runClaudeCode called with \(providers.count) providers, looking for: \(config.providerID)")
 
@@ -665,9 +673,30 @@ IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here 
     process.currentDirectoryURL = URL(fileURLWithPath: (workingDir as NSString).expandingTildeInPath)
   }
 
+  let serverConfiguration = provider.tooling?.serverConfiguration()
+  if let groups = serverConfiguration?.enabledToolGroups {
+    transcriptionFeatureLogger.info("Configuring MCP server with tool groups: \(groups.map(\.rawValue))")
+  } else {
+    transcriptionFeatureLogger.info("Configuring MCP server with no additional tool groups")
+  }
+  let toolEndpoint = try await toolServer.ensureServer(serverConfiguration)
+  transcriptionFeatureLogger.info("MCP server ready at \(toolEndpoint.baseURL)")
+  let claudeEnvironment = try prepareClaudeEnvironment(serverEndpoint: toolEndpoint)
+  var preserveDebugArtifacts = false
+  defer {
+    if preserveDebugArtifacts {
+      transcriptionFeatureLogger.error("Preserving Claude temp files for debugging at \(claudeEnvironment.rootDirectory.path)")
+    } else {
+      claudeEnvironment.cleanup()
+    }
+  }
+  
+  // 
+
   var environment = ProcessInfo.processInfo.environment
   environment["CLAUDE_CODE_SKIP_UPDATE_CHECK"] = "1"
   environment["PATH"] = buildExecutableSearchPath(existingPATH: environment["PATH"])
+  environment["CLAUDE_CODE_DEBUG_LOGS_DIR"] = claudeEnvironment.debugLogFile.path
   process.environment = environment
 
   let stdoutPipe = Pipe()
@@ -676,6 +705,19 @@ IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here 
   process.standardOutput = stdoutPipe
   process.standardError = stderrPipe
   process.standardInput = stdinPipe
+
+  if let mcpConfigPath = claudeEnvironment.mcpConfigPath {
+    process.arguments?.append(contentsOf: ["--mcp-config", mcpConfigPath.path])
+  }
+  if let groups = provider.tooling?.enabledToolGroups {
+    let allowedTools = Set(groups.flatMap { $0.toolIdentifiers })
+    if !allowedTools.isEmpty {
+      let joined = allowedTools.sorted().joined(separator: ",")
+      transcriptionFeatureLogger.info("Allowing Claude tools: \(joined)")
+      process.arguments?.append(contentsOf: ["--allowed-tools", joined])
+    }
+  }
+  process.arguments?.append(contentsOf: ["--permission-mode", "bypassPermissions"])
 
   try process.run()
 
@@ -703,8 +745,10 @@ IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here 
   let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
 
   guard process.terminationStatus == 0 else {
-    let message = String(data: stderrData, encoding: .utf8) ?? "Unknown error"
-    throw LLMExecutionError.processFailed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+    preserveDebugArtifacts = true
+    let message = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let errorMessage = message?.isEmpty == false ? message! : "Claude CLI exited with code \(process.terminationStatus) and no error output"
+    throw LLMExecutionError.processFailed(errorMessage)
   }
 
   guard !stdoutData.isEmpty else {
@@ -820,6 +864,64 @@ private func dedupePaths(_ paths: [String]) -> [String] {
     }
   }
   return ordered
+}
+
+private struct ClaudeEnvironmentContext {
+  let rootDirectory: URL
+  let mcpConfigPath: URL?
+  let debugLogFile: URL
+  
+  func cleanup() {
+    try? FileManager.default.removeItem(at: rootDirectory)
+  }
+}
+
+private func prepareClaudeEnvironment(serverEndpoint: HexToolServerEndpoint?) throws -> ClaudeEnvironmentContext {
+  let fm = FileManager.default
+  let base = fm.temporaryDirectory.appendingPathComponent("hex-claude-\(UUID().uuidString)", isDirectory: true)
+  try fm.createDirectory(at: base, withIntermediateDirectories: true)
+  
+  let debugDirectory = base.appendingPathComponent("debug", isDirectory: true)
+  try fm.createDirectory(at: debugDirectory, withIntermediateDirectories: true)
+  let debugLogFile = debugDirectory.appendingPathComponent("claude.log")
+  if !fm.fileExists(atPath: debugLogFile.path) {
+    fm.createFile(atPath: debugLogFile.path, contents: Data())
+  }
+  
+  var mcpConfigPath: URL?
+  if let serverEndpoint {
+    let configURL = base.appendingPathComponent(".mcp.json")
+    let configuration = ClaudeMCPConfiguration(serverEndpoint: serverEndpoint)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let data = try encoder.encode(configuration)
+    try data.write(to: configURL, options: .atomic)
+    mcpConfigPath = configURL
+  }
+  
+  return ClaudeEnvironmentContext(
+    rootDirectory: base,
+    mcpConfigPath: mcpConfigPath,
+    debugLogFile: debugLogFile
+  )
+}
+
+private struct ClaudeMCPConfiguration: Encodable {
+  struct Server: Encodable {
+    let type: String
+    let url: String
+  }
+  
+  let mcpServers: [String: Server]
+  
+  init(serverEndpoint: HexToolServerEndpoint) {
+    self.mcpServers = [
+      serverEndpoint.serverName: Server(
+        type: "http",
+        url: serverEndpoint.baseURL.absoluteString
+      )
+    ]
+  }
 }
 
 private func decodeClaudeOutput(from data: Data) throws -> String {

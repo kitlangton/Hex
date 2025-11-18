@@ -6,6 +6,16 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 		case anthropicAPI = "anthropic_api"
 		case openAI = "openai"
 	}
+	
+	public struct ToolingConfiguration: Codable, Equatable, Sendable {
+		public var enabledToolGroups: [HexToolGroup]
+		public var instructions: String?
+		
+		public init(enabledToolGroups: [HexToolGroup], instructions: String? = nil) {
+			self.enabledToolGroups = enabledToolGroups
+			self.instructions = instructions
+		}
+	}
 
 	public struct SecretReference: Codable, Equatable, Sendable {
 		public enum Storage: String, Codable, Sendable {
@@ -46,6 +56,9 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 	public var baseURL: String?
 	public var apiKey: SecretReference?
 	public var organization: String?
+	
+	// Tool server configuration
+	public var tooling: ToolingConfiguration?
 
 	public init(
 		id: String,
@@ -56,7 +69,8 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 		timeoutSeconds: Int? = nil,
 		baseURL: String? = nil,
 		apiKey: SecretReference? = nil,
-		organization: String? = nil
+		organization: String? = nil,
+		tooling: ToolingConfiguration? = nil
 	) {
 		self.id = id
 		self.type = type
@@ -67,5 +81,13 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 		self.baseURL = baseURL
 		self.apiKey = apiKey
 		self.organization = organization
+		self.tooling = tooling
+	}
+}
+
+public extension LLMProvider.ToolingConfiguration {
+	func serverConfiguration() -> HexToolServerConfiguration? {
+		guard !enabledToolGroups.isEmpty else { return nil }
+		return HexToolServerConfiguration(enabledToolGroups: enabledToolGroups, instructions: instructions)
 	}
 }

@@ -67,7 +67,7 @@ struct TextTransformationView: View {
 			} else {
 				List {
 					ForEach(store.textTransformations.stacks) { mode in
-						ModeRow(mode: mode)
+						ModeRow(mode: mode, providers: store.textTransformations.providers)
 					}
 				}
 				.listStyle(.inset(alternatesRowBackgrounds: true))
@@ -102,13 +102,54 @@ private struct InstructionCard: View {
 extension TextTransformationView {
 	static let llmInstructions: String = {
 		"""
-Configuration lives at:\n\(URL.textTransformationsURL.path)\n\nSchema essentials:\n- `schemaVersion` must stay 3.\n- `providers` currently supports only `claude_code` (binary path + default model).\n- `stacks` is an ordered list with flexible matching:\n  • `voicePrefix`: Trigger by saying prefix (e.g., "hex, what's 2+2?")\n  • `appliesToBundleIdentifiers`: Match by app bundle ID\n  • Precedence: prefix+bundle > prefix alone > bundle alone > general fallback\n- Matching is case-insensitive and multiple bundle IDs are allowed (Messages uses `com.apple.MobileSMS`, older builds use `com.apple.iChat`).\n- Each `pipeline` contains ordered `transformations`; `.llm` steps require a `providerID` and a `promptTemplate` that includes `{{input}}`.\n- Voice prefix input is automatically stripped before processing (e.g., "hex, calculate 10+5" → "calculate 10+5").\n\nWhen editing via an LLM:\n1. Always load the file, modify JSON structurally, and write it back intact.\n2. Preserve existing IDs unless you intentionally add a new stack/transformation.\n3. Favor adding bundle IDs (e.g., both `com.apple.MobileSMS` and `com.apple.iChat`) instead of renaming stacks.\n4. Prompts should be concise, privacy-safe, and explicit about output format.\n5. For voice-activated commands, set `voicePrefix` (e.g., "hex") and ensure prompt instructs to output only the answer.\n\nThis guide can be handed to an assistant with the request: "Edit the Hex text transformation config per the user's instructions."
+Configuration lives at:
+\(URL.textTransformationsURL.path)
+
+Schema essentials:
+- `schemaVersion` must stay 3.
+- `providers` currently supports only `claude_code` (binary path + default model).
+- Add `tooling.enabledToolGroups` when Claude should call Hex's MCP tools, and include a short `instructions` note so future editors understand why tools are enabled.
+  • Current tool groups:
+    – `app-control`: launch or focus macOS apps via bundle ID (Hex exposes the `openApplication` tool)
+- `stacks` is an ordered list with flexible matching:
+  • `voicePrefix`: Trigger by saying prefix (e.g., "hex, what's 2+2?")
+  • `appliesToBundleIdentifiers`: Match by app bundle ID
+  • Precedence: prefix+bundle > prefix alone > bundle alone > general fallback
+- Matching is case-insensitive and multiple bundle IDs are allowed (Messages uses `com.apple.MobileSMS`, older builds use `com.apple.iChat`).
+- Each `pipeline` contains ordered `transformations`; `.llm` steps require a `providerID` and a `promptTemplate` that includes `{{input}}`.
+- Voice prefix input is automatically stripped before processing (e.g., "hex, calculate 10+5" → "calculate 10+5").
+
+When editing via an LLM:
+1. Always load the file, modify JSON structurally, and write it back intact.
+2. Preserve existing IDs unless you intentionally add a new stack/transformation.
+3. Favor adding bundle IDs (e.g., both `com.apple.MobileSMS` and `com.apple.iChat`) instead of renaming stacks.
+4. Prompts should be concise, privacy-safe, and explicit about output format; if a stack expects tool usage, mention which tool group it relies on and what the tool does (e.g., "use the app-control openApplication tool to launch apps before answering").
+5. For voice-activated commands, set `voicePrefix` (e.g., "hex") and ensure the prompt instructs Claude to output only the answer.
+
+This guide can be handed to an assistant with the request: "Edit the Hex text transformation config per the user's instructions."
 """
 	}()
 }
 
 struct ModeRow: View {
 	let mode: TransformationStack
+	let providers: [LLMProvider]
+	
+	// Extract unique tool groups from all LLM transformations in this mode
+	private var enabledToolGroups: [HexToolGroup]? {
+		let providerIDs = mode.pipeline.transformations.compactMap { transformation -> String? in
+			if case let .llm(config) = transformation.type, transformation.isEnabled {
+				return config.providerID
+			}
+			return nil
+		}
+		
+		let toolGroups = Set(providerIDs.compactMap { providerID in
+			providers.first(where: { $0.id == providerID })?.tooling?.enabledToolGroups ?? []
+		}.flatMap { $0 })
+		
+		return toolGroups.isEmpty ? nil : Array(toolGroups).sorted(by: { $0.rawValue < $1.rawValue })
+	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
@@ -124,22 +165,46 @@ struct ModeRow: View {
 			}
 
 			AppTargetsView(bundleIDs: mode.appliesToBundleIdentifiers)
+			
+			// MCP Tools indicator
+			if let toolGroups = enabledToolGroups, !toolGroups.isEmpty {
+				HStack(spacing: 6) {
+					Image(systemName: "wrench.and.screwdriver.fill")
+						.foregroundStyle(.secondary)
+						.font(.caption)
+					Text("MCP Tools:")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+					ForEach(toolGroups, id: \.self) { group in
+						Text(group.rawValue)
+							.font(.caption)
+							.padding(.horizontal, 6)
+							.padding(.vertical, 2)
+							.background(RoundedRectangle(cornerRadius: 4).fill(Color.blue.opacity(0.2)))
+							.foregroundStyle(.blue)
+					}
+				}
+			}
 
 			// Transformations preview
 			if !mode.pipeline.transformations.isEmpty {
 				VStack(alignment: .leading, spacing: 4) {
 					ForEach(Array(mode.pipeline.transformations.prefix(3).enumerated()), id: \.element.id) { index, transformation in
-						HStack(spacing: 6) {
+						HStack(alignment: .top, spacing: 6) {
 							Text("\(index + 1).")
 								.font(.caption.monospacedDigit())
 								.foregroundStyle(.tertiary)
-							Text(transformation.name)
-								.font(.caption)
-								.foregroundStyle(transformation.isEnabled ? .secondary : .tertiary)
-							if !transformation.isEnabled {
-								Text("(disabled)")
+							HStack(spacing: 4) {
+								Text(transformation.name)
 									.font(.caption)
-									.foregroundStyle(.tertiary)
+									.foregroundStyle(transformation.isEnabled ? .secondary : .tertiary)
+									.lineLimit(nil)
+									.fixedSize(horizontal: false, vertical: true)
+								if !transformation.isEnabled {
+									Text("(disabled)")
+										.font(.caption)
+										.foregroundStyle(.tertiary)
+								}
 							}
 						}
 					}

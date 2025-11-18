@@ -60,6 +60,7 @@ struct AppFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
   @Dependency(\.permissions) var permissions
+  @Dependency(\.hexToolServer) var hexToolServer
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -89,7 +90,8 @@ struct AppFeature {
         return .merge(
           startPasteLastTranscriptMonitoring(),
           ensureSelectedModelReadiness(),
-          startPermissionMonitoring()
+          startPermissionMonitoring(),
+          prewarmToolServer()
         )
         
       case .pasteLastTranscript:
@@ -248,6 +250,12 @@ struct AppFeature {
         }
       }
 
+    }
+  }
+
+  private func prewarmToolServer() -> Effect<Action> {
+    .run { _ in
+      try? await hexToolServer.ensureServer(nil)
     }
   }
 }

@@ -11,7 +11,6 @@
 		476316272E5FB31400913CDE /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
 		4765045E2D45900200C7EA60 /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = 4765045D2D45900200C7EA60 /* Pow */; };
 		476BAD3E2D47E7880088C61F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 476BAD3D2D47E7880088C61F /* Sparkle */; };
-		478EEEE22ECCCE71001FF707 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = 478EEEE12ECCCE71001FF707 /* Logging */; };
 		47C08AB62DE9F61B00564AE6 /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 47C08AB52DE9F61B00564AE6 /* Inject */; };
 		47E05E022D444EE900D26DA6 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		47E05E052D444EF800D26DA6 /* Sauce in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E042D444EF800D26DA6 /* Sauce */; };
@@ -79,7 +78,6 @@
 				B5045C972D78DED500D0A119 /* MarkdownUI in Frameworks */,
 				47512ABF2E14D8C9000E25BA /* WhisperKit in Frameworks */,
 				47E05E052D444EF800D26DA6 /* Sauce in Frameworks */,
-				478EEEE22ECCCE71001FF707 /* Logging in Frameworks */,
 				47E16A622EC6C9D300885CF7 /* FluidAudio in Frameworks */,
 				47C08AB62DE9F61B00564AE6 /* Inject in Frameworks */,
 				4765045E2D45900200C7EA60 /* Pow in Frameworks */,
@@ -170,7 +168,6 @@
 				47512ABE2E14D8C9000E25BA /* WhisperKit */,
 				476316262E5FB31400913CDE /* HexCore */,
 				47E16A612EC6C9D300885CF7 /* FluidAudio */,
-				478EEEE12ECCCE71001FF707 /* Logging */,
 			);
 			productName = Hex;
 			productReference = 47E05DEE2D444EC600D26DA6 /* Hex Debug.app */;
@@ -215,7 +212,6 @@
 				47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */,
 				47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */,
-				478EEEE02ECCCE71001FF707 /* XCRemoteSwiftPackageReference "swift-log" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 47E05DEF2D444EC600D26DA6 /* Products */;
@@ -595,14 +591,6 @@
 				minimumVersion = 2.6.4;
 			};
 		};
-		478EEEE02ECCCE71001FF707 /* XCRemoteSwiftPackageReference "swift-log" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-log";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.6.4;
-			};
-		};
 		47C08AB42DE9F61B00564AE6 /* XCRemoteSwiftPackageReference "Inject" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/krzysztofzablocki/Inject";
@@ -672,11 +660,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 476BAD3C2D47E7880088C61F /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
-		};
-		478EEEE12ECCCE71001FF707 /* Logging */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 478EEEE02ECCCE71001FF707 /* XCRemoteSwiftPackageReference "swift-log" */;
-			productName = Logging;
 		};
 		47C08AB52DE9F61B00564AE6 /* Inject */ = {
 			isa = XCSwiftPackageProductDependency;

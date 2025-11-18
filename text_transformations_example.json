@@ -5,8 +5,12 @@
       "id": "provider-claudecode",
       "type": "claude_code",
       "binaryPath": "/usr/local/bin/claude",
-      "defaultModel": "claude-3-7-sonnet-20250219",
-      "timeoutSeconds": 20
+      "defaultModel": "claude-sonnet-4-5-20250929",
+      "timeoutSeconds": 20,
+      "tooling": {
+        "enabledToolGroups": ["app-control"],
+        "instructions": "Allows Hex to expose automation tools so Claude can launch or focus macOS apps when a voice prefix asks for it."
+      }
     }
   ],
   "stacks": [
@@ -39,6 +43,27 @@
               "llm": {
                 "providerID": "provider-claudecode",
                 "promptTemplate": "You are a meticulous copy editor. Clean up the following transcription so it reads naturally—fix grammar, spelling, and punctuation while preserving meaning. Do not add commentary or instructions.\n\n{{input}}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "C2D3E4F5-A6B7-4C89-D012-345678901BCD",
+      "name": "Hex Command",
+      "appliesToBundleIdentifiers": [],
+      "voicePrefixes": ["hex", "x", "hacks", "acts"],
+      "pipeline": {
+        "isEnabled": true,
+        "transformations": [
+          {
+            "id": "D3E4F5A6-B7C8-4D90-1234-56789ABCDEF0",
+            "isEnabled": true,
+            "type": {
+              "llm": {
+                "providerID": "provider-claudecode",
+                "promptTemplate": "You are Hex's on-device automation assistant. The input is a user command that already had the voice prefix removed.\n\nIf the user asks to open, launch, or switch to an app, call the `app-control` tool `openApplication` with JSON arguments such as {\"bundleIdentifier\":\"com.apple.Safari\",\"activate\":true}. Use these bundle IDs when obvious: Safari=com.apple.Safari, Chrome=com.google.Chrome, Messages=com.apple.MobileSMS, Mail=com.apple.mail, Notes=com.apple.Notes.\n\nOnly after running the necessary tools (or determining none are needed) reply with a brief confirmation or answer. Never suggest shell commands or tell the user to do it themselves—use the provided tools whenever possible. Output ONLY the final answer/confirmation—no extra commentary.\n\n{{input}}"
               }
             }
           }
