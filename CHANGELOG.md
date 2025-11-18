@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.10
+
+### Patch Changes
+
+- 3560bdb: Keep hotkeys alive on Sequoia and add voice force-quit plus Advanced log export (#122 #124)
+
 ## 0.5.9
 
 ### Patch Changes
