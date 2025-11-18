@@ -191,10 +191,12 @@ extension TransformationType {
 public struct LLMTransformationConfig: Codable, Equatable, Sendable {
 	public var providerID: String
 	public var promptTemplate: String
-	
-	public init(providerID: String, promptTemplate: String) {
+	public var tooling: LLMProvider.ToolingConfiguration?
+
+	public init(providerID: String, promptTemplate: String, tooling: LLMProvider.ToolingConfiguration? = nil) {
 		self.providerID = providerID
 		self.promptTemplate = promptTemplate
+		self.tooling = tooling
 	}
 	
 	public var shortDescription: String {

@@ -58,7 +58,7 @@ struct TextTransformationView: View {
 			.padding()
 
 			// Modes list
-			if store.textTransformations.stacks.isEmpty {
+			if store.textTransformations.modes.isEmpty {
 				ContentUnavailableView(
 					"No Modes",
 					systemImage: "wand.and.stars",
@@ -66,7 +66,7 @@ struct TextTransformationView: View {
 				)
 			} else {
 				List {
-					ForEach(store.textTransformations.stacks) { mode in
+					ForEach(store.textTransformations.modes) { mode in
 						ModeRow(mode: mode, providers: store.textTransformations.providers)
 					}
 				}
@@ -110,20 +110,23 @@ Schema essentials:
 - `providers` currently supports only `claude_code` (binary path + default model).
 - Add `tooling.enabledToolGroups` when Claude should call Hex's MCP tools, and include a short `instructions` note so future editors understand why tools are enabled.
   • Current tool groups:
-    – `app-control`: launch or focus macOS apps via bundle ID (Hex exposes the `openApplication` tool)
-- `stacks` is an ordered list with flexible matching:
+    – `app-control`: launch or focus apps via bundle ID and open URLs (`openApplication`, `openURL`)
+    – `app-discovery`: list installed apps + bundle identifiers via `listApplications`
+    – `context`: fetch selected text or the clipboard without disturbing the user (`getSelectedText`, `getClipboardText`)
+- `modes` is an ordered list with flexible matching:
   • `voicePrefix`: Trigger by saying prefix (e.g., "hex, what's 2+2?")
   • `appliesToBundleIdentifiers`: Match by app bundle ID
   • Precedence: prefix+bundle > prefix alone > bundle alone > general fallback
 - Matching is case-insensitive and multiple bundle IDs are allowed (Messages uses `com.apple.MobileSMS`, older builds use `com.apple.iChat`).
 - Each `pipeline` contains ordered `transformations`; `.llm` steps require a `providerID` and a `promptTemplate` that includes `{{input}}`.
 - Voice prefix input is automatically stripped before processing (e.g., "hex, calculate 10+5" → "calculate 10+5").
+- When a transformation issues an obvious action (opening/focusing apps or URLs), instruct the LLM to return an empty string unless the user explicitly asked for a textual response so Hex doesn't paste filler text.
 
 When editing via an LLM:
 1. Always load the file, modify JSON structurally, and write it back intact.
-2. Preserve existing IDs unless you intentionally add a new stack/transformation.
-3. Favor adding bundle IDs (e.g., both `com.apple.MobileSMS` and `com.apple.iChat`) instead of renaming stacks.
-4. Prompts should be concise, privacy-safe, and explicit about output format; if a stack expects tool usage, mention which tool group it relies on and what the tool does (e.g., "use the app-control openApplication tool to launch apps before answering").
+2. Preserve existing IDs unless you intentionally add a new mode/transformation.
+3. Favor adding bundle IDs (e.g., both `com.apple.MobileSMS` and `com.apple.iChat`) instead of renaming modes.
+4. Prompts should be concise, privacy-safe, and explicit about output format; if a mode expects tool usage, mention which tool group(s) it relies on and what each tool does (e.g., "use the app-control tools to open Safari, app-discovery:listApplications to find bundle IDs, and context:getSelectedText to read highlighted text").
 5. For voice-activated commands, set `voicePrefix` (e.g., "hex") and ensure the prompt instructs Claude to output only the answer.
 
 This guide can be handed to an assistant with the request: "Edit the Hex text transformation config per the user's instructions."
@@ -132,7 +135,7 @@ This guide can be handed to an assistant with the request: "Edit the Hex text tr
 }
 
 struct ModeRow: View {
-	let mode: TransformationStack
+	let mode: TransformationMode
 	let providers: [LLMProvider]
 	
 	// Extract unique tool groups from all LLM transformations in this mode

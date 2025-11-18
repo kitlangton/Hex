@@ -9,7 +9,7 @@ typealias TextTransformationPipeline = HexCore.TextTransformationPipeline
 typealias Transformation = HexCore.Transformation
 typealias TransformationType = HexCore.TransformationType
 typealias ReplaceTextConfig = HexCore.ReplaceTextConfig
-typealias TransformationStack = HexCore.TransformationStack
+typealias TransformationMode = HexCore.TransformationMode
 typealias LLMProvider = HexCore.LLMProvider
 
 extension SharedReaderKey

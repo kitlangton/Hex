@@ -402,29 +402,29 @@ private extension TranscriptionFeature {
     // Debug logging
     transcriptionFeatureLogger.info("Raw transcription: '\(result)'")
     let bundleID = state.sourceAppBundleID
-    let stacks = state.textTransformations.stacks
+    let modes = state.textTransformations.modes
     transcriptionFeatureLogger.info("Source app bundle ID: \(bundleID ?? "nil")")
-    transcriptionFeatureLogger.info("Available stacks: \(stacks.map { "\($0.name) (apps: \($0.appliesToBundleIdentifiers))" })")
+    transcriptionFeatureLogger.info("Available modes: \(modes.map { "\($0.name) (apps: \($0.appliesToBundleIdentifiers))" })")
 
-    // Stack selection
-    let resolution = state.textTransformations.resolveStack(for: result, bundleIdentifier: bundleID)
-    let selectedStack = resolution.stack
+    // Mode selection
+    let resolution = state.textTransformations.resolveMode(for: result, bundleIdentifier: bundleID)
+    let selectedMode = resolution.mode
     let processedResult = resolution.strippedText
 
     if let prefix = resolution.matchedPrefix {
         if resolution.matchedBundleID {
-            transcriptionFeatureLogger.info("✓ Voice prefix + bundle ID matched: '\(selectedStack?.name ?? "")' (prefix: '\(prefix)', bundle: \(bundleID ?? ""))")
+            transcriptionFeatureLogger.info("✓ Voice prefix + bundle ID matched: '\(selectedMode?.name ?? "")' (prefix: '\(prefix)', bundle: \(bundleID ?? ""))")
         } else {
-            transcriptionFeatureLogger.info("✓ Voice prefix matched: '\(selectedStack?.name ?? "")' (prefix: '\(prefix)')")
+            transcriptionFeatureLogger.info("✓ Voice prefix matched: '\(selectedMode?.name ?? "")' (prefix: '\(prefix)')")
         }
         transcriptionFeatureLogger.info("  Stripped text: '\(String(processedResult.prefix(50)))...'")
-    } else if let stack = selectedStack {
-        transcriptionFeatureLogger.info("✓ Bundle ID matched: '\(stack.name)' (apps: \(stack.appliesToBundleIdentifiers))")
+    } else if let mode = selectedMode {
+        transcriptionFeatureLogger.info("✓ Bundle ID matched: '\(mode.name)' (apps: \(mode.appliesToBundleIdentifiers))")
     } else {
-        transcriptionFeatureLogger.warning("No stack selected, using empty pipeline")
+        transcriptionFeatureLogger.warning("No mode selected, using empty pipeline")
     }
 
-    let pipeline = selectedStack?.pipeline ?? state.textTransformations.pipeline(for: bundleID)
+    let pipeline = selectedMode?.pipeline ?? state.textTransformations.pipeline(for: bundleID)
     let providers = state.textTransformations.providers
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName

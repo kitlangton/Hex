@@ -1,6 +1,6 @@
 import Foundation
 
-public struct TransformationStack: Codable, Equatable, Identifiable, Sendable {
+public struct TransformationMode: Codable, Equatable, Identifiable, Sendable {
 	public var id: UUID
 	public var name: String
 	public var pipeline: TextTransformationPipeline
@@ -56,65 +56,73 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
 	public static let currentSchemaVersion = 3
 	
 	public var schemaVersion: Int
-	public var stacks: [TransformationStack]
+	public var modes: [TransformationMode]
 	public var providers: [LLMProvider]
-	public var lastSelectedStackID: UUID?
+	public var lastSelectedModeID: UUID?
 	
 	public init(
-		stacks: [TransformationStack] = [],
+		modes: [TransformationMode] = [],
 		providers: [LLMProvider] = [],
-		lastSelectedStackID: UUID? = nil,
+		lastSelectedModeID: UUID? = nil,
 		schemaVersion: Int = TextTransformationsState.currentSchemaVersion
 	) {
-		let resolvedStacks = stacks.isEmpty ? [TransformationStack(name: "General", pipeline: .init())] : stacks
-		self.stacks = resolvedStacks
+		let resolvedModes = modes.isEmpty ? [TransformationMode(name: "General", pipeline: .init())] : modes
+		self.modes = resolvedModes
 		self.providers = providers
 		self.schemaVersion = schemaVersion
-		self.lastSelectedStackID = lastSelectedStackID ?? fallbackStackID(in: resolvedStacks)
+		self.lastSelectedModeID = lastSelectedModeID ?? fallbackModeID(in: resolvedModes)
 	}
 	
 	private enum CodingKeys: String, CodingKey {
 		case schemaVersion
-		case stacks
+		case modes
+		case stacks // legacy
 		case providers
-		case lastSelectedStackID
+		case lastSelectedModeID
+		case lastSelectedStackID // legacy
 		case pipeline // legacy
 	}
 	
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		let version = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
-		let stacks: [TransformationStack]
+		let modes: [TransformationMode]
 		if version < 2 {
 			let legacyPipeline = try container.decodeIfPresent(TextTransformationPipeline.self, forKey: .pipeline) ?? .init()
-			stacks = [TransformationStack(name: "General", pipeline: legacyPipeline)]
+			modes = [TransformationMode(name: "General", pipeline: legacyPipeline)]
 		} else {
-			stacks = try container.decodeIfPresent([TransformationStack].self, forKey: .stacks) ?? []
+			// Support both old "stacks" and new "modes" keys
+			if let decodedModes = try container.decodeIfPresent([TransformationMode].self, forKey: .modes) {
+				modes = decodedModes
+			} else {
+				modes = try container.decodeIfPresent([TransformationMode].self, forKey: .stacks) ?? []
+			}
 		}
 		let providers: [LLMProvider] = version >= 3 ? (try container.decodeIfPresent([LLMProvider].self, forKey: .providers) ?? []) : []
-		let selected = try container.decodeIfPresent(UUID.self, forKey: .lastSelectedStackID)
-		self.init(stacks: stacks, providers: providers, lastSelectedStackID: selected, schemaVersion: max(version, TextTransformationsState.currentSchemaVersion))
+		// Support both old and new selected ID keys
+		let selected = try container.decodeIfPresent(UUID.self, forKey: .lastSelectedModeID) ?? container.decodeIfPresent(UUID.self, forKey: .lastSelectedStackID)
+		self.init(modes: modes, providers: providers, lastSelectedModeID: selected, schemaVersion: max(version, TextTransformationsState.currentSchemaVersion))
 	}
 	
 	public func encode(to encoder: Encoder) throws {
 		var container = encoder.container(keyedBy: CodingKeys.self)
 		try container.encode(TextTransformationsState.currentSchemaVersion, forKey: .schemaVersion)
-		try container.encode(stacks, forKey: .stacks)
+		try container.encode(modes, forKey: .modes)
 		try container.encode(providers, forKey: .providers)
-		try container.encodeIfPresent(lastSelectedStackID, forKey: .lastSelectedStackID)
+		try container.encodeIfPresent(lastSelectedModeID, forKey: .lastSelectedModeID)
 	}
 	
-	public func stack(with id: UUID?) -> TransformationStack? {
+	public func mode(with id: UUID?) -> TransformationMode? {
 		guard let id else { return nil }
-		return stacks.first(where: { $0.id == id })
+		return modes.first(where: { $0.id == id })
 	}
 	
-	public func orderedStacks(for bundleIdentifier: String?) -> [TransformationStack] {
+	public func orderedModes(for bundleIdentifier: String?) -> [TransformationMode] {
 		let lowered = bundleIdentifier?.lowercased()
-		let matching = stacks.enumerated().compactMap { index, stack -> (TransformationStack, Int, Int)? in
+		let matching = modes.enumerated().compactMap { index, mode -> (TransformationMode, Int, Int)? in
 			guard let lowered else { return nil }
-			let matches = stack.appliesToBundleIdentifiers.filter { $0.lowercased() == lowered }.count
-			return matches > 0 ? (stack, matches, index) : nil
+			let matches = mode.appliesToBundleIdentifiers.filter { $0.lowercased() == lowered }.count
+			return matches > 0 ? (mode, matches, index) : nil
 		}
 		.sorted { lhs, rhs in
 			if lhs.1 == rhs.1 {
@@ -127,18 +135,18 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
 		if !matching.isEmpty {
 			return matching
 		}
-		let general = stacks.filter { $0.appliesToBundleIdentifiers.isEmpty }
-		return general.isEmpty ? stacks : general
+		let general = modes.filter { $0.appliesToBundleIdentifiers.isEmpty }
+		return general.isEmpty ? modes : general
 	}
 	
-	public func stack(for bundleIdentifier: String?) -> TransformationStack? {
-		orderedStacks(for: bundleIdentifier).first
+	public func mode(for bundleIdentifier: String?) -> TransformationMode? {
+		orderedModes(for: bundleIdentifier).first
 	}
 	
-	/// Returns stack and stripped text if voice prefix matches
-	public func stackByVoicePrefix(text: String) -> (stack: TransformationStack, strippedText: String, matchedPrefix: String)? {
-		for stack in stacks {
-			for prefix in stack.voicePrefixes {
+	/// Returns mode and stripped text if voice prefix matches
+	public func modeByVoicePrefix(text: String) -> (mode: TransformationMode, strippedText: String, matchedPrefix: String)? {
+		for mode in modes {
+			for prefix in mode.voicePrefixes {
 				let trimmedPrefix = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
 				guard !trimmedPrefix.isEmpty else { continue }
 				
@@ -148,7 +156,7 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
 				   let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) {
 					let matchRange = Range(match.range, in: text)!
 					let strippedText = String(text[matchRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-					return (stack, strippedText, trimmedPrefix)
+					return (mode, strippedText, trimmedPrefix)
 				}
 			}
 		}
@@ -156,56 +164,56 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
 	}
 	
 	public func pipeline(for bundleIdentifier: String?) -> TextTransformationPipeline {
-		stack(for: bundleIdentifier)?.pipeline ?? TextTransformationPipeline()
+		mode(for: bundleIdentifier)?.pipeline ?? TextTransformationPipeline()
 	}
 	
 	public func provider(with id: String) -> LLMProvider? {
 		providers.first(where: { $0.id == id })
 	}
 	
-	public mutating func updateStack(id: UUID, mutate: (inout TransformationStack) -> Void) {
-		guard let idx = stacks.firstIndex(where: { $0.id == id }) else { return }
-		mutate(&stacks[idx])
+	public mutating func updateMode(id: UUID, mutate: (inout TransformationMode) -> Void) {
+		guard let idx = modes.firstIndex(where: { $0.id == id }) else { return }
+		mutate(&modes[idx])
 	}
 	
-	public mutating func addStack(named name: String) -> TransformationStack {
-		let stack = TransformationStack(name: name, pipeline: .init())
-		stacks.append(stack)
-		return stack
+	public mutating func addMode(named name: String) -> TransformationMode {
+		let mode = TransformationMode(name: name, pipeline: .init())
+		modes.append(mode)
+		return mode
 	}
 	
-	public mutating func removeStack(id: UUID) {
-		stacks.removeAll { $0.id == id }
-		if lastSelectedStackID == id {
-			lastSelectedStackID = fallbackStackID(in: stacks)
+	public mutating func removeMode(id: UUID) {
+		modes.removeAll { $0.id == id }
+		if lastSelectedModeID == id {
+			lastSelectedModeID = fallbackModeID(in: modes)
 		}
 	}
 	
-	private func fallbackStackID(in stacks: [TransformationStack]) -> UUID? {
-		stacks.first(where: { $0.appliesToBundleIdentifiers.isEmpty })?.id ?? stacks.first?.id
+	private func fallbackModeID(in modes: [TransformationMode]) -> UUID? {
+		modes.first(where: { $0.appliesToBundleIdentifiers.isEmpty })?.id ?? modes.first?.id
 	}
 
     public struct ResolutionResult: Equatable {
-        public var stack: TransformationStack?
+        public var mode: TransformationMode?
         public var strippedText: String
         public var matchedPrefix: String?
         public var matchedBundleID: Bool
     }
 
-    public func resolveStack(for text: String, bundleIdentifier: String?) -> ResolutionResult {
+    public func resolveMode(for text: String, bundleIdentifier: String?) -> ResolutionResult {
         // 1. Check voice prefix
-        if let match = stackByVoicePrefix(text: text) {
-            let prefixStack = match.stack
+        if let match = modeByVoicePrefix(text: text) {
+            let prefixMode = match.mode
             var matchedBundleID = false
             
             if let bundleIdentifier,
-               !prefixStack.appliesToBundleIdentifiers.isEmpty,
-               prefixStack.appliesToBundleIdentifiers.contains(where: { $0.lowercased() == bundleIdentifier.lowercased() }) {
+               !prefixMode.appliesToBundleIdentifiers.isEmpty,
+               prefixMode.appliesToBundleIdentifiers.contains(where: { $0.lowercased() == bundleIdentifier.lowercased() }) {
                 matchedBundleID = true
             }
             
             return ResolutionResult(
-                stack: prefixStack,
+                mode: prefixMode,
                 strippedText: match.strippedText,
                 matchedPrefix: match.matchedPrefix,
                 matchedBundleID: matchedBundleID
@@ -213,12 +221,12 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
         }
         
         // 2. Fallback to Bundle ID match
-        let stack = stack(for: bundleIdentifier)
+        let mode = mode(for: bundleIdentifier)
         return ResolutionResult(
-            stack: stack,
+            mode: mode,
             strippedText: text,
             matchedPrefix: nil,
-            matchedBundleID: stack != nil && !(stack?.appliesToBundleIdentifiers.isEmpty ?? true)
+            matchedBundleID: mode != nil && !(mode?.appliesToBundleIdentifiers.isEmpty ?? true)
         )
     }
 }

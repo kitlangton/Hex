@@ -64,7 +64,7 @@ private struct LogExportClientLive {
   private func collectLogs(lastMinutes minutes: Int) throws -> String {
     let store = try OSLogStore(scope: .currentProcessIdentifier)
     let startDate = Date().addingTimeInterval(-Double(minutes) * 60)
-    let position = try store.position(date: startDate)
+    let position = store.position(date: startDate)
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 

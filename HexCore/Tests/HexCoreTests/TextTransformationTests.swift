@@ -196,21 +196,20 @@ final class TextTransformationTests: XCTestCase {
 	func testStateEncodingIncludesSchemaVersion() throws {
 		var customPipeline = TextTransformationPipeline()
 		customPipeline.transformations = [Transformation(type: .uppercase)]
-		let stack = TransformationStack(name: "Custom", pipeline: customPipeline, isDefault: true)
-		let state = TextTransformationsState(stacks: [stack])
+		let mode = TransformationMode(name: "Custom", pipeline: customPipeline)
+		let state = TextTransformationsState(modes: [mode])
 		let data = try JSONEncoder().encode(state)
 		let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 		let version = jsonObject?["schemaVersion"] as? Int
 		XCTAssertEqual(version, TextTransformationsState.currentSchemaVersion)
 	}
 
-	func testLegacyStateMigratesToStackBasedSchema() throws {
+	func testLegacyStateMigratesToModeBasedSchema() throws {
 		let data = try loadTextTransformationFixture(named: "v0")
 		let decoded = try JSONDecoder().decode(TextTransformationsState.self, from: data)
 		XCTAssertEqual(decoded.schemaVersion, TextTransformationsState.currentSchemaVersion)
-		XCTAssertEqual(decoded.stacks.count, 1)
-		XCTAssertTrue(decoded.stacks[0].isDefault)
-		XCTAssertEqual(decoded.stacks[0].pipeline.transformations.count, 1)
+		XCTAssertEqual(decoded.modes.count, 1)
+		XCTAssertEqual(decoded.modes[0].pipeline.transformations.count, 1)
 	}
 
 	func testPipelineSelectionPrefersMatchingBundle() {
@@ -218,14 +217,13 @@ final class TextTransformationTests: XCTestCase {
 		bundlePipeline.transformations = [Transformation(type: .addPrefix("[Docs] "))]
 		var defaultPipeline = TextTransformationPipeline()
 		defaultPipeline.transformations = [Transformation(type: .uppercase)]
-		let bundleStack = TransformationStack(
+		let bundleMode = TransformationMode(
 			name: "Docs",
 			pipeline: bundlePipeline,
-			appliesToBundleIdentifiers: ["com.apple.TextEdit"],
-			isDefault: false
+			appliesToBundleIdentifiers: ["com.apple.TextEdit"]
 		)
-		let defaultStack = TransformationStack(name: "Default", pipeline: defaultPipeline, isDefault: true)
-		let state = TextTransformationsState(stacks: [bundleStack, defaultStack])
+		let defaultMode = TransformationMode(name: "Default", pipeline: defaultPipeline)
+		let state = TextTransformationsState(modes: [bundleMode, defaultMode])
 		let selected = state.pipeline(for: "com.apple.TextEdit")
 		XCTAssertEqual(selected.transformations.count, bundlePipeline.transformations.count)
 		let fallback = state.pipeline(for: "com.apple.Mail")

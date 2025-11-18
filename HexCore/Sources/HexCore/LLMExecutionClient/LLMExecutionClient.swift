@@ -1,6 +1,5 @@
 import Dependencies
 import Foundation
-import Logging
 
 public struct LLMExecutionClient: Sendable {
     public var run: @Sendable (
@@ -84,7 +83,9 @@ IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here 
     process.currentDirectoryURL = URL(fileURLWithPath: (workingDir as NSString).expandingTildeInPath)
   }
 
-  let serverConfiguration = provider.tooling?.serverConfiguration()
+  // Prefer transformation-level tooling over provider-level tooling
+  let effectiveTooling = config.tooling ?? provider.tooling
+  let serverConfiguration = effectiveTooling?.serverConfiguration()
   if let groups = serverConfiguration?.enabledToolGroups {
     logger.info("Configuring MCP server with tool groups: \(groups.map(\.rawValue))")
   } else {
@@ -119,7 +120,7 @@ IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here 
     process.arguments?.append(contentsOf: ["--mcp-config", mcpConfigPath.path])
   }
   
-  if let groups = provider.tooling?.enabledToolGroups {
+  if let groups = effectiveTooling?.enabledToolGroups {
     let allowedTools = Set(groups.flatMap { $0.toolIdentifiers })
     if !allowedTools.isEmpty {
       let joined = allowedTools.sorted().joined(separator: ",")

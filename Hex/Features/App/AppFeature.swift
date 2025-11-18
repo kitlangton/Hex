@@ -255,7 +255,7 @@ struct AppFeature {
 
   private func prewarmToolServer() -> Effect<Action> {
     .run { _ in
-      try? await hexToolServer.ensureServer(nil)
+      _ = try? await hexToolServer.ensureServer(nil)
     }
   }
 }
