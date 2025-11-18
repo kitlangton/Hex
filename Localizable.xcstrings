@@ -83,6 +83,9 @@
     "Accuracy" : {
 
     },
+    "Advanced" : {
+
+    },
     "Applies to first matching app (no filters)" : {
 
     },
@@ -336,6 +339,12 @@
         }
       }
     },
+    "Export Logs" : {
+
+    },
+    "Exporting Logs…" : {
+
+    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -411,6 +420,9 @@
     "Input Device" : {
 
     },
+    "Input Monitoring is required so Hex can listen for your hotkey." : {
+
+    },
     "LLM Editing Guide" : {
 
     },
@@ -474,6 +486,9 @@
 
     },
     "Open in Editor" : {
+
+    },
+    "Open Input Monitoring Settings" : {
 
     },
     "Open on Login" : {
@@ -574,6 +589,12 @@
 
     },
     "Save transcriptions and audio recordings for later access" : {
+
+    },
+    "Saved to %@" : {
+
+    },
+    "Saves the last 30 minutes of Hex diagnostics so you can share them with support." : {
 
     },
     "Selected device not connected. System default will be used." : {

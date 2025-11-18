@@ -291,7 +291,7 @@ private extension TranscriptionFeature {
       state.sourceAppBundleID = activeApp.bundleIdentifier
       state.sourceAppName = activeApp.localizedName
     }
-    transcriptionFeatureLogger.notice("Recording started at \(startTime, privacy: .public)")
+    transcriptionFeatureLogger.notice("Recording started at \(startTime.ISO8601Format())")
 
     // Prevent system sleep during recording
     return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
@@ -326,13 +326,13 @@ private extension TranscriptionFeature {
     let minimumKeyTime = state.hexSettings.minimumKeyTime
     let hotkeyHasKey = state.hexSettings.hotkey.key != nil
     transcriptionFeatureLogger.notice(
-      "Recording stopped duration=\(duration, format: .fixed(precision: 3))s start=\(startStamp, privacy: .public) stop=\(stopStamp, privacy: .public) decision=\(String(describing: decision), privacy: .public) minimumKeyTime=\(minimumKeyTime, format: .fixed(precision: 2)) hotkeyHasKey=\(hotkeyHasKey, privacy: .public)"
+      "Recording stopped duration=\(String(format: "%.3f", duration))s start=\(startStamp) stop=\(stopStamp) decision=\(String(describing: decision)) minimumKeyTime=\(String(format: "%.2f", minimumKeyTime)) hotkeyHasKey=\(hotkeyHasKey)"
     )
 
     guard decision == .proceedToTranscription else {
       // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
       // discard the audio to avoid accidental triggers.
-      transcriptionFeatureLogger.notice("Discarding short recording per decision \(String(describing: decision), privacy: .public)")
+      transcriptionFeatureLogger.notice("Discarding short recording per decision \(String(describing: decision))")
       return .run { _ in
         let url = await recording.stopRecording()
         try? FileManager.default.removeItem(at: url)
@@ -367,10 +367,10 @@ private extension TranscriptionFeature {
         
         let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
         
-        transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent, privacy: .public) to text length \(result.count, privacy: .public)")
+        transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
         await send(.transcriptionResult(result, capturedURL))
       } catch {
-        transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription, privacy: .public)")
+        transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
         await send(.transcriptionError(error, audioURL))
       }
     }
@@ -397,7 +397,7 @@ private extension TranscriptionFeature {
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
     // Debug logging
-    transcriptionFeatureLogger.info("Raw transcription: '\(result, privacy: .public)'")
+    transcriptionFeatureLogger.info("Raw transcription: '\(result)'")
     let bundleID = state.sourceAppBundleID
     let stacks = state.textTransformations.stacks
     transcriptionFeatureLogger.info("Source app bundle ID: \(bundleID ?? "nil")")
@@ -651,7 +651,7 @@ IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here 
 """
   
   transcriptionFeatureLogger.info("Found provider: \(provider.id), binary: \(binaryPath)")
-  transcriptionFeatureLogger.debug("Sending prompt to LLM (first 200 chars): \(String(wrappedPrompt.prefix(200)), privacy: .public)")
+  transcriptionFeatureLogger.debug("Sending prompt to LLM (first 200 chars): \(String(wrappedPrompt.prefix(200)))")
 
   let process = Process()
   process.executableURL = URL(fileURLWithPath: binaryPath)

@@ -30,7 +30,7 @@ public struct TextTransformationPipeline: Codable, Equatable, Sendable {
 				do {
 					currentText = try await executor.runLLM(config, currentText)
 				} catch {
-					HexLog.transcription.error("LLM transformation failed: \(error.localizedDescription, privacy: .public)")
+					HexLog.transcription.error("LLM transformation failed: \(error.localizedDescription)")
 					continue
 				}
 			default:
