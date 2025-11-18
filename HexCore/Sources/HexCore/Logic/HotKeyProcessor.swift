@@ -10,52 +10,136 @@ import SwiftUI
 
 private let hotKeyLogger = HexLog.hotKey
 
-/// Implements both "Press-and-Hold" and "Double-Tap Lock" in a single state machine.
+/// A state machine that processes keyboard events to detect hotkey activations.
 ///
-/// Double-tap logic:
-/// - A "tap" is recognized if we see chord == hotkey => chord != hotkey quickly.
-/// - We track the **release time** of each tap in `lastTapAt`.
-/// - On the second release, if the time since the prior release is < `doubleTapThreshold`,
-///   we switch to .doubleTapLock instead of stopping.
-///   (No new .startRecording output — we remain in a locked recording state.)
+/// Implements two complementary recording modes:
+/// 1. **Press-and-Hold**: Start recording when hotkey is pressed, stop when released
+/// 2. **Double-Tap Lock**: Quick double-tap locks recording until hotkey is pressed again
 ///
-/// Press-and-Hold logic remains the same:
-/// - If chord == hotkey while idle => .startRecording => state=.pressAndHold.
-/// - If, within 1 second, the user changes chord => .stopRecording => idle => dirty
-///   so we don't instantly re-match mid-press.
-/// - If the user "releases" the hotkey chord => .stopRecording => idle => track release time.
-///   That release time is used to detect a second quick tap => possible doubleTapLock.
+/// # Architecture
 ///
-/// Additional details:
-/// - For modifier-only hotkeys, "release" is chord = (key:nil, modifiers:[]).
-/// - Pressing ESC => immediate .cancel => resetToIdle().
-/// - "Dirty" logic is unchanged from the prior iteration, so we still ignore any chord
-///   until the user fully releases (key:nil, modifiers:[]).
+/// The processor maintains three possible states:
+/// - `.idle`: Waiting for hotkey activation
+/// - `.pressAndHold(startTime)`: Recording active, will stop when hotkey released
+/// - `.doubleTapLock`: Recording locked, requires explicit hotkey press to stop
 ///
-/// Mouse click cancellation:
-/// - For modifier-only hotkeys in pressAndHold or doubleTapLock state, a mouse click
-///   will trigger .cancel to prevent accidental transcription during Option+click to duplicate, etc.
-
+/// # Double-Tap Detection
+///
+/// A "tap" is a quick press-and-release sequence. The processor tracks release times:
+/// - First tap: Press hotkey → release → record release time
+/// - Second tap: If pressed within `doubleTapThreshold` (0.3s), enters `.doubleTapLock`
+/// - The lock persists until the user presses the hotkey again or presses ESC
+///
+/// # Press-and-Hold Behavior
+///
+/// Standard recording mode:
+/// - Hotkey pressed → `.startRecording` output, enter `.pressAndHold` state
+/// - Hotkey released → `.stopRecording` output, return to `.idle`
+/// - Different key pressed within threshold → cancel (accidental activation prevention)
+/// - Different key pressed after threshold → ignored (intentional simultaneous input)
+///
+/// # Modifier-Only Hotkey Specifics
+///
+/// For hotkeys with no key component (e.g., Option-only):
+/// - "Press" = all required modifiers held, no key pressed
+/// - "Release" = any required modifier released
+/// - Uses higher minimum duration (0.3s) to prevent conflicts with OS shortcuts
+/// - Mouse clicks within threshold → silent discard (prevents Option+click conflicts)
+/// - After threshold, only ESC cancels (mouse clicks ignored)
+///
+/// # Dirty State & Backsliding Prevention
+///
+/// After cancellation or with extra modifiers, processor enters "dirty" state:
+/// - All input ignored until full release (key:nil, modifiers:[])
+/// - Prevents accidental re-triggering during complex key combinations
+/// - User cannot "backslide" into hotkey by releasing extra modifiers
+///
+/// # ESC Key Handling
+///
+/// Pressing ESC always cancels active recordings:
+/// - Returns `.cancel` output (plays cancel sound)
+/// - Enters dirty state to prevent immediate re-triggering
+/// - Works in both `.pressAndHold` and `.doubleTapLock` states
+///
+/// # Example Interaction Flow
+///
+/// ```
+/// // Simple press-and-hold (Cmd+A hotkey)
+/// Event: Cmd+A pressed   → Output: .startRecording, State: .pressAndHold
+/// Event: Cmd released    → Output: .stopRecording, State: .idle
+///
+/// // Double-tap lock (Option hotkey)
+/// Event: Option pressed  → Output: .startRecording, State: .pressAndHold
+/// Event: Option released → Output: .stopRecording, State: .idle
+/// Event: Option pressed  → Output: .startRecording, State: .pressAndHold
+/// Event: Option released → Output: nil, State: .doubleTapLock (locked!)
+/// Event: Option pressed  → Output: .stopRecording, State: .idle
+///
+/// // Accidental trigger prevention
+/// Event: Cmd+A pressed         → Output: .startRecording, State: .pressAndHold
+/// Event: Cmd+B pressed (0.1s)  → Output: .stopRecording, State: .idle (different key)
+/// ```
+///
+/// # Related Components
+///
+/// - `RecordingDecisionEngine`: Determines if recording duration meets minimum thresholds
+/// - `KeyEvent`: Input events from keyboard monitoring
+/// - `HotKey`: Configuration of which key/modifiers to detect
+///
 public struct HotKeyProcessor {
     @Dependency(\.date.now) var now
 
+    // MARK: - Configuration
+    
+    /// The hotkey combination to detect (key + modifiers)
     public var hotkey: HotKey
+    
+    /// If true, only double-tap activates recording (press-and-hold disabled)
+    /// Only applies to key+modifier hotkeys; modifier-only always allows press-and-hold
     public var useDoubleTapOnly: Bool = false
+    
+    /// Minimum duration before very quick taps are considered valid
+    /// For modifier-only hotkeys, this is overridden to 0.3s minimum
     public var minimumKeyTime: TimeInterval = 0.15
 
+    // MARK: - State
+    
+    /// Current state of the processor
     public private(set) var state: State = .idle
-    private var lastTapAt: Date? // Time of the most recent release
+    
+    /// Timestamp of the most recent hotkey release (for double-tap detection)
+    private var lastTapAt: Date?
+    
+    /// When true, all input is ignored until full keyboard release
+    /// Prevents accidental re-triggering after cancellation or during complex key combos
     private var isDirty: Bool = false
 
-    public static let doubleTapThreshold: TimeInterval = 0.3
-    public static let pressAndHoldCancelThreshold: TimeInterval = 1.0
+    // MARK: - Timing Thresholds
+    
+    /// Maximum time between two taps to be considered a double-tap (0.3 seconds)
+    /// Chosen to feel responsive while avoiding accidental double-taps
+    public static let doubleTapThreshold: TimeInterval = HexCoreConstants.doubleTapWindow
+    
+    /// Time window for canceling press-and-hold on different key press (1 second)
+    /// For key+modifier hotkeys: different key within 1s = accidental, after 1s = intentional
+    public static let pressAndHoldCancelThreshold: TimeInterval = HexCoreConstants.pressAndHoldCancelWindow
 
-    public init(hotkey: HotKey, useDoubleTapOnly: Bool = false, minimumKeyTime: TimeInterval = 0.15) {
+    // MARK: - Initialization
+    
+    /// Creates a new hotkey processor
+    /// - Parameters:
+    ///   - hotkey: The key combination to detect
+    ///   - useDoubleTapOnly: If true, disables press-and-hold for key+modifier hotkeys
+    ///   - minimumKeyTime: Minimum duration for valid key press (overridden to modifierOnlyMinimumDuration for modifier-only)
+    public init(hotkey: HotKey, useDoubleTapOnly: Bool = false, minimumKeyTime: TimeInterval = HexCoreConstants.defaultMinimumKeyTime) {
         self.hotkey = hotkey
         self.useDoubleTapOnly = useDoubleTapOnly
         self.minimumKeyTime = minimumKeyTime
     }
 
+    // MARK: - Public API
+    
+    /// Returns true if recording is currently active (press-and-hold or double-tap locked)
     public var isMatched: Bool {
         switch state {
         case .idle:
@@ -65,6 +149,16 @@ public struct HotKeyProcessor {
         }
     }
 
+    /// Processes a keyboard event and returns an action to take, if any.
+    ///
+    /// - Parameter keyEvent: The keyboard event containing key and modifier state
+    /// - Returns: An output action (.startRecording, .stopRecording, .cancel, .discard) or nil if no action needed
+    ///
+    /// # Event Processing Order
+    /// 1. ESC key → immediate cancellation
+    /// 2. Dirty state check → ignore input until full release
+    /// 3. Matching chord → handle as hotkey press
+    /// 4. Non-matching chord → handle as release or different key
     public mutating func process(keyEvent: KeyEvent) -> Output? {
         // 1) ESC => immediate cancel
         if keyEvent.key == .escape {
@@ -98,8 +192,21 @@ public struct HotKeyProcessor {
         }
     }
 
-    /// Process a mouse click event. For modifier-only hotkeys in an active recording state,
-    /// this will cancel/discard the recording to prevent accidental transcription during Option+click, etc.
+    /// Processes a mouse click event to prevent accidental recordings.
+    ///
+    /// For modifier-only hotkeys, mouse clicks can interfere with recording:
+    /// - Option+click = duplicate items in Finder
+    /// - Cmd+click = open in new tab
+    /// - etc.
+    ///
+    /// This method discards recordings that haven't passed the minimum threshold yet.
+    ///
+    /// - Returns: `.discard` if recording canceled, nil if click ignored
+    ///
+    /// # Behavior
+    /// - Modifier-only hotkeys: Discard if within threshold, ignore after threshold
+    /// - Key+modifier hotkeys: Always ignore (no conflict with mouse clicks)
+    /// - Double-tap lock: Always ignore (intentional recording, only ESC cancels)
     public mutating func processMouseClick() -> Output? {
         // Only cancel if:
         // 1. The hotkey is modifier-only (no key component)
@@ -137,25 +244,53 @@ public struct HotKeyProcessor {
 // MARK: - State & Output
 
 public extension HotKeyProcessor {
+    /// Represents the current state of hotkey detection
     enum State: Equatable {
+        /// Idle, waiting for hotkey activation
         case idle
+        
+        /// Press-and-hold recording active
+        /// - Parameter startTime: When the hotkey was first pressed (for duration calculation)
         case pressAndHold(startTime: Date)
+        
+        /// Double-tap lock active - recording continues until explicit stop
         case doubleTapLock
     }
 
+    /// Actions to take in response to keyboard events
     enum Output: Equatable {
+        /// Begin a new recording session
         case startRecording
+        
+        /// Stop the current recording and process audio
         case stopRecording
-        case cancel  // Explicit cancellation (ESC key) - plays cancel sound
-        case discard // Quick/accidental cancellation - silent
+        
+        /// Explicit user cancellation via ESC key
+        /// Plays cancel sound to provide feedback
+        case cancel
+        
+        /// Silent discard of accidental/short activation
+        /// Used for very quick taps or mouse click conflicts
+        case discard
     }
 }
 
 // MARK: - Core Logic
 
 extension HotKeyProcessor {
-    /// If we are idle and see chord == hotkey => pressAndHold (or potentially normal).
-    /// We do *not* lock on second press. That is deferred until the second release.
+    /// Handles keyboard events that match the configured hotkey.
+    ///
+    /// # State Transitions
+    /// - `.idle` → `.pressAndHold`: Start new recording (unless useDoubleTapOnly mode)
+    /// - `.pressAndHold` → no change: Already recording, ignore
+    /// - `.doubleTapLock` → `.idle`: User pressed hotkey to stop locked recording
+    ///
+    /// # Double-Tap Only Mode
+    /// For key+modifier hotkeys with useDoubleTapOnly enabled:
+    /// - First press: Record timestamp but don't start recording
+    /// - Wait for quick release and second press to actually start
+    ///
+    /// - Returns: `.startRecording` when entering press-and-hold, `.stopRecording` when exiting lock
     private mutating func handleMatchingChord() -> Output? {
         switch state {
         case .idle:
@@ -182,7 +317,26 @@ extension HotKeyProcessor {
         }
     }
 
-    /// Called when chord != hotkey. We check if user is "releasing" or "typing something else".
+    /// Handles keyboard events that don't match the configured hotkey.
+    ///
+    /// This method detects:
+    /// 1. **Hotkey release**: User lifted the hotkey (transition to idle or double-tap lock)
+    /// 2. **Different key press**: User pressed a different key while holding hotkey (potential cancel)
+    /// 3. **Extra modifiers**: User added modifiers beyond hotkey requirements (potential cancel)
+    ///
+    /// # Cancel Behavior
+    /// Different keys/modifiers are handled based on timing and hotkey type:
+    ///
+    /// **Modifier-only hotkeys:**
+    /// - Within threshold (0.3s): Discard silently (accidental trigger, e.g., Option+click)
+    /// - After threshold: Ignore completely, keep recording (only ESC cancels)
+    ///
+    /// **Key+modifier hotkeys:**
+    /// - Within 1s: Stop recording (likely accidental)
+    /// - After 1s: Ignore, keep recording (intentional simultaneous input)
+    ///
+    /// - Parameter e: The non-matching keyboard event
+    /// - Returns: Recording control output or nil
     private mutating func handleNonmatchingChord(_ e: KeyEvent) -> Output? {
         switch state {
         case .idle:
@@ -265,6 +419,14 @@ extension HotKeyProcessor {
 
     // MARK: - Helpers
 
+    /// Checks if the given keyboard event exactly matches the configured hotkey.
+    ///
+    /// # Matching Rules
+    /// - **Key+modifier hotkey**: Both key and modifiers must match exactly
+    /// - **Modifier-only hotkey**: Modifiers match exactly and no key is pressed
+    ///
+    /// - Parameter e: The keyboard event to check
+    /// - Returns: True if event matches hotkey configuration
     private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
         if hotkey.key != nil {
             return e.key == hotkey.key && e.modifiers.matchesExactly(hotkey.modifiers)
@@ -273,7 +435,17 @@ extension HotKeyProcessor {
         }
     }
 
-    /// "Dirty" if chord includes any extra modifiers or a different key.
+    /// Checks if keyboard event contains extra keys/modifiers that should trigger dirty state.
+    ///
+    /// "Dirty" means the user is doing something unrelated to our hotkey, so we should
+    /// ignore all input until they fully release the keyboard.
+    ///
+    /// # Dirty Conditions
+    /// - **Modifier-only hotkey**: Any key press OR extra modifiers beyond requirements
+    /// - **Key+modifier hotkey**: Different key OR modifiers not subset of requirements
+    ///
+    /// - Parameter e: The keyboard event to check
+    /// - Returns: True if event should trigger dirty state
     private func chordIsDirty(_ e: KeyEvent) -> Bool {
         if hotkey.key == nil {
             // Any key press while watching pure-modifier hotkey is "dirty"
@@ -285,12 +457,33 @@ extension HotKeyProcessor {
         return !isSubset || isWrongKey
     }
 
+    /// Checks if all keys and modifiers have been released.
+    ///
+    /// Used to clear dirty state - once user fully releases keyboard,
+    /// we can start accepting hotkey input again.
+    ///
+    /// - Parameter e: The keyboard event to check
+    /// - Returns: True if no keys or modifiers are pressed
     private func chordIsFullyReleased(_ e: KeyEvent) -> Bool {
         e.key == nil && e.modifiers.isEmpty
     }
 
-    /// For a key+modifier hotkey, "release" => same modifiers, no key.
-    /// For a modifier-only hotkey, "release" => no modifiers at all.
+    /// Detects if user has released the active hotkey.
+    ///
+    /// Release detection differs based on hotkey type:
+    ///
+    /// # Key+Modifier Hotkey (e.g., Cmd+A)
+    /// "Release" = key is lifted, modifiers may still be held
+    /// - Allows partial modifier release before key release
+    /// - User can lift Cmd slightly early without affecting detection
+    ///
+    /// # Modifier-Only Hotkey (e.g., Option)
+    /// "Release" = required modifiers no longer pressed
+    /// - Detects when user lifts the specific modifier(s)
+    /// - Key must be nil (no key component in hotkey)
+    ///
+    /// - Parameter e: The keyboard event to check
+    /// - Returns: True if hotkey has been released
     private func isReleaseForActiveHotkey(_ e: KeyEvent) -> Bool {
         if hotkey.key != nil {
             let requiredModifiers = hotkey.modifiers
@@ -313,7 +506,14 @@ extension HotKeyProcessor {
         }
     }
 
-    /// Clear state but preserve `isDirty` if the caller has just set it.
+    /// Resets processor to idle state, clearing active recording state.
+    ///
+    /// Preserves `isDirty` flag if caller has set it, allowing dirty state
+    /// to persist across state transitions for proper input blocking.
+    ///
+    /// Clears:
+    /// - `state` → `.idle`
+    /// - `lastTapAt` → nil (double-tap timing reset)
     private mutating func resetToIdle() {
         state = .idle
         lastTapAt = nil

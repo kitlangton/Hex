@@ -323,7 +323,7 @@ struct HotKeyProcessorTests {
                 ScenarioStep(time: 0.05, key: nil, modifiers: [],    expectedOutput: nil, expectedIsMatched: false),
                 // Next standalone Fn press should trigger recording
                 ScenarioStep(time: 0.20, key: nil, modifiers: [.fn], expectedOutput: .startRecording, expectedIsMatched: true),
-                // Release Fn should stop recording
+                // Release Fn should stop recording (must exceed modifierOnlyMinimumDuration)
                 ScenarioStep(time: 0.40, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
@@ -343,7 +343,8 @@ struct HotKeyProcessorTests {
                 // Only once the user fully releases and presses Fn again should it start
                 ScenarioStep(time: 0.10, key: nil, modifiers: [],    expectedOutput: nil, expectedIsMatched: false),
                 ScenarioStep(time: 0.25, key: nil, modifiers: [.fn], expectedOutput: .startRecording, expectedIsMatched: true),
-                ScenarioStep(time: 0.45, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
+                // Must exceed modifierOnlyMinimumDuration before stopping
+                ScenarioStep(time: 0.60, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
     }
@@ -696,6 +697,7 @@ struct RecordingDecisionTests {
 
     @Test
     func longPressModifierOnlyProceeds() {
+        // Duration at modifierOnlyMinimumDuration threshold (0.3s)
         let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), duration: 0.3)
         #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
     }
@@ -715,28 +717,28 @@ struct RecordingDecisionTests {
     
     @Test
     func modifierOnly_enforcesMinimumDuration_0_3s() {
-        // User sets minimumKeyTime to 0.1s, but modifier-only should still require 0.3s
+        // User sets minimumKeyTime to 0.1s, but modifier-only enforces modifierOnlyMinimumDuration (0.3s)
         let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.1, duration: 0.25)
         #expect(RecordingDecisionEngine.decide(ctx) == .discardShortRecording)
     }
     
     @Test
     func modifierOnly_proceedsWhenAboveMinimumDuration() {
-        // User sets minimumKeyTime to 0.1s, recording is 0.35s (above 0.3s threshold)
+        // User sets minimumKeyTime to 0.1s, recording is 0.35s (above modifierOnlyMinimumDuration)
         let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.1, duration: 0.35)
         #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
     }
     
     @Test
     func modifierOnly_respectsUserPreferenceWhenHigher() {
-        // User sets minimumKeyTime to 0.5s (higher than 0.3s default)
+        // User sets minimumKeyTime to 0.5s (higher than modifierOnlyMinimumDuration)
         let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.5, duration: 0.4)
         #expect(RecordingDecisionEngine.decide(ctx) == .discardShortRecording)
     }
     
     @Test
     func printableKey_doesNotEnforceModifierOnlyMinimum() {
-        // Printable key hotkeys should use user's minimumKeyTime, not the 0.3s minimum
+        // Printable key hotkeys use user's minimumKeyTime, not modifierOnlyMinimumDuration
         let ctx = makeContext(hotkey: HotKey(key: .a, modifiers: [.command]), minimumKeyTime: 0.1, duration: 0.15)
         #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
     }

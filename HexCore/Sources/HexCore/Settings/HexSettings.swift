@@ -9,7 +9,7 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
-	public static let baseSoundEffectsVolume: Double = 0.2
+	public static let baseSoundEffectsVolume: Double = HexCoreConstants.baseSoundEffectsVolume
 
 	public static var defaultPasteLastTranscriptHotkeyDescription: String {
 		let modifiers = defaultPasteLastTranscriptHotkey.modifiers.sorted.map { $0.stringValue }.joined()
@@ -47,7 +47,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
-		minimumKeyTime: Double = 0.2,
+		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
 		copyToClipboard: Bool = false,
 		useDoubleTapOnly: Bool = false,
 		outputLanguage: String? = nil,
