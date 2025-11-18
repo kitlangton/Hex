@@ -822,9 +822,12 @@ actor RecordingClientLive {
     let recorder = try recorderOrCreate()
 
     if !isRecorderPrimedForNextSession {
+      recordingLogger.notice("Recorder NOT primed, calling prepareToRecord() now")
       guard recorder.prepareToRecord() else {
         throw RecorderPreparationError.failedToPrepareRecorder
       }
+    } else {
+      recordingLogger.notice("Recorder already primed, skipping prepareToRecord()")
     }
 
     isRecorderPrimedForNextSession = false

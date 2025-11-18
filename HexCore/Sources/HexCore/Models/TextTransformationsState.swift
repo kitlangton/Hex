@@ -184,4 +184,41 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
 	private func fallbackStackID(in stacks: [TransformationStack]) -> UUID? {
 		stacks.first(where: { $0.appliesToBundleIdentifiers.isEmpty })?.id ?? stacks.first?.id
 	}
+
+    public struct ResolutionResult: Equatable {
+        public var stack: TransformationStack?
+        public var strippedText: String
+        public var matchedPrefix: String?
+        public var matchedBundleID: Bool
+    }
+
+    public func resolveStack(for text: String, bundleIdentifier: String?) -> ResolutionResult {
+        // 1. Check voice prefix
+        if let match = stackByVoicePrefix(text: text) {
+            let prefixStack = match.stack
+            var matchedBundleID = false
+            
+            if let bundleIdentifier,
+               !prefixStack.appliesToBundleIdentifiers.isEmpty,
+               prefixStack.appliesToBundleIdentifiers.contains(where: { $0.lowercased() == bundleIdentifier.lowercased() }) {
+                matchedBundleID = true
+            }
+            
+            return ResolutionResult(
+                stack: prefixStack,
+                strippedText: match.strippedText,
+                matchedPrefix: match.matchedPrefix,
+                matchedBundleID: matchedBundleID
+            )
+        }
+        
+        // 2. Fallback to Bundle ID match
+        let stack = stack(for: bundleIdentifier)
+        return ResolutionResult(
+            stack: stack,
+            strippedText: text,
+            matchedPrefix: nil,
+            matchedBundleID: stack != nil && !(stack?.appliesToBundleIdentifiers.isEmpty ?? true)
+        )
+    }
 }

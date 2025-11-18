@@ -69,6 +69,8 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.hexToolServer) var hexToolServer
+  @Dependency(\.llmExecution) var llmExecution
+  @Dependency(\.transcriptPersistence) var transcriptPersistence
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -404,38 +406,22 @@ private extension TranscriptionFeature {
     transcriptionFeatureLogger.info("Source app bundle ID: \(bundleID ?? "nil")")
     transcriptionFeatureLogger.info("Available stacks: \(stacks.map { "\($0.name) (apps: \($0.appliesToBundleIdentifiers))" })")
 
-    // Stack selection with precedence:
-    // 1. Voice prefix + bundle ID match (highest)
-    // 2. Voice prefix alone
-    // 3. Bundle ID alone
-    // 4. General fallback
-    var selectedStack: TransformationStack?
-    var processedResult = result
-    
-    let allPrefixes = stacks.flatMap { stack in stack.voicePrefixes.map { "\(stack.name):\($0)" } }.joined(separator: ", ")
-    transcriptionFeatureLogger.info("Checking voice prefixes: \(allPrefixes)")
-    if let prefixMatch = state.textTransformations.stackByVoicePrefix(text: result) {
-      processedResult = prefixMatch.strippedText
-      
-      // Check if prefix-matched stack also matches bundle ID (highest priority)
-      let prefixStack = prefixMatch.stack
-      if let bundleID = bundleID,
-         !prefixStack.appliesToBundleIdentifiers.isEmpty,
-         prefixStack.appliesToBundleIdentifiers.contains(where: { $0.lowercased() == bundleID.lowercased() }) {
-        selectedStack = prefixStack
-        transcriptionFeatureLogger.info("✓ Voice prefix + bundle ID matched: '\(prefixStack.name)' (prefix: '\(prefixMatch.matchedPrefix)', bundle: \(bundleID))")
-      } else {
-        selectedStack = prefixMatch.stack
-        transcriptionFeatureLogger.info("✓ Voice prefix matched: '\(prefixMatch.stack.name)' (prefix: '\(prefixMatch.matchedPrefix)')")
-      }
-      transcriptionFeatureLogger.info("  Stripped text: '\(String(processedResult.prefix(50)))...'")
+    // Stack selection
+    let resolution = state.textTransformations.resolveStack(for: result, bundleIdentifier: bundleID)
+    let selectedStack = resolution.stack
+    let processedResult = resolution.strippedText
+
+    if let prefix = resolution.matchedPrefix {
+        if resolution.matchedBundleID {
+            transcriptionFeatureLogger.info("✓ Voice prefix + bundle ID matched: '\(selectedStack?.name ?? "")' (prefix: '\(prefix)', bundle: \(bundleID ?? ""))")
+        } else {
+            transcriptionFeatureLogger.info("✓ Voice prefix matched: '\(selectedStack?.name ?? "")' (prefix: '\(prefix)')")
+        }
+        transcriptionFeatureLogger.info("  Stripped text: '\(String(processedResult.prefix(50)))...'")
+    } else if let stack = selectedStack {
+        transcriptionFeatureLogger.info("✓ Bundle ID matched: '\(stack.name)' (apps: \(stack.appliesToBundleIdentifiers))")
     } else {
-      selectedStack = state.textTransformations.stack(for: bundleID)
-      if let selectedStack {
-        transcriptionFeatureLogger.info("✓ Bundle ID matched: '\(selectedStack.name)' (apps: \(selectedStack.appliesToBundleIdentifiers))")
-      } else {
         transcriptionFeatureLogger.warning("No stack selected, using empty pipeline")
-      }
     }
 
     let pipeline = selectedStack?.pipeline ?? state.textTransformations.pipeline(for: bundleID)
@@ -463,11 +449,11 @@ private extension TranscriptionFeature {
         let toolServer = hexToolServer
         let executor = TextTransformationPipeline.Executor { config, input in
           transcriptionFeatureLogger.info("Running LLM transformation with provider: \(config.providerID)")
-          return try await runClaudeCode(
-            config: config,
-            input: input,
-            providers: providers,
-            toolServer: toolServer
+          return try await llmExecution.run(
+            config,
+            input,
+            providers,
+            toolServer
           )
         }
         let transformed = await pipeline.process(textToProcess, executor: executor)
@@ -516,28 +502,12 @@ private extension TranscriptionFeature {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
     if hexSettings.saveTranscriptionHistory {
-      let fm = FileManager.default
-      let supportDir = try fm.url(
-        for: .applicationSupportDirectory,
-        in: .userDomainMask,
-        appropriateFor: nil,
-        create: true
-      )
-      let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-      let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
-      try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
-
-      let filename = "\(Date().timeIntervalSince1970).wav"
-      let finalURL = recordingsFolder.appendingPathComponent(filename)
-      try fm.moveItem(at: audioURL, to: finalURL)
-
-      let transcript = Transcript(
-        timestamp: Date(),
-        text: result,
-        audioPath: finalURL,
-        duration: duration,
-        sourceAppBundleID: sourceAppBundleID,
-        sourceAppName: sourceAppName
+      let transcript = try await transcriptPersistence.save(
+        result,
+        audioURL,
+        duration,
+        sourceAppBundleID,
+        sourceAppName
       )
 
       transcriptionHistory.withLock { history in
@@ -546,7 +516,9 @@ private extension TranscriptionFeature {
         if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
           while history.history.count > maxEntries {
             if let removedTranscript = history.history.popLast() {
-              try? FileManager.default.removeItem(at: removedTranscript.audioPath)
+              Task {
+                 try? await transcriptPersistence.deleteAudio(removedTranscript)
+              }
             }
           }
         }
@@ -625,390 +597,5 @@ struct TranscriptionView: View {
       await store.send(.task).finish()
     }
     .enableInjection()
-  }
-}
-
-// MARK: - LLM Execution
-
-private func runClaudeCode(
-  config: LLMTransformationConfig,
-  input: String,
-  providers: [LLMProvider],
-  toolServer: HexToolServerClient
-) async throws -> String {
-  transcriptionFeatureLogger.info("runClaudeCode called with \(providers.count) providers, looking for: \(config.providerID)")
-
-  guard let provider = providers.first(where: { $0.id == config.providerID }) else {
-    transcriptionFeatureLogger.error("Provider not found: \(config.providerID)")
-    throw LLMExecutionError.providerNotFound(config.providerID)
-  }
-
-  guard provider.type == .claudeCode else {
-    throw LLMExecutionError.unsupportedProvider(provider.type.rawValue)
-  }
-
-  guard let binaryPath = provider.binaryPath else {
-    throw LLMExecutionError.invalidConfiguration("Provider has no binary path")
-  }
-
-  let userPrompt = config.promptTemplate.replacingOccurrences(of: "{{input}}", with: input)
-  let wrappedPrompt = """
-\(userPrompt)
-
-IMPORTANT: Output ONLY the final result. Do not include any preamble like "Here is the cleaned text:" or "I'll clean up this transcription". Just output the transformed text directly.
-"""
-  
-  transcriptionFeatureLogger.info("Found provider: \(provider.id), binary: \(binaryPath)")
-  transcriptionFeatureLogger.debug("Sending prompt to LLM (first 200 chars): \(String(wrappedPrompt.prefix(200)))")
-
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: binaryPath)
-  var arguments = ["-p", "--output-format", "json"]
-  if let model = provider.defaultModel {
-    arguments.append(contentsOf: ["--model", model])
-  }
-  process.arguments = arguments
-
-  if let workingDir = provider.workingDirectory {
-    process.currentDirectoryURL = URL(fileURLWithPath: (workingDir as NSString).expandingTildeInPath)
-  }
-
-  let serverConfiguration = provider.tooling?.serverConfiguration()
-  if let groups = serverConfiguration?.enabledToolGroups {
-    transcriptionFeatureLogger.info("Configuring MCP server with tool groups: \(groups.map(\.rawValue))")
-  } else {
-    transcriptionFeatureLogger.info("Configuring MCP server with no additional tool groups")
-  }
-  let toolEndpoint = try await toolServer.ensureServer(serverConfiguration)
-  transcriptionFeatureLogger.info("MCP server ready at \(toolEndpoint.baseURL)")
-  let claudeEnvironment = try prepareClaudeEnvironment(serverEndpoint: toolEndpoint)
-  var preserveDebugArtifacts = false
-  defer {
-    if preserveDebugArtifacts {
-      transcriptionFeatureLogger.error("Preserving Claude temp files for debugging at \(claudeEnvironment.rootDirectory.path)")
-    } else {
-      claudeEnvironment.cleanup()
-    }
-  }
-  
-  // 
-
-  var environment = ProcessInfo.processInfo.environment
-  environment["CLAUDE_CODE_SKIP_UPDATE_CHECK"] = "1"
-  environment["PATH"] = buildExecutableSearchPath(existingPATH: environment["PATH"])
-  environment["CLAUDE_CODE_DEBUG_LOGS_DIR"] = claudeEnvironment.debugLogFile.path
-  process.environment = environment
-
-  let stdoutPipe = Pipe()
-  let stderrPipe = Pipe()
-  let stdinPipe = Pipe()
-  process.standardOutput = stdoutPipe
-  process.standardError = stderrPipe
-  process.standardInput = stdinPipe
-
-  if let mcpConfigPath = claudeEnvironment.mcpConfigPath {
-    process.arguments?.append(contentsOf: ["--mcp-config", mcpConfigPath.path])
-  }
-  if let groups = provider.tooling?.enabledToolGroups {
-    let allowedTools = Set(groups.flatMap { $0.toolIdentifiers })
-    if !allowedTools.isEmpty {
-      let joined = allowedTools.sorted().joined(separator: ",")
-      transcriptionFeatureLogger.info("Allowing Claude tools: \(joined)")
-      process.arguments?.append(contentsOf: ["--allowed-tools", joined])
-    }
-  }
-  process.arguments?.append(contentsOf: ["--permission-mode", "bypassPermissions"])
-
-  try process.run()
-
-  if let data = wrappedPrompt.appending("\n").data(using: .utf8) {
-    stdinPipe.fileHandleForWriting.write(data)
-  }
-  stdinPipe.fileHandleForWriting.closeFile()
-
-  let timeout = TimeInterval(provider.timeoutSeconds ?? 20)
-  let deadline = Date().addingTimeInterval(timeout)
-
-  while process.isRunning && Date() < deadline {
-    try await Task.sleep(for: .milliseconds(100))
-  }
-
-  if process.isRunning {
-    transcriptionFeatureLogger.error("Claude CLI timed out after \(timeout)s")
-    process.terminate()
-    throw LLMExecutionError.timeout
-  }
-
-  process.waitUntilExit()
-
-  let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-  let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-  guard process.terminationStatus == 0 else {
-    preserveDebugArtifacts = true
-    let message = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let errorMessage = message?.isEmpty == false ? message! : "Claude CLI exited with code \(process.terminationStatus) and no error output"
-    throw LLMExecutionError.processFailed(errorMessage)
-  }
-
-  guard !stdoutData.isEmpty else {
-    throw LLMExecutionError.invalidOutput
-  }
-
-  if let parsed = try? decodeClaudeOutput(from: stdoutData) {
-    transcriptionFeatureLogger.info("Claude returned \(parsed.count) chars (parsed JSON)")
-    return parsed
-  }
-
-  guard let fallback = String(data: stdoutData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !fallback.isEmpty else {
-    throw LLMExecutionError.invalidOutput
-  }
-
-  transcriptionFeatureLogger.info("Claude returned \(fallback.count) chars (raw text)")
-  return fallback
-}
-
-private func buildExecutableSearchPath(existingPATH: String?) -> String {
-  let existingEntries = existingPATH?
-    .split(separator: ":")
-    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-    .filter { !$0.isEmpty }
-    ?? []
-
-  let fallbackEntries = defaultExecutableDirectories()
-  let merged = dedupePaths(fallbackEntries + existingEntries)
-  return merged.joined(separator: ":")
-}
-
-
-
-private func defaultExecutableDirectories() -> [String] {
-  let fm = FileManager.default
-  let home = fm.homeDirectoryForCurrentUser.path
-  var candidates: [String] = []
-
-  candidates.append(contentsOf: nvmExecutableDirectories(homeDirectory: home))
-
-  let staticPaths = [
-    "~/.claude/local/node_modules/.bin",
-    "~/.local/bin",
-    "~/.local/share/pnpm",
-    "~/.config/yarn/global/node_modules/.bin",
-    "~/.volta/bin",
-    "~/.asdf/shims",
-    "~/.asdf/bin",
-    "~/.cargo/bin",
-    "~/.deno/bin",
-    "~/.pnpm-global/5/node_modules/.bin",
-    "/opt/homebrew/bin",
-    "/opt/homebrew/sbin",
-    "/usr/local/bin",
-    "/usr/local/sbin",
-    "/usr/bin",
-    "/bin",
-    "/usr/sbin",
-    "/sbin"
-  ]
-
-  candidates.append(contentsOf: staticPaths.map { ($0 as NSString).expandingTildeInPath })
-
-  return candidates.filter { path in
-    var isDirectory: ObjCBool = false
-    return fm.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
-  }
-}
-
-private func nvmExecutableDirectories(homeDirectory: String) -> [String] {
-  let fm = FileManager.default
-  let nvmDir = (homeDirectory as NSString).appendingPathComponent(".nvm")
-  let versionsDir = (nvmDir as NSString).appendingPathComponent("versions/node")
-  var isDirectory: ObjCBool = false
-  guard fm.fileExists(atPath: versionsDir, isDirectory: &isDirectory), isDirectory.boolValue else {
-    return []
-  }
-
-  var directories: [String] = []
-
-  let aliasPath = (nvmDir as NSString).appendingPathComponent("alias/default")
-  if let aliasContents = try? String(contentsOfFile: aliasPath, encoding: .utf8)
-    .trimmingCharacters(in: .whitespacesAndNewlines),
-     !aliasContents.isEmpty
-  {
-    let defaultDir = (versionsDir as NSString).appendingPathComponent("\(aliasContents)/bin")
-    directories.append(defaultDir)
-  }
-
-  let currentDir = (versionsDir as NSString).appendingPathComponent("current/bin")
-  directories.append(currentDir)
-
-  if let versionFolders = try? fm.contentsOfDirectory(atPath: versionsDir) {
-    for version in versionFolders.sorted(by: >) {
-      guard !version.hasPrefix(".") else { continue }
-      let versionDir = (versionsDir as NSString).appendingPathComponent("\(version)/bin")
-      directories.append(versionDir)
-    }
-  }
-
-  return directories
-}
-
-private func dedupePaths(_ paths: [String]) -> [String] {
-  var seen = Set<String>()
-  var ordered: [String] = []
-  for path in paths {
-    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { continue }
-    let normalized = (trimmed as NSString).standardizingPath
-    if seen.insert(normalized).inserted {
-      ordered.append(normalized)
-    }
-  }
-  return ordered
-}
-
-private struct ClaudeEnvironmentContext {
-  let rootDirectory: URL
-  let mcpConfigPath: URL?
-  let debugLogFile: URL
-  
-  func cleanup() {
-    try? FileManager.default.removeItem(at: rootDirectory)
-  }
-}
-
-private func prepareClaudeEnvironment(serverEndpoint: HexToolServerEndpoint?) throws -> ClaudeEnvironmentContext {
-  let fm = FileManager.default
-  let base = fm.temporaryDirectory.appendingPathComponent("hex-claude-\(UUID().uuidString)", isDirectory: true)
-  try fm.createDirectory(at: base, withIntermediateDirectories: true)
-  
-  let debugDirectory = base.appendingPathComponent("debug", isDirectory: true)
-  try fm.createDirectory(at: debugDirectory, withIntermediateDirectories: true)
-  let debugLogFile = debugDirectory.appendingPathComponent("claude.log")
-  if !fm.fileExists(atPath: debugLogFile.path) {
-    fm.createFile(atPath: debugLogFile.path, contents: Data())
-  }
-  
-  var mcpConfigPath: URL?
-  if let serverEndpoint {
-    let configURL = base.appendingPathComponent(".mcp.json")
-    let configuration = ClaudeMCPConfiguration(serverEndpoint: serverEndpoint)
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let data = try encoder.encode(configuration)
-    try data.write(to: configURL, options: .atomic)
-    mcpConfigPath = configURL
-  }
-  
-  return ClaudeEnvironmentContext(
-    rootDirectory: base,
-    mcpConfigPath: mcpConfigPath,
-    debugLogFile: debugLogFile
-  )
-}
-
-private struct ClaudeMCPConfiguration: Encodable {
-  struct Server: Encodable {
-    let type: String
-    let url: String
-  }
-  
-  let mcpServers: [String: Server]
-  
-  init(serverEndpoint: HexToolServerEndpoint) {
-    self.mcpServers = [
-      serverEndpoint.serverName: Server(
-        type: "http",
-        url: serverEndpoint.baseURL.absoluteString
-      )
-    ]
-  }
-}
-
-private func decodeClaudeOutput(from data: Data) throws -> String {
-  let decoder = JSONDecoder()
-  if let envelope = try? decoder.decode(ClaudeCLIEnvelope.self, from: data) {
-    // New format: top-level "result" field
-    if let result = envelope.result?.trimmingCharacters(in: .whitespacesAndNewlines), !result.isEmpty {
-      return result
-    }
-    // Old format: "message" or "content" with nested content array
-    if let message = envelope.message ?? envelope.contentMessage {
-      let text = message.content.compactMap { $0.text }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-      if !text.isEmpty {
-        return text
-      }
-    }
-  } else {
-    // CLI sometimes emits multiple JSON objects separated by newlines; try the last one.
-    if let lastLine = String(data: data, encoding: .utf8)?.split(separator: "\n").last,
-       let lineData = lastLine.data(using: .utf8),
-       let envelope = try? decoder.decode(ClaudeCLIEnvelope.self, from: lineData) {
-      if let result = envelope.result?.trimmingCharacters(in: .whitespacesAndNewlines), !result.isEmpty {
-        return result
-      }
-      if let message = envelope.message ?? envelope.contentMessage {
-        let text = message.content.compactMap { $0.text }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty {
-          return text
-        }
-      }
-    }
-  }
-  throw LLMExecutionError.invalidOutput
-}
-
-private struct ClaudeCLIEnvelope: Decodable {
-  struct Message: Decodable {
-    struct Content: Decodable {
-      let type: String
-      let text: String?
-    }
-    let content: [Content]
-  }
-
-  let type: String?
-  let result: String?
-  let message: Message?
-  let contentMessage: Message?
-
-  enum CodingKeys: String, CodingKey {
-    case type
-    case result
-    case message
-    case content
-  }
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    type = try container.decodeIfPresent(String.self, forKey: .type)
-    result = try container.decodeIfPresent(String.self, forKey: .result)
-    message = try container.decodeIfPresent(Message.self, forKey: .message)
-    contentMessage = try container.decodeIfPresent(Message.self, forKey: .content)
-  }
-}
-
-enum LLMExecutionError: Error, LocalizedError {
-  case providerNotFound(String)
-  case invalidConfiguration(String)
-  case unsupportedProvider(String)
-  case timeout
-  case processFailed(String)
-  case invalidOutput
-
-  var errorDescription: String? {
-    switch self {
-    case .providerNotFound(let id):
-      return "LLM provider not found: \(id)"
-    case .invalidConfiguration(let message):
-      return "LLM provider configuration error: \(message)"
-    case .unsupportedProvider(let type):
-      return "LLM provider type \(type) is not supported yet"
-    case .timeout:
-      return "LLM execution timed out"
-    case .processFailed(let message):
-      return "LLM process failed: \(message)"
-    case .invalidOutput:
-      return "LLM returned invalid output"
-    }
   }
 }
