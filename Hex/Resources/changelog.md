@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.13
+
+### Patch Changes
+
+- 083513c: Add comprehensive documentation to HotKeyProcessor and extract magic numbers into named constants (HexCoreConstants)
+
 ## 0.5.12
 
 ### Patch Changes
