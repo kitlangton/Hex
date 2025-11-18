@@ -30,7 +30,7 @@ class InvisibleWindow: NSPanel {
                backing: .buffered,
                defer: false)
 
-    level = .modalPanel
+    level = .statusBar
     backgroundColor = .clear
     isOpaque = false
     hasShadow = false
