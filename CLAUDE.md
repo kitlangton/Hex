@@ -133,3 +133,9 @@ FluidAudio models reside under `Application Support/FluidAudio/Models`.
    ```
 3. **Only create changesets, don't process them:** Agents should only create changeset fragments. The release tool is responsible for running `changeset version` to collect changesets into `CHANGELOG.md` and syncing to `Hex/Resources/changelog.md`.
 4. **Reference GitHub issues:** When a change addresses a filed issue, link it in code comments and the changeset entry (`(#123)`) so release notes and Sparkle updates point users back to the discussion. If the work should close an issue, include "Fixes #123" (or "Closes #123") in the commit or PR description so GitHub auto-closes it once merged.
+
+## Git Commit Messages
+
+- Use a concise, descriptive subject line that captures the user-facing impact (roughly 50–70 characters).
+- Follow up with as much context as needed in the body. Include the rationale, notable tradeoffs, relevant logs, or reproduction steps—future debugging benefits from having the full story directly in git history.
+- Reference any related GitHub issues in the body if the change tracks ongoing work.
