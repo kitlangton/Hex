@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.9
+
+### Patch Changes
+
+- 6c2f1bd: Add comprehensive permissions logging for improved debugging and log export support
+
 ## 0.5.8
 
 ### Patch Changes
