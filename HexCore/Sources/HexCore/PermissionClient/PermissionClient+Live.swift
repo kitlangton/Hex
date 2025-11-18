@@ -5,7 +5,6 @@ import Dependencies
 import Foundation
 import IOKit
 import IOKit.hidsystem
-import os
 
 private let logger = HexLog.permissions
 
@@ -83,7 +82,7 @@ actor PermissionClientLive {
     @unknown default:
       result = .denied
     }
-    logger.info("Microphone status: \(String(describing: result), privacy: .public)")
+    logger.info("Microphone status: \(String(describing: result))")
     return result
   }
 
@@ -94,7 +93,7 @@ actor PermissionClientLive {
         continuation.resume(returning: granted)
       }
     }
-    logger.info("Microphone permission granted: \(granted, privacy: .public)")
+    logger.info("Microphone permission granted: \(granted)")
     return granted
   }
 
@@ -113,14 +112,14 @@ actor PermissionClientLive {
     // Check without prompting (kAXTrustedCheckOptionPrompt: false)
     let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
     let result = AXIsProcessTrustedWithOptions(options) ? PermissionStatus.granted : .denied
-    logger.info("Accessibility status: \(String(describing: result), privacy: .public)")
+    logger.info("Accessibility status: \(String(describing: result))")
     return result
   }
 
   nonisolated func inputMonitoringStatus() -> PermissionStatus {
     let access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
     let result = mapIOHIDAccess(access)
-    logger.info("Input monitoring status: \(String(describing: result), privacy: .public) (IOHIDAccess: \(String(describing: access), privacy: .public))")
+    logger.info("Input monitoring status: \(String(describing: result)) (IOHIDAccess: \(String(describing: access)))")
     return result
   }
 
@@ -149,7 +148,7 @@ actor PermissionClientLive {
       logger.info("Input monitoring not granted, opening Settings...")
       await openInputMonitoringSettings()
     } else {
-      logger.info("Input monitoring permission granted: \(granted, privacy: .public)")
+      logger.info("Input monitoring permission granted: \(granted)")
     }
 
     return granted

@@ -1,4 +1,4 @@
-import os
+import Logging
 
 /// Shared helper for creating consistent os.Logger instances across the Hex app and HexCore.
 public enum HexLog {
@@ -22,7 +22,7 @@ public enum HexLog {
   }
 
   public static func logger(_ category: Category) -> Logger {
-    Logger(subsystem: subsystem, category: category.rawValue)
+    Logger(label: "\(subsystem).\(category.rawValue)")
   }
 
   public static let app = logger(.app)

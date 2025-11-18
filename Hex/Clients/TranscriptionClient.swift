@@ -123,7 +123,7 @@ actor TranscriptionClientLive {
     overallProgress.completedUnitCount = 0
     progressCallback(overallProgress)
 
-    modelsLogger.info("Preparing model download and load for \(variant, privacy: .public)")
+    modelsLogger.info("Preparing model download and load for \(variant)")
 
     // 1) Model download phase (0-50% progress)
     if !(await isModelDownloaded(variant)) {
@@ -173,7 +173,7 @@ actor TranscriptionClientLive {
     // Delete the model directory
     try FileManager.default.removeItem(at: modelFolder)
 
-    modelsLogger.info("Deleted model \(variant, privacy: .public)")
+    modelsLogger.info("Deleted model \(variant)")
   }
 
   /// Returns `true` if the model is already downloaded to the local folder.
@@ -181,7 +181,7 @@ actor TranscriptionClientLive {
   func isModelDownloaded(_ modelName: String) async -> Bool {
     if isParakeet(modelName) {
       let available = await parakeet.isModelAvailable(modelName)
-      parakeetLogger.debug("Parakeet available? \(available, privacy: .public)")
+      parakeetLogger.debug("Parakeet available? \(available)")
       return available
     }
     let modelFolderPath = modelPath(for: modelName).path
@@ -241,18 +241,18 @@ actor TranscriptionClientLive {
   ) async throws -> String {
     let startAll = Date()
     if isParakeet(model) {
-      transcriptionLogger.notice("Transcribing with Parakeet model=\(model, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
+      transcriptionLogger.notice("Transcribing with Parakeet model=\(model) file=\(url.lastPathComponent)")
       let startLoad = Date()
       try await downloadAndLoadModel(variant: model) { p in
         progressCallback(p)
       }
-      transcriptionLogger.info("Parakeet ensureLoaded took \(Date().timeIntervalSince(startLoad), format: .fixed(precision: 2))s")
+      transcriptionLogger.info("Parakeet ensureLoaded took \(String(format: "%.2f", Date().timeIntervalSince(startLoad)))s")
       let preparedClip = try ParakeetClipPreparer.ensureMinimumDuration(url: url, logger: parakeetLogger)
       defer { preparedClip.cleanup() }
       let startTx = Date()
       let text = try await parakeet.transcribe(preparedClip.url)
-      transcriptionLogger.info("Parakeet transcription took \(Date().timeIntervalSince(startTx), format: .fixed(precision: 2))s")
-      transcriptionLogger.info("Parakeet request total elapsed \(Date().timeIntervalSince(startAll), format: .fixed(precision: 2))s")
+      transcriptionLogger.info("Parakeet transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
+      transcriptionLogger.info("Parakeet request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
       return text
     }
     let model = await resolveVariant(model)
@@ -264,7 +264,8 @@ actor TranscriptionClientLive {
         // Debug logging, or scale as desired:
         progressCallback(p)
       }
-      transcriptionLogger.info("WhisperKit ensureLoaded model=\(model, privacy: .public) took \(Date().timeIntervalSince(startLoad), format: .fixed(precision: 2))s")
+      let loadDuration = Date().timeIntervalSince(startLoad)
+      transcriptionLogger.info("WhisperKit ensureLoaded model=\(model) took \(String(format: "%.2f", loadDuration))s")
     }
 
     guard let whisperKit = whisperKit else {
@@ -278,11 +279,11 @@ actor TranscriptionClientLive {
     }
 
     // Perform the transcription.
-    transcriptionLogger.notice("Transcribing with WhisperKit model=\(model, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
+    transcriptionLogger.notice("Transcribing with WhisperKit model=\(model) file=\(url.lastPathComponent)")
     let startTx = Date()
     let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
-    transcriptionLogger.info("WhisperKit transcription took \(Date().timeIntervalSince(startTx), format: .fixed(precision: 2))s")
-    transcriptionLogger.info("WhisperKit request total elapsed \(Date().timeIntervalSince(startAll), format: .fixed(precision: 2))s")
+    transcriptionLogger.info("WhisperKit transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
+    transcriptionLogger.info("WhisperKit request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
 
     // Concatenate results from all segments.
     let text = results.map(\.text).joined(separator: " ")
@@ -354,7 +355,7 @@ actor TranscriptionClientLive {
       return
     }
 
-    modelsLogger.info("Downloading model \(variant, privacy: .public)")
+    modelsLogger.info("Downloading model \(variant)")
 
     // Create parent directories
     let parentDir = modelFolder.deletingLastPathComponent()
@@ -382,7 +383,7 @@ actor TranscriptionClientLive {
       // Move the downloaded snapshot to the final location
       try moveContents(of: tempFolder, to: modelFolder)
 
-      modelsLogger.info("Downloaded model to \(modelFolder.path, privacy: .private)")
+      modelsLogger.info("Downloaded model to \(modelFolder.path)")
     } catch {
       // Clean up any partial download if an error occurred
       if FileManager.default.fileExists(atPath: modelFolder.path) {
@@ -390,7 +391,7 @@ actor TranscriptionClientLive {
       }
 
       // Rethrow the original error
-      modelsLogger.error("Error downloading model \(variant, privacy: .public): \(error.localizedDescription, privacy: .public)")
+      modelsLogger.error("Error downloading model \(variant): \(error.localizedDescription)")
       throw error
     }
   }
@@ -426,7 +427,7 @@ actor TranscriptionClientLive {
     loadingProgress.completedUnitCount = 100
     progressCallback(loadingProgress)
 
-    modelsLogger.info("Loaded WhisperKit model \(modelName, privacy: .public)")
+    modelsLogger.info("Loaded WhisperKit model \(modelName)")
   }
 
   /// Moves all items from `sourceFolder` into `destFolder` (shallow move of directory contents).

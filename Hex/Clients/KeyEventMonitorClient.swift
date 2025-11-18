@@ -8,9 +8,11 @@ import Foundation
 import HexCore
 import IOKit
 import IOKit.hidsystem
+import Logging
 import Sauce
 
 private let logger = HexLog.keyEvent
+private let diagLogger = Logger(label: "com.kitlangton.Hex.KeyEventMonitor")
 
 struct KeyEventMonitorToken: Sendable {
   private let cancelHandler: @Sendable () -> Void
@@ -289,6 +291,14 @@ class KeyEventMonitorClientLive {
 
   private func handlePermissionChange(accessibility: Bool, input: Bool, reason: String) async {
     setPermissionFlags(accessibility: accessibility, input: input)
+    diagLogger.notice(
+      "Permission update",
+      metadata: [
+        "accessibility": .string(accessibility.description),
+        "inputMonitoring": .string(input.description),
+        "reason": .string(reason)
+      ]
+    )
     if accessibility && input {
       logger.notice("Keyboard monitoring permissions granted (\(reason)).")
     } else {
@@ -345,11 +355,13 @@ class KeyEventMonitorClientLive {
     setPermissionFlags(accessibility: accessibilityTrusted, input: inputMonitoringTrusted)
     guard accessibilityTrusted else {
       logger.error("Cannot start key event monitoring (reason: \(reason)); accessibility permission is not granted.")
+      diagLogger.error("Tap start blocked", metadata: ["reason": .string("accessibility_denied"), "context": .string(reason)])
       return
     }
 
     if !inputMonitoringTrusted {
       logger.error("Input Monitoring permission missing; continuing with Accessibility-only tap so macOS can prompt (reason: \(reason)).")
+      diagLogger.warning("Input monitoring missing", metadata: ["context": .string(reason)])
     }
 
     let eventMask =
@@ -436,6 +448,7 @@ class KeyEventMonitorClientLive {
   private func handleTapDisabledEvent(_ type: CGEventType) {
     let reason = type == .tapDisabledByTimeout ? "timeout" : "userInput"
     logger.error("Event tap disabled by \(reason); scheduling restart.")
+    diagLogger.error("Event tap disabled", metadata: ["reason": .string(reason)])
     Task { [weak self] in
       guard let self else { return }
       await self.refreshMonitoringState(reason: "tap_disabled_\(reason)")
@@ -484,6 +497,7 @@ extension KeyEventMonitorClientLive {
     if !accessibilityTrusted && promptIfUntrusted && !hasPromptedForAccessibilityTrust {
       accessibilityTrusted = requestAccessibilityTrustPrompt()
       hasPromptedForAccessibilityTrust = true
+      diagLogger.notice("Prompted for accessibility trust")
     }
 
     let inputMonitoringTrusted = currentInputMonitoringTrust()

@@ -69,7 +69,7 @@ public struct HotKeyProcessor {
         // 1) ESC => immediate cancel
         if keyEvent.key == .escape {
             let currentState = state
-            hotKeyLogger.notice("ESC pressed while state=\(String(describing: currentState), privacy: .public)")
+            hotKeyLogger.notice("ESC pressed while state=\(String(describing: currentState))")
         }
         if keyEvent.key == .escape, state != .idle {
             isDirty = true

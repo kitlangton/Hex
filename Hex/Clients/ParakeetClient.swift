@@ -19,31 +19,31 @@ actor ParakeetClient {
 
   func isModelAvailable(_ modelName: String) async -> Bool {
     guard let variant = ParakeetModel(rawValue: modelName) else {
-      logger.error("Unknown Parakeet variant requested: \(modelName, privacy: .public)")
+      logger.error("Unknown Parakeet variant requested: \(modelName)")
       return false
     }
     if currentVariant == variant, asr != nil { return true }
     let fm = FileManager.default
-    logger.debug("Checking Parakeet availability variant=\(variant.identifier, privacy: .public)")
+    logger.debug("Checking Parakeet availability variant=\(variant.identifier)")
     for root in candidateRoots() {
       for vendor in vendorDirs {
         let base = root.appendingPathComponent(vendor, isDirectory: true)
         let direct = base.appendingPathComponent(variant.identifier, isDirectory: true)
         if directoryContainsMLModelC(direct) {
-          logger.notice("Found Parakeet cache at \(direct.path, privacy: .private)")
+          logger.notice("Found Parakeet cache at \(direct.path)")
           return true
         }
         if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
           for item in items where item.lastPathComponent.hasPrefix(variant.identifier) {
             if directoryContainsMLModelC(item) {
-              logger.notice("Found Parakeet cache at \(item.path, privacy: .private)")
+              logger.notice("Found Parakeet cache at \(item.path)")
               return true
             }
           }
         }
       }
     }
-    logger.debug("No Parakeet cache detected variant=\(variant.identifier, privacy: .public)")
+    logger.debug("No Parakeet cache detected variant=\(variant.identifier)")
     return false
   }
 
@@ -72,7 +72,7 @@ actor ParakeetClient {
       models = nil
     }
     let t0 = Date()
-    logger.notice("Starting Parakeet load variant=\(variant.identifier, privacy: .public)")
+    logger.notice("Starting Parakeet load variant=\(variant.identifier)")
     let p = Progress(totalUnitCount: 100)
     p.completedUnitCount = 1
     progress(p)
@@ -104,7 +104,7 @@ actor ParakeetClient {
     self.currentVariant = variant
     p.completedUnitCount = 100
     progress(p)
-    logger.notice("Parakeet ensureLoaded completed in \(Date().timeIntervalSince(t0), format: .fixed(precision: 2))s")
+    logger.notice("Parakeet ensureLoaded completed in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
   }
 
   private func directorySize(_ dir: URL) -> UInt64? {
@@ -122,9 +122,9 @@ actor ParakeetClient {
   func transcribe(_ url: URL) async throws -> String {
     guard let asr else { throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"]) }
     let t0 = Date()
-    logger.notice("Transcribing with Parakeet file=\(url.lastPathComponent, privacy: .public)")
+    logger.notice("Transcribing with Parakeet file=\(url.lastPathComponent)")
     let result = try await asr.transcribe(url)
-    logger.info("Parakeet transcription finished in \(Date().timeIntervalSince(t0), format: .fixed(precision: 2))s")
+    logger.info("Parakeet transcription finished in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
     return result.text
   }
 

@@ -77,7 +77,7 @@ actor SoundEffectsClientLive {
   func play(_ soundEffect: SoundEffect) {
 	guard hexSettings.soundEffectsEnabled else { return }
 	guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
-		logger.error("Requested sound \(soundEffect.rawValue, privacy: .public) not preloaded")
+		logger.error("Requested sound \(soundEffect.rawValue) not preloaded")
 		return
 	}
 	prepareEngineIfNeeded()
@@ -114,7 +114,7 @@ actor SoundEffectsClientLive {
       forResource: soundEffect.fileName,
       withExtension: soundEffect.fileExtension
     ) else {
-      logger.error("Missing sound resource \(soundEffect.fileName, privacy: .public).\(soundEffect.fileExtension, privacy: .public)")
+      logger.error("Missing sound resource \(soundEffect.fileName).\(soundEffect.fileExtension)")
       return
     }
 
@@ -122,7 +122,7 @@ actor SoundEffectsClientLive {
       let file = try AVAudioFile(forReading: url)
       let frameCount = AVAudioFrameCount(file.length)
       guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
-        logger.error("Failed to allocate buffer for \(soundEffect.rawValue, privacy: .public)")
+        logger.error("Failed to allocate buffer for \(soundEffect.rawValue)")
         return
       }
       try file.read(into: buffer)
@@ -133,7 +133,7 @@ actor SoundEffectsClientLive {
       engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
       playerNodes[soundEffect] = player
     } catch {
-      logger.error("Failed to load sound \(soundEffect.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
+      logger.error("Failed to load sound \(soundEffect.rawValue): \(error.localizedDescription)")
     }
   }
   private func prepareEngineIfNeeded() {
@@ -146,7 +146,7 @@ actor SoundEffectsClientLive {
         try engine.start()
         isEngineRunning = true
       } catch {
-        logger.error("Failed to start AVAudioEngine: \(error.localizedDescription, privacy: .public)")
+        logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
       }
     }
   }

@@ -133,7 +133,7 @@ struct PasteboardClientLive {
         if let scriptObject = NSAppleScript(source: script) {
             let result = scriptObject.executeAndReturnError(&error)
             if let error = error {
-                pasteboardLogger.error("AppleScript paste failed: \(error, privacy: .public)")
+                pasteboardLogger.error("AppleScript paste failed: \(error)")
                 return false
             }
             return result.booleanValue
@@ -259,7 +259,7 @@ struct PasteboardClientLive {
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
         if let error = error {
-            pasteboardLogger.error("Error executing AppleScript typing fallback: \(error, privacy: .public)")
+            pasteboardLogger.error("Error executing AppleScript typing fallback: \(error)")
         }
     }
 

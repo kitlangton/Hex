@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import HexCore
-import os
+import Logging
 
 struct ParakeetClipPreparationResult {
   let url: URL
@@ -47,7 +47,7 @@ enum ParakeetClipPreparer {
     let duration = Double(audioFile.length) / format.sampleRate
 
     logger.debug(
-      "Parakeet clip check file=\(url.lastPathComponent, privacy: .private) duration=\(duration, format: .fixed(precision: 3))s sampleRate=\(format.sampleRate, format: .fixed(precision: 0))Hz channels=\(format.channelCount, privacy: .public)"
+      "Parakeet clip check file=\(url.lastPathComponent) duration=\(String(format: "%.3f", duration))s sampleRate=\(String(format: "%.0f", format.sampleRate))Hz channels=\(format.channelCount)"
     )
 
     guard duration < minimumDuration else {
@@ -104,7 +104,7 @@ enum ParakeetClipPreparer {
     try paddedFile.write(from: paddedBuffer)
 
     logger.notice(
-      "Padded clip for Parakeet file=\(url.lastPathComponent, privacy: .private) original=\(duration, format: .fixed(precision: 3))s paddedTo=\(minimumDuration, format: .fixed(precision: 3))s output=\(paddedURL.lastPathComponent, privacy: .private)"
+      "Padded clip for Parakeet file=\(url.lastPathComponent) original=\(String(format: "%.3f", duration))s paddedTo=\(String(format: "%.3f", minimumDuration))s output=\(paddedURL.lastPathComponent)"
     )
 
     return ParakeetClipPreparationResult(url: paddedURL, cleanupURL: paddedURL)

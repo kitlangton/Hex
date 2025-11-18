@@ -184,7 +184,7 @@ struct HistoryFeature {
 						}
 					}
 				} catch {
-					historyLogger.error("Failed to play audio: \(error.localizedDescription, privacy: .public)")
+					historyLogger.error("Failed to play audio: \(error.localizedDescription)")
 					return .none
 				}
 

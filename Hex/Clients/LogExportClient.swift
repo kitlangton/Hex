@@ -26,13 +26,18 @@ extension DependencyValues {
 }
 
 private struct LogExportClientLive {
-  func exportLogs(lastMinutes: Int) async throws -> URL? {
+  func exportLogs(lastMinutes _: Int) async throws -> URL? {
     guard let destination = try await presentSavePanel() else {
       return nil
     }
 
-    let logData = try await collectLogs(lastMinutes: lastMinutes)
-    try logData.write(to: destination, options: .atomic)
+    let fileURL = DiagnosticsLogging.logFileURL
+    if !FileManager.default.fileExists(atPath: fileURL.path) {
+      FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+    }
+
+    let data = try Data(contentsOf: fileURL)
+    try data.write(to: destination, options: .atomic)
     return destination
   }
 
@@ -59,53 +64,15 @@ private struct LogExportClientLive {
     return "Hex-Logs-\(formatter.string(from: Date())).log"
   }
 
-  private func collectLogs(lastMinutes: Int) async throws -> Data {
-    try await withCheckedThrowingContinuation { continuation in
-      Task.detached(priority: .userInitiated) {
-        do {
-          let process = Process()
-          process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
-          process.arguments = [
-            "show",
-            "--style", "compact",
-            "--predicate", "subsystem == \"\(HexLog.subsystem)\"",
-            "--last", "\(lastMinutes)m"
-          ]
-
-          let stdout = Pipe()
-          let stderr = Pipe()
-          process.standardOutput = stdout
-          process.standardError = stderr
-
-          try process.run()
-          let output = stdout.fileHandleForReading.readDataToEndOfFile()
-          let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
-          process.waitUntilExit()
-
-          if process.terminationStatus == 0 {
-            continuation.resume(returning: output)
-          } else {
-            let message = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            continuation.resume(throwing: LogExportError.commandFailed(message: message))
-          }
-        } catch {
-          continuation.resume(throwing: error)
-        }
-      }
-    }
-  }
 }
 
 enum LogExportError: LocalizedError {
   case noDestination
-  case commandFailed(message: String)
 
   var errorDescription: String? {
     switch self {
     case .noDestination:
       return "Unable to determine the save location."
-    case let .commandFailed(message):
-      return "Failed to export logs: \(message)"
-    }
+  }
   }
 }

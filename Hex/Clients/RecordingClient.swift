@@ -165,7 +165,7 @@ func pauseAllMediaApplications() async -> [String] {
     return []
   }
 
-  mediaLogger.debug("Installed media players: \(installedMediaPlayers.keys.joined(separator: ", "), privacy: .public)")
+  mediaLogger.debug("Installed media players: \(installedMediaPlayers.keys.joined(separator: ", "))")
   
   // Create AppleScript that only targets installed players
   var scriptParts: [String] = ["set pausedPlayers to {}"]
@@ -209,7 +209,7 @@ func pauseAllMediaApplications() async -> [String] {
   var error: NSDictionary?
   guard let resultDescriptor = appleScript?.executeAndReturnError(&error) else {
     if let error = error {
-      mediaLogger.error("Failed to pause media apps: \(error, privacy: .public)")
+      mediaLogger.error("Failed to pause media apps: \(error)")
       mediaControlErrorCount += 1
       if mediaControlErrorCount >= 3 { mediaControlDisabled = true }
     }
@@ -228,7 +228,7 @@ func pauseAllMediaApplications() async -> [String] {
     }
   }
     
-  mediaLogger.notice("Paused media players: \(pausedPlayers.joined(separator: ", "), privacy: .public)")
+  mediaLogger.notice("Paused media players: \(pausedPlayers.joined(separator: ", "))")
   
   return pausedPlayers
 }
@@ -271,7 +271,7 @@ func resumeMediaApplications(_ players: [String]) async {
   var error: NSDictionary?
   appleScript?.executeAndReturnError(&error)
   if let error = error {
-    mediaLogger.error("Failed to resume media apps: \(error, privacy: .public)")
+    mediaLogger.error("Failed to resume media apps: \(error)")
   }
 }
 
@@ -392,7 +392,7 @@ actor RecordingClientLive {
     )
     
     if status != 0 {
-      recordingLogger.error("AudioObjectGetPropertyDataSize failed: \(status, privacy: .public)")
+      recordingLogger.error("AudioObjectGetPropertyDataSize failed: \(status)")
       return []
     }
     
@@ -411,7 +411,7 @@ actor RecordingClientLive {
     )
     
       if status != 0 {
-        recordingLogger.error("AudioObjectGetPropertyData failed while listing devices: \(status, privacy: .public)")
+        recordingLogger.error("AudioObjectGetPropertyData failed while listing devices: \(status)")
         return []
       }
     
@@ -445,7 +445,7 @@ actor RecordingClientLive {
     }
     
       if status != 0 {
-        recordingLogger.error("Failed to fetch device name: \(status, privacy: .public)")
+        recordingLogger.error("Failed to fetch device name: \(status)")
         return nil
       }
     
@@ -514,9 +514,9 @@ actor RecordingClientLive {
     )
     
     if status != 0 {
-      recordingLogger.error("Failed to set default input device: \(status, privacy: .public)")
+      recordingLogger.error("Failed to set default input device: \(status)")
     } else {
-      recordingLogger.notice("Selected input device set to \(deviceID, privacy: .public)")
+      recordingLogger.notice("Selected input device set to \(deviceID)")
     }
   }
 
@@ -530,14 +530,14 @@ actor RecordingClientLive {
   private func muteSystemVolume() async -> Float {
     let currentVolume = getSystemVolume()
     setSystemVolume(0)
-    recordingLogger.notice("Muted system volume (was \(currentVolume, format: .fixed(precision: 2)))")
+    recordingLogger.notice("Muted system volume (was \(String(format: "%.2f", currentVolume)))")
     return currentVolume
   }
 
   /// Restores system volume to the specified level
   private func restoreSystemVolume(_ volume: Float) async {
     setSystemVolume(volume)
-    recordingLogger.notice("Restored system volume to \(volume, format: .fixed(precision: 2))")
+    recordingLogger.notice("Restored system volume to \(String(format: "%.2f", volume))")
   }
 
   /// Gets the default output device ID
@@ -560,7 +560,7 @@ actor RecordingClientLive {
     )
 
     if status != 0 {
-      recordingLogger.error("Failed to get default output device: \(status, privacy: .public)")
+      recordingLogger.error("Failed to get default output device: \(status)")
       return nil
     }
 
@@ -591,7 +591,7 @@ actor RecordingClientLive {
     )
 
     if status != 0 {
-      recordingLogger.error("Failed to get system volume: \(status, privacy: .public)")
+      recordingLogger.error("Failed to get system volume: \(status)")
       return 0.0
     }
 
@@ -622,7 +622,7 @@ actor RecordingClientLive {
     )
 
     if status != 0 {
-      recordingLogger.error("Failed to set system volume: \(status, privacy: .public)")
+      recordingLogger.error("Failed to set system volume: \(status)")
     }
   }
 
@@ -651,7 +651,7 @@ actor RecordingClientLive {
             mediaLogger.notice("Paused media via media key fallback")
           }
         } else {
-          mediaLogger.notice("Paused media players: \(paused.joined(separator: ", "), privacy: .public)")
+          mediaLogger.notice("Paused media players: \(paused.joined(separator: ", "))")
         }
       }
 
@@ -673,11 +673,11 @@ actor RecordingClientLive {
       // Check if the selected device is still available
       let devices = getAllAudioDevices()
       if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
-        recordingLogger.debug("Setting selected input device to \(selectedDeviceID, privacy: .public)")
+        recordingLogger.debug("Setting selected input device to \(selectedDeviceID)")
         setInputDevice(deviceID: selectedDeviceID)
       } else {
         // Device no longer available, fall back to system default
-        recordingLogger.notice("Selected device \(selectedDeviceID, privacy: .public) missing; using system default")
+        recordingLogger.notice("Selected device \(selectedDeviceID) missing; using system default")
       }
     } else {
       recordingLogger.debug("Using default system microphone")
@@ -692,7 +692,7 @@ actor RecordingClientLive {
       startMeterTask()
       recordingLogger.notice("Recording started")
     } catch {
-      recordingLogger.error("Failed to start recording: \(error.localizedDescription, privacy: .public)")
+      recordingLogger.error("Failed to start recording: \(error.localizedDescription)")
     }
   }
 
@@ -713,7 +713,7 @@ actor RecordingClientLive {
       didCopyRecording = true
     } catch {
       isRecorderPrimedForNextSession = false
-      recordingLogger.error("Failed to copy recording: \(error.localizedDescription, privacy: .public)")
+      recordingLogger.error("Failed to copy recording: \(error.localizedDescription)")
     }
 
     if didCopyRecording {
@@ -721,7 +721,7 @@ actor RecordingClientLive {
         try primeRecorderForNextSession()
       } catch {
         isRecorderPrimedForNextSession = false
-        recordingLogger.error("Failed to prime recorder: \(error.localizedDescription, privacy: .public)")
+        recordingLogger.error("Failed to prime recorder: \(error.localizedDescription)")
       }
     }
 
@@ -739,7 +739,7 @@ actor RecordingClientLive {
         }
         // Resume media if we previously paused specific players
         else if !playersToResume.isEmpty {
-          mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "), privacy: .public)")
+          mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "))")
           await resumeMediaApplications(playersToResume)
         }
         else if shouldResumeViaMediaRemote {
@@ -899,7 +899,7 @@ actor RecordingClientLive {
     do {
       try primeRecorderForNextSession()
     } catch {
-      recordingLogger.error("Failed to warm up recorder: \(error.localizedDescription, privacy: .public)")
+      recordingLogger.error("Failed to warm up recorder: \(error.localizedDescription)")
     }
   }
 }
