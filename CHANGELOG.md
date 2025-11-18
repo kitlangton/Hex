@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.7
+
+### Patch Changes
+
+- 539b0a4: Pad sub-1.5s Parakeet recordings so FluidAudio accepts them
+
 ## 0.5.6
 
 ### Patch Changes
