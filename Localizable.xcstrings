@@ -4,7 +4,13 @@
     "" : {
       "shouldTranslate" : false
     },
+    "   +%lld more..." : {
+
+    },
     "(%@)" : {
+
+    },
+    "(disabled)" : {
 
     },
     "%@ %@" : {
@@ -17,8 +23,24 @@
         }
       }
     },
+    "%lld transformation%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld transformation%2$@"
+          }
+        }
+      }
+    },
+    "%lld." : {
+
+    },
     "•" : {
       "shouldTranslate" : false
+    },
+    "+%lld more" : {
+
     },
     "50" : {
 
@@ -61,7 +83,10 @@
     "Accuracy" : {
 
     },
-    "Advanced" : {
+    "Applies to first matching app (no filters)" : {
+
+    },
+    "Applies to:" : {
 
     },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
@@ -153,6 +178,9 @@
         }
       }
     },
+    "Configure modes by editing the JSON file" : {
+
+    },
     "Copied" : {
       "comment" : "Transcription from history copied.",
       "localizations" : {
@@ -163,6 +191,12 @@
           }
         }
       }
+    },
+    "Copy LLM Instructions" : {
+
+    },
+    "Copy Path" : {
+
     },
     "Copy to clipboard" : {
       "comment" : "copy transcription from history.",
@@ -176,6 +210,9 @@
       }
     },
     "Copy transcription text to clipboard in addition to pasting it" : {
+
+    },
+    "Create modes by editing the configuration file" : {
 
     },
     "Delete" : {
@@ -299,12 +336,6 @@
         }
       }
     },
-    "Export Logs" : {
-
-    },
-    "Exporting Logs…" : {
-
-    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -380,7 +411,7 @@
     "Input Device" : {
 
     },
-    "Input Monitoring is required so Hex can listen for your hotkey." : {
+    "LLM Editing Guide" : {
 
     },
     "Maximum History Entries" : {
@@ -422,6 +453,9 @@
         }
       }
     },
+    "No Modes" : {
+
+    },
     "No Transcriptions" : {
       "comment" : "Empty history headline.",
       "localizations" : {
@@ -439,7 +473,7 @@
     "Oldest entries will be automatically deleted when limit is reached" : {
 
     },
-    "Open Input Monitoring Settings" : {
+    "Open in Editor" : {
 
     },
     "Open on Login" : {
@@ -540,12 +574,6 @@
 
     },
     "Save transcriptions and audio recordings for later access" : {
-
-    },
-    "Saved to %@" : {
-
-    },
-    "Saves the last 30 minutes of Hex diagnostics so you can share them with support." : {
 
     },
     "Selected device not connected. System default will be used." : {
@@ -657,6 +685,12 @@
     "System Default" : {
 
     },
+    "Text Transformation Modes" : {
+
+    },
+    "Text Transformations" : {
+
+    },
     "Transcription history is currently disabled." : {
 
     },
@@ -670,6 +704,9 @@
           }
         }
       }
+    },
+    "Transformations" : {
+
     },
     "Unlimited" : {
 

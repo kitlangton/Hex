@@ -1,0 +1,20 @@
+{
+  "pipeline": {
+    "transformations": [
+      {
+        "id": "F2DC0E58-9A6E-4C76-B46B-12B7345ED1C7",
+        "isEnabled": true,
+        "type": {
+          "replaceText": {
+            "id": "6E4D1480-3285-46E9-8F62-7E8DC0664F0E",
+            "pattern": "hex",
+            "replacement": "Hex",
+            "caseSensitive": false,
+            "useRegex": false
+          }
+        }
+      }
+    ],
+    "isEnabled": true
+  }
+}

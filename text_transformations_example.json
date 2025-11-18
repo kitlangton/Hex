@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 3,
+  "providers": [
+    {
+      "id": "provider-claudecode",
+      "type": "claude_code",
+      "binaryPath": "/usr/local/bin/claude",
+      "defaultModel": "claude-3-7-sonnet-20250219",
+      "timeoutSeconds": 20
+    }
+  ],
+  "stacks": [
+    {
+      "id": "8A491FFC-9AE4-4BA7-8390-74E51BF1DC8E",
+      "name": "General",
+      "appliesToBundleIdentifiers": [],
+      "pipeline": {
+        "isEnabled": true,
+        "transformations": [
+          {
+            "id": "F580EC1D-F733-4F95-B15E-1DB9FA6CB205",
+            "isEnabled": true,
+            "type": { "trimWhitespace": true }
+          }
+        ]
+      }
+    },
+    {
+      "id": "A1B2C3D4-E5F6-4789-A012-3456789ABCDE",
+      "name": "Messages",
+      "appliesToBundleIdentifiers": ["com.apple.MobileSMS"],
+      "pipeline": {
+        "isEnabled": true,
+        "transformations": [
+          {
+            "id": "B1C2D3E4-F5A6-4B78-9C01-234567890ABC",
+            "isEnabled": true,
+            "type": {
+              "llm": {
+                "providerID": "provider-claudecode",
+                "promptTemplate": "You are a meticulous copy editor. Clean up the following transcription so it reads naturally—fix grammar, spelling, and punctuation while preserving meaning. Do not add commentary or instructions.\n\n{{input}}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

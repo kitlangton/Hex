@@ -15,6 +15,7 @@ import SwiftUI
 struct AppFeature {
   enum ActiveTab: Equatable {
     case settings
+    case transformations
     case history
     case about
   }
@@ -24,6 +25,7 @@ struct AppFeature {
     var transcription: TranscriptionFeature.State = .init()
     var settings: SettingsFeature.State = .init()
     var history: HistoryFeature.State = .init()
+    var textTransformations: TextTransformationFeature.State = .init()
     var activeTab: ActiveTab = .settings
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
@@ -39,6 +41,7 @@ struct AppFeature {
     case transcription(TranscriptionFeature.Action)
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
+    case textTransformations(TextTransformationFeature.Action)
     case setActiveTab(ActiveTab)
     case task
     case pasteLastTranscript
@@ -73,6 +76,10 @@ struct AppFeature {
       HistoryFeature()
     }
 
+    Scope(state: \.textTransformations, action: \.textTransformations) {
+      TextTransformationFeature()
+    }
+
     Reduce { state, action in
       switch action {
       case .binding:
@@ -98,6 +105,9 @@ struct AppFeature {
         return .none
 
       case .settings:
+        return .none
+
+      case .textTransformations:
         return .none
 
       case .history(.navigateToSettings):
@@ -258,6 +268,14 @@ struct AppView: View {
         .tag(AppFeature.ActiveTab.settings)
 
         Button {
+          store.send(.setActiveTab(.transformations))
+        } label: {
+          Label("Transformations", systemImage: "wand.and.stars")
+        }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.transformations)
+
+        Button {
           store.send(.setActiveTab(.history))
         } label: {
           Label("History", systemImage: "clock")
@@ -283,6 +301,9 @@ struct AppView: View {
           inputMonitoringPermission: store.inputMonitoringPermission
         )
         .navigationTitle("Settings")
+      case .transformations:
+        TextTransformationView(store: store.scope(state: \.textTransformations, action: \.textTransformations))
+          .navigationTitle("Text Transformations")
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")

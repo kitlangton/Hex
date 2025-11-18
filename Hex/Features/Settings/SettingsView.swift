@@ -19,11 +19,6 @@ struct SettingsView: View {
 				inputMonitoringPermission: inputMonitoringPermission
 			)
 
-          
-			if microphonePermission == .granted && !store.availableInputDevices.isEmpty {
-				MicrophoneSelectionSectionView(store: store)
-			}
-
 			ModelSectionView(store: store)
 			
 			// Only show language picker for WhisperKit models (not Parakeet)
@@ -32,6 +27,11 @@ struct SettingsView: View {
 			}
 			
 			HotKeySectionView(store: store)
+          
+			if microphonePermission == .granted && !store.availableInputDevices.isEmpty {
+				MicrophoneSelectionSectionView(store: store)
+			}
+
 			SoundSectionView(store: store)
 			GeneralSectionView(store: store)
 			HistorySectionView(store: store)
