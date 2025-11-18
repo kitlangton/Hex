@@ -5,6 +5,9 @@ import Dependencies
 import Foundation
 import IOKit
 import IOKit.hidsystem
+import os
+
+private let logger = HexLog.permissions
 
 extension PermissionClient: DependencyKey {
   public static var liveValue: Self {
@@ -34,12 +37,14 @@ actor PermissionClientLive {
   private nonisolated(unsafe) var observations: [Any] = []
 
   init() {
+    logger.debug("Initializing PermissionClient, setting up app activation observers")
     // Subscribe to app activation notifications
     let didBecomeActiveObserver = NotificationCenter.default.addObserver(
       forName: NSApplication.didBecomeActiveNotification,
       object: nil,
       queue: .main
     ) { [weak self] _ in
+      logger.debug("App became active")
       Task {
         self?.activationContinuation.yield(.didBecomeActive)
       }
@@ -50,6 +55,7 @@ actor PermissionClientLive {
       object: nil,
       queue: .main
     ) { [weak self] _ in
+      logger.debug("App will resign active")
       Task {
         self?.activationContinuation.yield(.willResignActive)
       }
@@ -65,27 +71,35 @@ actor PermissionClientLive {
   // MARK: - Microphone Permissions
 
   func microphoneStatus() async -> PermissionStatus {
-    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    let status = AVCaptureDevice.authorizationStatus(for: .audio)
+    let result: PermissionStatus
+    switch status {
     case .authorized:
-      return .granted
+      result = .granted
     case .denied, .restricted:
-      return .denied
+      result = .denied
     case .notDetermined:
-      return .notDetermined
+      result = .notDetermined
     @unknown default:
-      return .denied
+      result = .denied
     }
+    logger.info("Microphone status: \(String(describing: result), privacy: .public)")
+    return result
   }
 
   func requestMicrophone() async -> Bool {
-    await withCheckedContinuation { continuation in
+    logger.info("Requesting microphone permission...")
+    let granted = await withCheckedContinuation { continuation in
       AVCaptureDevice.requestAccess(for: .audio) { granted in
         continuation.resume(returning: granted)
       }
     }
+    logger.info("Microphone permission granted: \(granted, privacy: .public)")
+    return granted
   }
 
   func openMicrophoneSettings() async {
+    logger.info("Opening microphone settings in System Preferences...")
     await MainActor.run {
       _ = NSWorkspace.shared.open(
         URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
@@ -98,14 +112,20 @@ actor PermissionClientLive {
   nonisolated func accessibilityStatus() -> PermissionStatus {
     // Check without prompting (kAXTrustedCheckOptionPrompt: false)
     let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
-    return AXIsProcessTrustedWithOptions(options) ? .granted : .denied
+    let result = AXIsProcessTrustedWithOptions(options) ? PermissionStatus.granted : .denied
+    logger.info("Accessibility status: \(String(describing: result), privacy: .public)")
+    return result
   }
 
   nonisolated func inputMonitoringStatus() -> PermissionStatus {
-    mapIOHIDAccess(IOHIDCheckAccess(kIOHIDRequestTypeListenEvent))
+    let access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+    let result = mapIOHIDAccess(access)
+    logger.info("Input monitoring status: \(String(describing: result), privacy: .public) (IOHIDAccess: \(String(describing: access), privacy: .public))")
+    return result
   }
 
   func requestAccessibility() async {
+    logger.info("Requesting accessibility permission...")
     // First, trigger the system prompt (on main actor for safety)
     await MainActor.run {
       let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
@@ -117,6 +137,7 @@ actor PermissionClientLive {
   }
 
   func requestInputMonitoring() async -> Bool {
+    logger.info("Requesting input monitoring permission...")
     let granted = await MainActor.run {
       if CGPreflightListenEventAccess() {
         return true
@@ -125,13 +146,17 @@ actor PermissionClientLive {
     }
 
     if !granted {
+      logger.info("Input monitoring not granted, opening Settings...")
       await openInputMonitoringSettings()
+    } else {
+      logger.info("Input monitoring permission granted: \(granted, privacy: .public)")
     }
 
     return granted
   }
 
   func openAccessibilitySettings() async {
+    logger.info("Opening accessibility settings in System Preferences...")
     await MainActor.run {
       _ = NSWorkspace.shared.open(
         URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
@@ -140,6 +165,7 @@ actor PermissionClientLive {
   }
 
   func openInputMonitoringSettings() async {
+    logger.info("Opening input monitoring settings in System Preferences...")
     await MainActor.run {
       _ = NSWorkspace.shared.open(
         URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!

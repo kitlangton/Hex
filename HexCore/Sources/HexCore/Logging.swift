@@ -18,6 +18,7 @@ public enum HexLog {
     case parakeet = "Parakeet"
     case history = "History"
     case settings = "Settings"
+    case permissions = "Permissions"
   }
 
   public static func logger(_ category: Category) -> Logger {
@@ -37,4 +38,5 @@ public enum HexLog {
   public static let parakeet = logger(.parakeet)
   public static let history = logger(.history)
   public static let settings = logger(.settings)
+  public static let permissions = logger(.permissions)
 }

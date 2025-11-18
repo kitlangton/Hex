@@ -254,16 +254,19 @@ struct SettingsFeature {
 
       // Permission requests
       case .requestMicrophone:
+        settingsLogger.info("User requested microphone permission from settings")
         return .run { _ in
           _ = await permissions.requestMicrophone()
         }
 
       case .requestAccessibility:
+        settingsLogger.info("User requested accessibility permission from settings")
         return .run { _ in
           await permissions.requestAccessibility()
         }
 
       case .requestInputMonitoring:
+        settingsLogger.info("User requested input monitoring permission from settings")
         return .run { _ in
           _ = await permissions.requestInputMonitoring()
         }
