@@ -395,20 +395,23 @@ private extension TranscriptionFeature {
 
     // If empty text, nothing else to do
     guard !result.isEmpty else {
-      return .none
+      return warmUpRecorderEffect()
     }
 
     // Compute how long we recorded
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
     // Continue with storing the final result in the background
-    return finalizeRecordingAndStoreTranscript(
-      result: result,
-      duration: duration,
-      sourceAppBundleID: state.sourceAppBundleID,
-      sourceAppName: state.sourceAppName,
-      audioURL: audioURL,
-      transcriptionHistory: state.$transcriptionHistory
+    return .merge(
+      finalizeRecordingAndStoreTranscript(
+        result: result,
+        duration: duration,
+        sourceAppBundleID: state.sourceAppBundleID,
+        sourceAppName: state.sourceAppName,
+        audioURL: audioURL,
+        transcriptionHistory: state.$transcriptionHistory
+      ),
+      warmUpRecorderEffect()
     )
   }
 
@@ -425,7 +428,7 @@ private extension TranscriptionFeature {
       try? FileManager.default.removeItem(at: audioURL)
     }
 
-    return .none
+    return warmUpRecorderEffect()
   }
 
   /// Move file to permanent location, create a transcript record, paste text, and play sound.
@@ -518,7 +521,8 @@ private extension TranscriptionFeature {
         let url = await recording.stopRecording()
         try? FileManager.default.removeItem(at: url)
         soundEffect.play(.cancel)
-      }
+      },
+      warmUpRecorderEffect()
     )
   }
 
@@ -527,12 +531,15 @@ private extension TranscriptionFeature {
     state.isPrewarming = false
 
     // Silently discard - no sound effect
-    return .run { [sleepManagement] _ in
-      // Allow system to sleep again
-      await sleepManagement.allowSleep()
-      let url = await recording.stopRecording()
-      try? FileManager.default.removeItem(at: url)
-    }
+    return .merge(
+      .run { [sleepManagement] _ in
+        // Allow system to sleep again
+        await sleepManagement.allowSleep()
+        let url = await recording.stopRecording()
+        try? FileManager.default.removeItem(at: url)
+      },
+      warmUpRecorderEffect()
+    )
   }
 }
 
