@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.11
+
+### Patch Changes
+
+- 1deda2a: Route Advanced → Export Logs through the new swift-log diagnostics file so Sequoia permission bugs (#122 #124) can be diagnosed locally without relying on macOS unified logs.
+
 ## 0.5.10
 
 ### Patch Changes
