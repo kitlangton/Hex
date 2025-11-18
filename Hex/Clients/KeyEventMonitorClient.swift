@@ -101,7 +101,6 @@ class KeyEventMonitorClientLive {
   private var trustMonitorTask: Task<Void, Never>?
   private var isFnPressed = false
   private var hasPromptedForAccessibilityTrust = false
-  private var hasPromptedForInputMonitoring = false
 
   private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
@@ -297,7 +296,7 @@ class KeyEventMonitorClientLive {
         logger.error("Accessibility permission missing (\(reason)); suspending tap.")
       }
       if !input {
-        logger.error("Input Monitoring permission missing (\(reason)); suspending tap.")
+        logger.error("Input Monitoring permission missing (\(reason)); continuing anyway so macOS can re-prompt.")
       }
     }
     await refreshMonitoringState(reason: "trust_\(reason)")
@@ -350,7 +349,7 @@ class KeyEventMonitorClientLive {
     }
 
     if !inputMonitoringTrusted {
-      logger.error("Input Monitoring permission missing; continuing with Accessibility-only tap (reason: \(reason)).")
+      logger.error("Input Monitoring permission missing; continuing with Accessibility-only tap so macOS can prompt (reason: \(reason)).")
     }
 
     let eventMask =
@@ -487,12 +486,7 @@ extension KeyEventMonitorClientLive {
       hasPromptedForAccessibilityTrust = true
     }
 
-    var inputMonitoringTrusted = currentInputMonitoringTrust()
-    if !inputMonitoringTrusted && promptIfUntrusted && !hasPromptedForInputMonitoring {
-      inputMonitoringTrusted = requestInputMonitoringPrompt()
-      hasPromptedForInputMonitoring = true
-    }
-
+    let inputMonitoringTrusted = currentInputMonitoringTrust()
     setPermissionFlags(accessibility: accessibilityTrusted, input: inputMonitoringTrusted)
   }
 
@@ -510,39 +504,6 @@ extension KeyEventMonitorClientLive {
     IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
   }
 
-  private func requestInputMonitoringPrompt() -> Bool {
-    let request: () -> Bool = {
-      if CGPreflightListenEventAccess() {
-        return true
-      }
-      return CGRequestListenEventAccess()
-    }
-
-    let granted: Bool
-    if Thread.isMainThread {
-      granted = request()
-    } else {
-      granted = DispatchQueue.main.sync(execute: request)
-    }
-
-    if !granted {
-      logger.error("Input Monitoring permission denied; opening System Settings.")
-      openInputMonitoringSettings()
-    }
-
-    return granted
-  }
-
-  private func openInputMonitoringSettings() {
-    guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") else {
-      return
-    }
-    if Thread.isMainThread {
-      NSWorkspace.shared.open(url)
-    } else {
-      DispatchQueue.main.async {
-        NSWorkspace.shared.open(url)
-      }
-    }
-  }
+  // Intentionally no request helper: creating the event tap prompts macOS 15+ for Input Monitoring
+  // the same way older versions did, while we still track status for UI.
 }

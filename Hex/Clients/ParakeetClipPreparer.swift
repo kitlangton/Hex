@@ -84,13 +84,14 @@ enum ParakeetClipPreparer {
       let dest = paddedChannels[channel]
       let src = sourceChannels[channel]
       if framesRead > 0 {
-        dest.assign(from: src, count: Int(framesRead))
+        dest.update(from: src, count: Int(framesRead))
       }
       let padCount = Int(minimumFrames - framesRead)
       if padCount > 0 {
         dest.advanced(by: Int(framesRead)).initialize(repeating: 0, count: padCount)
       }
     }
+    
 
     paddedBuffer.frameLength = minimumFrames
 
