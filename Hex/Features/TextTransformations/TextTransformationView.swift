@@ -106,7 +106,7 @@ Configuration lives at:
 \(URL.textTransformationsURL.path)
 
 Schema essentials:
-- `schemaVersion` must stay 3.
+- `schemaVersion` must stay 4.
 - `providers` supports both `claude_code` (Claude Desktop CLI) and `ollama` entries.
   • `claude_code` entries require `binaryPath` and optional `workingDirectory`.
   • `ollama` entries point to the `ollama` CLI binary and set `defaultModel` to a tag such as `llama3.1:8b`.
@@ -122,6 +122,11 @@ Schema essentials:
   • Precedence: prefix+bundle > prefix alone > bundle alone > general fallback
 - Matching is case-insensitive and multiple bundle IDs are allowed (Messages uses `com.apple.MobileSMS`, older builds use `com.apple.iChat`).
 - Each `pipeline` contains ordered `transformations`; `.llm` steps require a `providerID` and a `promptTemplate` that includes `{{input}}`.
+- `autoSendCommand` (optional): Keyboard shortcut to simulate after pasting text
+  • Format: `{"key": "return", "modifiers": [{"kind": "command"}]}`
+  • Common use: Auto-send messages (Enter, Cmd+Enter, Shift+Enter)
+  • Key field is optional for modifier-only commands
+  • Example: `{"key": "return"}` sends plain Enter after paste
 - Use `"providerID": "hex-preferred-provider"` to honor the user-selected provider/model in Settings; Hex falls back to explicit IDs if preferences are unset.
 - Voice prefix input is automatically stripped before processing (e.g., "hex, calculate 10+5" → "calculate 10+5").
 - When a transformation issues an obvious action (opening/focusing apps or URLs), instruct the LLM to return an empty string unless the user explicitly asked for a textual response so Hex doesn't paste filler text.
@@ -217,6 +222,7 @@ struct ModeRow: View {
 		}
 
 		AppTargetsView(bundleIDs: mode.appliesToBundleIdentifiers)
+		VoicePrefixView(prefixes: mode.voicePrefixes)
 
 		if !providerSummaries.isEmpty {
 			HStack(spacing: 6) {
@@ -261,6 +267,24 @@ struct ModeRow: View {
 					}
 				}
 			}
+		
+		// Auto-send keyboard command indicator
+		if let autoSend = mode.autoSendCommand {
+			HStack(spacing: 6) {
+				Image(systemName: "paperplane.fill")
+					.foregroundStyle(.secondary)
+					.font(.caption)
+				Text("Auto-send:")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+				Text(autoSend.displayName)
+					.font(.caption)
+					.padding(.horizontal, 6)
+					.padding(.vertical, 2)
+					.background(RoundedRectangle(cornerRadius: 4).fill(Color.purple.opacity(0.2)))
+					.foregroundStyle(.purple)
+			}
+		}
 
 			// Transformations preview
 			if !mode.pipeline.transformations.isEmpty {
@@ -333,5 +357,36 @@ private struct AppTargetsView: View {
 			return url.deletingPathExtension().lastPathComponent
 		}
 		return bundleID
+	}
+}
+
+private struct VoicePrefixView: View {
+	let prefixes: [String]
+
+	var body: some View {
+		if prefixes.isEmpty {
+			EmptyView()
+		} else {
+			HStack(spacing: 6) {
+				Image(systemName: "waveform.circle")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+				Text("Voice Prefixes:")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+				ForEach(prefixes.prefix(4), id: \.self) { prefix in
+					Text(prefix)
+						.font(.caption)
+						.padding(.horizontal, 6)
+						.padding(.vertical, 2)
+						.background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.2)))
+				}
+				if prefixes.count > 4 {
+					Text("+\(prefixes.count - 4) more")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				}
+			}
+		}
 	}
 }

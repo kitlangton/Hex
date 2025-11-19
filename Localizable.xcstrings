@@ -109,6 +109,9 @@
     "Audio Behavior while Recording" : {
 
     },
+    "Auto-send:" : {
+
+    },
     "Become a Sponsor" : {
 
     },
@@ -814,6 +817,9 @@
           }
         }
       }
+    },
+    "Voice Prefixes:" : {
+
     },
     "Volume" : {
 

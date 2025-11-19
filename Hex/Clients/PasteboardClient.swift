@@ -19,6 +19,7 @@ private let pasteboardLogger = HexLog.pasteboard
 struct PasteboardClient {
     var paste: @Sendable (String) async -> Void
     var copy: @Sendable (String) async -> Void
+    var sendKeyboardCommand: @Sendable (KeyboardCommand) async -> Void
 }
 
 extension PasteboardClient: DependencyKey {
@@ -30,6 +31,9 @@ extension PasteboardClient: DependencyKey {
             },
             copy: { text in
                 await live.copy(text: text)
+            },
+            sendKeyboardCommand: { command in
+                await live.sendKeyboardCommand(command)
             }
         )
     }
@@ -59,6 +63,62 @@ struct PasteboardClientLive {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+    
+    @MainActor
+    func sendKeyboardCommand(_ command: KeyboardCommand) async {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        
+        // Convert modifiers to CGEventFlags and key codes for modifier keys
+        var modifierKeyCodes: [CGKeyCode] = []
+        var flags = CGEventFlags()
+        
+        for modifier in command.modifiers.sorted {
+            switch modifier.kind {
+            case .command:
+                flags.insert(.maskCommand)
+                modifierKeyCodes.append(55) // Left Cmd
+            case .shift:
+                flags.insert(.maskShift)
+                modifierKeyCodes.append(56) // Left Shift
+            case .option:
+                flags.insert(.maskAlternate)
+                modifierKeyCodes.append(58) // Left Option
+            case .control:
+                flags.insert(.maskControl)
+                modifierKeyCodes.append(59) // Left Control
+            case .fn:
+                flags.insert(.maskSecondaryFn)
+                // Fn key doesn't need explicit key down/up
+            }
+        }
+        
+        // Press modifiers down
+        for keyCode in modifierKeyCodes {
+            let modDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+            modDown?.post(tap: .cghidEventTap)
+        }
+        
+        // Press main key if present
+        if let key = command.key {
+            let keyCode = Sauce.shared.keyCode(for: key)
+            
+            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+            keyDown?.flags = flags
+            keyDown?.post(tap: .cghidEventTap)
+            
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+            keyUp?.flags = flags
+            keyUp?.post(tap: .cghidEventTap)
+        }
+        
+        // Release modifiers in reverse order
+        for keyCode in modifierKeyCodes.reversed() {
+            let modUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+            modUp?.post(tap: .cghidEventTap)
+        }
+        
+        pasteboardLogger.debug("Sent keyboard command: \(command.displayName)")
     }
 
     // Function to save the current state of the NSPasteboard

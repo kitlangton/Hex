@@ -6,9 +6,10 @@ public struct TransformationMode: Codable, Equatable, Identifiable, Sendable {
 	public var pipeline: TextTransformationPipeline
 	public var appliesToBundleIdentifiers: [String]
 	public var voicePrefixes: [String]
+	public var autoSendCommand: KeyboardCommand?
 	
 	private enum CodingKeys: String, CodingKey {
-		case id, name, pipeline, appliesToBundleIdentifiers, voicePrefixes, voicePrefix
+		case id, name, pipeline, appliesToBundleIdentifiers, voicePrefixes, voicePrefix, autoSendCommand
 	}
 	
 	public init(
@@ -16,13 +17,15 @@ public struct TransformationMode: Codable, Equatable, Identifiable, Sendable {
 		name: String,
 		pipeline: TextTransformationPipeline = .init(),
 		appliesToBundleIdentifiers: [String] = [],
-		voicePrefixes: [String] = []
+		voicePrefixes: [String] = [],
+		autoSendCommand: KeyboardCommand? = nil
 	) {
 		self.id = id
 		self.name = name
 		self.pipeline = pipeline
 		self.appliesToBundleIdentifiers = appliesToBundleIdentifiers
 		self.voicePrefixes = voicePrefixes
+		self.autoSendCommand = autoSendCommand
 	}
 	
 	public init(from decoder: Decoder) throws {
@@ -31,6 +34,7 @@ public struct TransformationMode: Codable, Equatable, Identifiable, Sendable {
 		name = try container.decode(String.self, forKey: .name)
 		pipeline = try container.decode(TextTransformationPipeline.self, forKey: .pipeline)
 		appliesToBundleIdentifiers = try container.decodeIfPresent([String].self, forKey: .appliesToBundleIdentifiers) ?? []
+		autoSendCommand = try container.decodeIfPresent(KeyboardCommand.self, forKey: .autoSendCommand)
 		
 		// Support both old voicePrefix (string) and new voicePrefixes (array)
 		if let prefixes = try container.decodeIfPresent([String].self, forKey: .voicePrefixes) {
@@ -49,11 +53,12 @@ public struct TransformationMode: Codable, Equatable, Identifiable, Sendable {
 		try container.encode(pipeline, forKey: .pipeline)
 		try container.encode(appliesToBundleIdentifiers, forKey: .appliesToBundleIdentifiers)
 		try container.encode(voicePrefixes, forKey: .voicePrefixes)
+		try container.encodeIfPresent(autoSendCommand, forKey: .autoSendCommand)
 	}
 }
 
 public struct TextTransformationsState: Codable, Equatable, Sendable {
-	public static let currentSchemaVersion = 3
+	public static let currentSchemaVersion = 4
 	
 	public var schemaVersion: Int
 	public var modes: [TransformationMode]

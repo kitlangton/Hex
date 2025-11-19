@@ -434,6 +434,7 @@ private extension TranscriptionFeature {
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
     let textToProcess = processedResult  // Capture immutable copy for concurrency
+    let autoSendCommand = selectedMode?.autoSendCommand
 
     // Check if we have any LLM transformations that will trigger post-processing
     let hasLLMTransformations = pipeline.transformations.contains { transformation in
@@ -470,7 +471,8 @@ private extension TranscriptionFeature {
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,
           audioURL: audioURL,
-          transcriptionHistory: transcriptionHistory
+          transcriptionHistory: transcriptionHistory,
+          autoSendCommand: autoSendCommand
         )
       } catch {
         await send(.postProcessingComplete)
@@ -502,7 +504,8 @@ private extension TranscriptionFeature {
     sourceAppBundleID: String?,
     sourceAppName: String?,
     audioURL: URL,
-    transcriptionHistory: Shared<TranscriptionHistory>
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    autoSendCommand: KeyboardCommand?
   ) async throws {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -534,6 +537,14 @@ private extension TranscriptionFeature {
 
     await pasteboard.paste(result)
     soundEffect.play(.pasteTranscript)
+    
+    // Send keyboard command if configured (e.g., Enter, Cmd+Enter, etc.)
+    if let autoSendCommand {
+      // Small delay to ensure paste completes before sending keyboard command
+      try? await Task.sleep(for: .milliseconds(100))
+      await pasteboard.sendKeyboardCommand(autoSendCommand)
+      transcriptionFeatureLogger.info("Auto-sent keyboard command: \(autoSendCommand.displayName)")
+    }
   }
 }
 
