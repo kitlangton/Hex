@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- d583372: Add auto-send keyboard command feature to transformation modes (#119)
+
+### Patch Changes
+
+- 9474ff7: Auto-detect Claude and Ollama provider binaries (#000)
+- 154238e: Rename transformation stacks to modes throughout codebase
+- 3bf2fb0: Fix voice prefix matching with punctuation - now strips punctuation (.,;:!?) when matching prefixes
+- e797194: Show MCP tool groups in transformation mode display
+- 154238e: MCP tools now configurable per mode instead of globally per provider
+- 9474ff7: Prefer Claude Code CLI binaries when auto-detecting providers (#000)
+- eab07f2: Gate LLM UI behind developer flag
+
 ## 0.5.13
 
 ### Patch Changes
