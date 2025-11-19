@@ -462,7 +462,7 @@ private extension TranscriptionFeature {
             providerPreferences
           )
         }
-        let transformed = await pipeline.process(textToProcess, executor: executor)
+        let transformed = try await pipeline.process(textToProcess, executor: executor)
         transcriptionFeatureLogger.info("Transformed text from \(textToProcess.count) to \(transformed.count) chars")
         await send(.postProcessingComplete)
         try await finalizeRecordingAndStoreTranscript(
@@ -479,6 +479,7 @@ private extension TranscriptionFeature {
         await send(.transcriptionError(error, audioURL))
       }
     }
+    .cancellable(id: CancelID.transcription)
   }
 
   func handleTranscriptionError(

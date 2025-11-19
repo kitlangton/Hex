@@ -88,23 +88,23 @@ final class TextTransformationTests: XCTestCase {
 
 	// MARK: - Pipeline Tests
 
-	func testEmptyPipeline() async {
+	func testEmptyPipeline() async throws {
 		let pipeline = TextTransformationPipeline()
-		let result = await pipeline.process("hello")
+		let result = try await pipeline.process("hello")
 		XCTAssertEqual(result, "hello")
 	}
 
-	func testDisabledPipeline() async {
+	func testDisabledPipeline() async throws {
 		var pipeline = TextTransformationPipeline()
 		pipeline.isEnabled = false
 		pipeline.transformations = [
 			Transformation(type: .uppercase)
 		]
-		let result = await pipeline.process("hello")
+		let result = try await pipeline.process("hello")
 		XCTAssertEqual(result, "hello")
 	}
 
-	func testPipelineSequence() async {
+	func testPipelineSequence() async throws {
 		var pipeline = TextTransformationPipeline()
 		pipeline.transformations = [
 			Transformation(type: .trimWhitespace),
@@ -112,11 +112,11 @@ final class TextTransformationTests: XCTestCase {
 			Transformation(type: .capitalize)
 		]
 		
-		let result = await pipeline.process("  hello    world  ")
+		let result = try await pipeline.process("  hello    world  ")
 		XCTAssertEqual(result, "Hello World")
 	}
 
-	func testPipelineWithDisabledTransformation() async {
+	func testPipelineWithDisabledTransformation() async throws {
 		var pipeline = TextTransformationPipeline()
 		var uppercaseTransform = Transformation(type: .uppercase)
 		uppercaseTransform.isEnabled = false
@@ -126,11 +126,11 @@ final class TextTransformationTests: XCTestCase {
 			Transformation(type: .addPrefix(">> "))
 		]
 		
-		let result = await pipeline.process("hello")
+		let result = try await pipeline.process("hello")
 		XCTAssertEqual(result, ">> hello")
 	}
 
-	func testComplexPipeline() async {
+	func testComplexPipeline() async throws {
 		var pipeline = TextTransformationPipeline()
 		let replaceConfig = ReplaceTextConfig(
 			pattern: "my email",
@@ -143,7 +143,7 @@ final class TextTransformationTests: XCTestCase {
 			Transformation(type: .addSuffix("\n\nSent from Hex"))
 		]
 		
-		let result = await pipeline.process(" Please contact my email ")
+		let result = try await pipeline.process(" Please contact my email ")
 		XCTAssertEqual(result, "Please contact user@example.com\n\nSent from Hex")
 	}
 

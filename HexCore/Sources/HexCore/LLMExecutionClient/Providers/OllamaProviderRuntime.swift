@@ -45,6 +45,12 @@ struct OllamaProviderRuntime: LLMProviderRuntime {
         process.environment = environment
 
         try process.run()
+        
+        defer {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
 
         if let promptData = prompt.appending("\n").data(using: .utf8) {
             stdinPipe.fileHandleForWriting.write(promptData)

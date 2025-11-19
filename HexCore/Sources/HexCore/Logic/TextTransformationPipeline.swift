@@ -19,7 +19,7 @@ public struct TextTransformationPipeline: Codable, Equatable, Sendable {
 	}
 	
 	/// Execute all enabled transformations in sequence
-	public func process(_ text: String, executor: Executor? = nil) async -> String {
+	public func process(_ text: String, executor: Executor? = nil) async throws -> String {
 		guard isEnabled else { return text }
 		
 		var currentText = text
@@ -29,7 +29,9 @@ public struct TextTransformationPipeline: Codable, Equatable, Sendable {
 				guard let executor else { continue }
 				do {
 					currentText = try await executor.runLLM(config, currentText)
-				} catch {
+				} catch is CancellationError {
+                    throw CancellationError()
+                } catch {
 					HexLog.transcription.error("LLM transformation failed: \(error.localizedDescription)")
 					continue
 				}

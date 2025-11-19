@@ -67,6 +67,12 @@ struct ClaudeCodeProviderRuntime: LLMProviderRuntime {
         process.arguments?.append(contentsOf: ["--permission-mode", "bypassPermissions"])
 
         try process.run()
+        
+        defer {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
 
         if let data = wrappedPrompt.appending("\n").data(using: .utf8) {
             stdinPipe.fileHandleForWriting.write(data)
