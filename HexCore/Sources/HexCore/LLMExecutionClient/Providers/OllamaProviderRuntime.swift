@@ -19,8 +19,11 @@ struct OllamaProviderRuntime: LLMProviderRuntime {
             logger.notice("Ollama provider marked as tool-capable but runtime currently text-only")
         }
 
-        let binaryPath = (provider.binaryPath ?? "/usr/local/bin/ollama") as NSString
-        let executableURL = URL(fileURLWithPath: binaryPath.expandingTildeInPath)
+        guard let executableURL = LLMExecutableLocator.resolveBinaryURL(for: provider) else {
+            throw LLMExecutionError.invalidConfiguration(
+                "Ollama binary not found. Install Ollama or set binaryPath."
+            )
+        }
 
         let prompt = buildLLMUserPrompt(config: config, input: input)
 

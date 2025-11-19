@@ -99,7 +99,7 @@ private struct InstructionCard: View {
 	}
 }
 
-extension TextTransformationView {
+	extension TextTransformationView {
 	static let llmInstructions: String = {
 		"""
 Configuration lives at:
@@ -107,9 +107,9 @@ Configuration lives at:
 
 Schema essentials:
 - `schemaVersion` must stay 4.
-- `providers` supports both `claude_code` (Claude Desktop CLI) and `ollama` entries.
-  • `claude_code` entries require `binaryPath` and optional `workingDirectory`.
-  • `ollama` entries point to the `ollama` CLI binary and set `defaultModel` to a tag such as `llama3.1:8b`.
+	- `providers` supports both `claude_code` (Claude Desktop CLI) and `ollama` entries.
+	  • `claude_code` entries auto-detect the Claude Code CLI under `~/.claude/local/...` (plus PATH/Homebrew/NVM). We never fall back to `/Applications/Claude.app`, so install/enable Claude Code or set `binaryPath` when discovery fails. `workingDirectory` stays optional.
+	  • `ollama` entries point to the `ollama` CLI binary (auto-detected when omitted) and set `defaultModel` to a tag such as `llama3.1:8b`.
   • Text-only providers (currently all Ollama models) ignore `tooling` blocks even if configured, so prefer prompts that don't rely on MCP.
 - Add `tooling.enabledToolGroups` when Claude should call Hex's MCP tools, and include a short `instructions` note so future editors understand why tools are enabled.
   • Current tool groups:

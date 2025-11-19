@@ -11,15 +11,17 @@ struct ClaudeCodeProviderRuntime: LLMProviderRuntime {
         toolServerEndpoint: HexToolServerEndpoint?,
         capabilities: LLMProviderCapabilities
     ) async throws -> String {
-        guard let binaryPath = provider.binaryPath else {
-            throw LLMExecutionError.invalidConfiguration("Provider has no binary path")
+        guard let executableURL = LLMExecutableLocator.resolveBinaryURL(for: provider) else {
+            throw LLMExecutionError.invalidConfiguration(
+                "Claude CLI binary not found. Install Claude CLI or set binaryPath."
+            )
         }
 
         let wrappedPrompt = buildLLMUserPrompt(config: config, input: input)
         logger.info("Launching Claude CLI provider: \(provider.id)")
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: (binaryPath as NSString).expandingTildeInPath)
+        process.executableURL = executableURL
         var arguments = ["-p", "--output-format", "json"]
         if let model = provider.defaultModel {
             arguments.append(contentsOf: ["--model", model])
@@ -42,7 +44,7 @@ struct ClaudeCodeProviderRuntime: LLMProviderRuntime {
 
         var environment = ProcessInfo.processInfo.environment
         environment["CLAUDE_CODE_SKIP_UPDATE_CHECK"] = "1"
-        environment["PATH"] = buildExecutableSearchPath(existingPATH: environment["PATH"])
+        environment["PATH"] = LLMExecutableLocator.claudeSearchPath(existingPATH: environment["PATH"])
         environment["CLAUDE_CODE_DEBUG_LOGS_DIR"] = claudeEnvironment.debugLogFile.path
         process.environment = environment
 
@@ -154,76 +156,6 @@ private func prepareClaudeEnvironment(serverEndpoint: HexToolServerEndpoint?) th
     )
 }
 
-private func buildExecutableSearchPath(existingPATH: String?) -> String {
-    let existingEntries = existingPATH?
-        .split(separator: ":")
-        .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
-        ?? []
-
-    let fallbackEntries = defaultExecutableDirectories()
-    let merged = dedupePaths(fallbackEntries + existingEntries)
-    return merged.joined(separator: ":")
-}
-
-private func defaultExecutableDirectories() -> [String] {
-    let fm = FileManager.default
-    let home = fm.homeDirectoryForCurrentUser.path
-    var candidates: [String] = []
-
-    candidates.append(contentsOf: nvmExecutableDirectories(homeDirectory: home))
-
-    let brewPrefixes = ["/usr/local/opt", "/opt/homebrew/opt"]
-    for prefix in brewPrefixes {
-        let path = "\(prefix)/claude/bin"
-        if fm.fileExists(atPath: path) {
-            candidates.append(path)
-        }
-    }
-
-    candidates.append("/usr/local/bin")
-    candidates.append("/opt/homebrew/bin")
-    candidates.append("/usr/bin")
-    candidates.append("/bin")
-
-    return candidates
-}
-
-private func nvmExecutableDirectories(homeDirectory: String) -> [String] {
-    let fm = FileManager.default
-    var directories: [String] = []
-    let nvmDir = "\(homeDirectory)/.nvm"
-    let currentDir = "\(nvmDir)/versions/node/current/bin"
-    let versionsDir = "\(nvmDir)/versions/node"
-
-    if fm.fileExists(atPath: currentDir) {
-        directories.append(currentDir)
-    }
-
-    if let versionFolders = try? fm.contentsOfDirectory(atPath: versionsDir) {
-        for version in versionFolders.sorted(by: >) {
-            guard !version.hasPrefix(".") else { continue }
-            let versionDir = (versionsDir as NSString).appendingPathComponent("\(version)/bin")
-            directories.append(versionDir)
-        }
-    }
-
-    return directories
-}
-
-private func dedupePaths(_ paths: [String]) -> [String] {
-    var seen = Set<String>()
-    var ordered: [String] = []
-    for path in paths {
-        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { continue }
-        let normalized = (trimmed as NSString).standardizingPath
-        if seen.insert(normalized).inserted {
-            ordered.append(normalized)
-        }
-    }
-    return ordered
-}
 
 private struct ClaudeMCPConfiguration: Encodable {
     struct Server: Encodable {

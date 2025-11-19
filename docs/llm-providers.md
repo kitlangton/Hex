@@ -13,7 +13,7 @@ All providers are defined under the `providers` array inside `text_transformatio
 
 ### Binary Paths
 
-Hex automatically scans common install locations for Claude Desktop CLI (`claude` binary) and Ollama. When `binaryPath` is omitted or points to a missing file, Hex searches the user's `PATH`, Homebrew prefixes, `~/.nvm` shims, and the standard `/Applications/Claude.app` bundle to locate the executable. Keep `binaryPath` in the config only when you want to override the detected path.
+Hex automatically scans the Claude Code CLI install directories (e.g., `~/.claude/local/claude` and its `bin/` + `node_modules/.bin/` shims) plus PATH/Homebrew/NVM locations for `claude`, and the usual PATH/Homebrew locations for `ollama`. We explicitly ignore `/Applications/Claude.app` so the GUI app never launches in place of the CLI—install Claude Code (or provide a `binaryPath`) if detection fails. Set the optional `CLAUDE_CODE_BINARY_HINT` environment variable to append additional search paths when debugging.
 
 ### Placeholder Provider ID
 
