@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+### Patch Changes
+
+- 804651c: Make LLM processing interruptible by pressing Escape
+
 ## 0.6.0
 
 ### Minor Changes
