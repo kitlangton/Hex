@@ -426,6 +426,10 @@ private extension TranscriptionFeature {
 
     let pipeline = selectedMode?.pipeline ?? state.textTransformations.pipeline(for: bundleID)
     let providers = state.textTransformations.providers
+    let providerPreferences = LLMProviderPreferences(
+        preferredProviderID: state.hexSettings.preferredLLMProviderID,
+        preferredModelID: state.hexSettings.preferredLLMModelID
+    )
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
@@ -453,7 +457,8 @@ private extension TranscriptionFeature {
             config,
             input,
             providers,
-            toolServer
+            toolServer,
+            providerPreferences
           )
         }
         let transformed = await pipeline.process(textToProcess, executor: executor)

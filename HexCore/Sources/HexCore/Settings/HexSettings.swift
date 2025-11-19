@@ -36,6 +36,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var pasteLastTranscriptHotkey: HotKey?
 	public var hasCompletedModelBootstrap: Bool
 	public var hasCompletedStorageMigration: Bool
+	public var preferredLLMProviderID: String?
+	public var preferredLLMModelID: String?
 
 	public init(
 		soundEffectsEnabled: Bool = true,
@@ -56,7 +58,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		maxHistoryEntries: Int? = nil,
 		pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey,
 		hasCompletedModelBootstrap: Bool = false,
-		hasCompletedStorageMigration: Bool = false
+		hasCompletedStorageMigration: Bool = false,
+		preferredLLMProviderID: String? = nil,
+		preferredLLMModelID: String? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -77,6 +81,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.pasteLastTranscriptHotkey = pasteLastTranscriptHotkey
 		self.hasCompletedModelBootstrap = hasCompletedModelBootstrap
 		self.hasCompletedStorageMigration = hasCompletedStorageMigration
+		self.preferredLLMProviderID = preferredLLMProviderID
+		self.preferredLLMModelID = preferredLLMModelID
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -118,6 +124,8 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case pasteLastTranscriptHotkey
 	case hasCompletedModelBootstrap
 	case hasCompletedStorageMigration
+	case preferredLLMProviderID
+	case preferredLLMModelID
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -237,6 +245,22 @@ private enum HexSettingsSchema {
 			}
 		).eraseToAny(),
 		SettingsField(.hasCompletedModelBootstrap, keyPath: \.hasCompletedModelBootstrap, default: defaults.hasCompletedModelBootstrap).eraseToAny(),
-		SettingsField(.hasCompletedStorageMigration, keyPath: \.hasCompletedStorageMigration, default: defaults.hasCompletedStorageMigration).eraseToAny()
+		SettingsField(.hasCompletedStorageMigration, keyPath: \.hasCompletedStorageMigration, default: defaults.hasCompletedStorageMigration).eraseToAny(),
+		SettingsField(
+			.preferredLLMProviderID,
+			keyPath: \.preferredLLMProviderID,
+			default: defaults.preferredLLMProviderID,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
+		).eraseToAny(),
+		SettingsField(
+			.preferredLLMModelID,
+			keyPath: \.preferredLLMModelID,
+			default: defaults.preferredLLMModelID,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
+		).eraseToAny()
 	]
 }

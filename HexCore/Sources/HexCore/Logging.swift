@@ -8,6 +8,7 @@ public enum HexLog {
     case app = "App"
     case caches = "Caches"
     case transcription = "Transcription"
+    case llm = "LLM"
     case models = "Models"
     case recording = "Recording"
     case media = "Media"
@@ -28,6 +29,7 @@ public enum HexLog {
   public static let app = logger(.app)
   public static let caches = logger(.caches)
   public static let transcription = logger(.transcription)
+  public static let llm = logger(.llm)
   public static let models = logger(.models)
   public static let recording = logger(.recording)
   public static let media = logger(.media)

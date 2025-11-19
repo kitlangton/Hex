@@ -5,6 +5,7 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 		case claudeCode = "claude_code"
 		case anthropicAPI = "anthropic_api"
 		case openAI = "openai"
+		case ollama = "ollama"
 	}
 	
 	public struct ToolingConfiguration: Codable, Equatable, Sendable {
@@ -42,6 +43,7 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 	}
 
 	public var id: String
+	public var displayName: String?
 	public var type: ProviderType
 
 	// Claude Code / CLI configuration
@@ -62,6 +64,7 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 
 	public init(
 		id: String,
+		displayName: String? = nil,
 		type: ProviderType,
 		binaryPath: String? = nil,
 		workingDirectory: String? = nil,
@@ -73,6 +76,7 @@ public struct LLMProvider: Codable, Equatable, Identifiable, Sendable {
 		tooling: ToolingConfiguration? = nil
 	) {
 		self.id = id
+		self.displayName = displayName
 		self.type = type
 		self.binaryPath = binaryPath
 		self.workingDirectory = workingDirectory
@@ -90,4 +94,8 @@ public extension LLMProvider.ToolingConfiguration {
 		guard !enabledToolGroups.isEmpty else { return nil }
 		return HexToolServerConfiguration(enabledToolGroups: enabledToolGroups, instructions: instructions)
 	}
+}
+
+public extension LLMProvider {
+	static let preferredProviderIdentifier = "hex-preferred-provider"
 }

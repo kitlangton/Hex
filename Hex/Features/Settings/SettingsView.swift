@@ -20,6 +20,7 @@ struct SettingsView: View {
 			)
 
 			ModelSectionView(store: store)
+			LLMProviderSectionView(store: store)
 			
 			// Only show language picker for WhisperKit models (not Parakeet)
 			if !store.hexSettings.selectedModel.hasPrefix("parakeet-") {

@@ -149,9 +149,10 @@ public struct TextTransformationsState: Codable, Equatable, Sendable {
 			for prefix in mode.voicePrefixes {
 				let trimmedPrefix = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
 				guard !trimmedPrefix.isEmpty else { continue }
-				
+
 				// Check if text starts with prefix (case-insensitive)
-				let pattern = "^\\s*\(NSRegularExpression.escapedPattern(for: trimmedPrefix))(?:[,\\s]+|$)"
+				// Match prefix followed by punctuation and/or whitespace, or end of string
+				let pattern = "^\\s*\(NSRegularExpression.escapedPattern(for: trimmedPrefix))(?:[.,;:!?\\s]+|$)"
 				if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
 				   let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) {
 					let matchRange = Range(match.range, in: text)!

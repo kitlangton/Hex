@@ -14,20 +14,23 @@ let package = Package(
 	        .package(url: "https://github.com/Cocoanetics/SwiftMCP.git", branch: "main"),
 	    ],
     targets: [
-	        .target(
-	            name: "HexCore",
-	            dependencies: [
-	                "Sauce",
-	                .product(name: "Dependencies", package: "swift-dependencies"),
-	                .product(name: "DependenciesMacros", package: "swift-dependencies"),
-	                .product(name: "Logging", package: "swift-log"),
-	                .product(name: "SwiftMCP", package: "SwiftMCP"),
-	            ],
-            path: "Sources/HexCore",
-            linkerSettings: [
-                .linkedFramework("IOKit")
-            ]
-        ),
+	    .target(
+	        name: "HexCore",
+	        dependencies: [
+	            "Sauce",
+	            .product(name: "Dependencies", package: "swift-dependencies"),
+	            .product(name: "DependenciesMacros", package: "swift-dependencies"),
+	            .product(name: "Logging", package: "swift-log"),
+	            .product(name: "SwiftMCP", package: "SwiftMCP"),
+	        ],
+	        path: "Sources/HexCore",
+	        resources: [
+	            .copy("Resources")
+	        ],
+	        linkerSettings: [
+	            .linkedFramework("IOKit")
+	        ]
+	    ),
         .testTarget(
             name: "HexCoreTests",
             dependencies: ["HexCore"],

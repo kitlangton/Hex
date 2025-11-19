@@ -345,6 +345,9 @@
     "Exporting Logs…" : {
 
     },
+    "Follow transformation config" : {
+
+    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -423,7 +426,16 @@
     "Input Monitoring is required so Hex can listen for your hotkey." : {
 
     },
+    "Keep provider default" : {
+
+    },
     "LLM Editing Guide" : {
+
+    },
+    "LLM Providers" : {
+
+    },
+    "LLM Providers:" : {
 
     },
     "Maximum History Entries" : {
@@ -471,6 +483,9 @@
     "No Modes" : {
 
     },
+    "No providers configured. Open the configuration file to add Claude or Ollama entries." : {
+
+    },
     "No Transcriptions" : {
       "comment" : "Empty history headline.",
       "localizations" : {
@@ -486,6 +501,9 @@
 
     },
     "Oldest entries will be automatically deleted when limit is reached" : {
+
+    },
+    "Open Configuration File" : {
 
     },
     "Open in Editor" : {
@@ -558,6 +576,12 @@
           }
         }
       }
+    },
+    "Preferred Model" : {
+
+    },
+    "Preferred Provider" : {
+
     },
     "Prevent System Sleep while Recording" : {
       "comment" : "Label for general setting whether to prevent system sleep while recording.",
@@ -713,6 +737,12 @@
 
     },
     "Text Transformations" : {
+
+    },
+    "Text-only" : {
+
+    },
+    "Tools" : {
 
     },
     "Transcription history is currently disabled." : {

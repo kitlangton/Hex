@@ -395,3 +395,6 @@ struct SelectedTextResult: Codable, Sendable {
 	let timestamp: Date
 	let clipboardRestored: Bool
 }
+
+// Shakespeare, I have to take out the trash in a minute.
+// Shakespeare, I have no way to go.

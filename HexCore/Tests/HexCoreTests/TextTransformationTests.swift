@@ -230,6 +230,61 @@ final class TextTransformationTests: XCTestCase {
 		XCTAssertEqual(fallback.transformations.count, defaultPipeline.transformations.count)
 	}
 
+	// MARK: - Voice Prefix Tests
+
+	func testVoicePrefixWithComma() {
+		var pipeline = TextTransformationPipeline()
+		pipeline.transformations = [Transformation(type: .uppercase)]
+		let mode = TransformationMode(
+			name: "Shakespeare",
+			pipeline: pipeline,
+			voicePrefixes: ["Shakespeare"]
+		)
+		let state = TextTransformationsState(modes: [mode])
+
+		// Test with comma attached to prefix (the failing case)
+		let result1 = state.modeByVoicePrefix(text: "Shakespeare, I have to take out the trash")
+		XCTAssertNotNil(result1, "Should match 'Shakespeare,' with comma")
+		XCTAssertEqual(result1?.strippedText, "I have to take out the trash")
+
+		// Test with comma and space
+		let result2 = state.modeByVoicePrefix(text: "Shakespeare, I have no way to go")
+		XCTAssertNotNil(result2, "Should match 'Shakespeare, ' with comma and space")
+		XCTAssertEqual(result2?.strippedText, "I have no way to go")
+
+		// Test without comma
+		let result3 = state.modeByVoicePrefix(text: "Shakespeare I am here")
+		XCTAssertNotNil(result3, "Should match 'Shakespeare' without comma")
+		XCTAssertEqual(result3?.strippedText, "I am here")
+	}
+
+	func testVoicePrefixWithPunctuation() {
+		var pipeline = TextTransformationPipeline()
+		pipeline.transformations = [Transformation(type: .uppercase)]
+		let mode = TransformationMode(
+			name: "Command",
+			pipeline: pipeline,
+			voicePrefixes: ["Hey"]
+		)
+		let state = TextTransformationsState(modes: [mode])
+
+		// Various punctuation scenarios
+		let testCases: [(String, String)] = [
+			("Hey, hello there", "hello there"),
+			("Hey! hello there", "hello there"),
+			("Hey. hello there", "hello there"),
+			("Hey; hello there", "hello there"),
+			("Hey: hello there", "hello there"),
+			("Hey? hello there", "hello there")
+		]
+
+		for (input, expected) in testCases {
+			let result = state.modeByVoicePrefix(text: input)
+			XCTAssertNotNil(result, "Should match '\(input)'")
+			XCTAssertEqual(result?.strippedText, expected, "Failed for input: \(input)")
+		}
+	}
+
 	private func loadTextTransformationFixture(named name: String) throws -> Data {
 		guard let url = Bundle.module.url(
 			forResource: name,
