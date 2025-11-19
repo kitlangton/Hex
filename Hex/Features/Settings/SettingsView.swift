@@ -9,6 +9,7 @@ struct SettingsView: View {
 	let microphonePermission: PermissionStatus
 	let accessibilityPermission: PermissionStatus
 	let inputMonitoringPermission: PermissionStatus
+	let allowsLLMFeatures: Bool
   
 	var body: some View {
 		Form {
@@ -20,7 +21,9 @@ struct SettingsView: View {
 			)
 
 			ModelSectionView(store: store)
-			LLMProviderSectionView(store: store)
+			if allowsLLMFeatures {
+				LLMProviderSectionView(store: store)
+			}
 			
 			// Only show language picker for WhisperKit models (not Parakeet)
 			if !store.hexSettings.selectedModel.hasPrefix("parakeet-") {

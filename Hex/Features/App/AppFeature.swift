@@ -20,15 +20,16 @@ struct AppFeature {
     case about
   }
 
-  @ObservableState
-  struct State {
-    var transcription: TranscriptionFeature.State = .init()
-    var settings: SettingsFeature.State = .init()
-    var history: HistoryFeature.State = .init()
-    var textTransformations: TextTransformationFeature.State = .init()
-    var activeTab: ActiveTab = .settings
-    @Shared(.hexSettings) var hexSettings: HexSettings
-    @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
+	@ObservableState
+	struct State {
+		var transcription: TranscriptionFeature.State = .init()
+		var settings: SettingsFeature.State = .init()
+		var history: HistoryFeature.State = .init()
+		var textTransformations: TextTransformationFeature.State = .init()
+		var activeTab: ActiveTab = .settings
+		var allowsLLMFeatures: Bool = DeveloperAccess.allowsLLMFeatures
+		@Shared(.hexSettings) var hexSettings: HexSettings
+		@Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
 
     // Permission state
     var microphonePermission: PermissionStatus = .notDetermined
@@ -117,9 +118,12 @@ struct AppFeature {
         return .none
       case .history:
         return .none
-      case let .setActiveTab(tab):
-        state.activeTab = tab
-        return .none
+		case let .setActiveTab(tab):
+			if tab == .transformations, !state.allowsLLMFeatures {
+				return .none
+			}
+			state.activeTab = tab
+			return .none
 
       // Permission handling
       case .checkPermissions:
@@ -275,13 +279,15 @@ struct AppView: View {
         .buttonStyle(.plain)
         .tag(AppFeature.ActiveTab.settings)
 
-        Button {
-          store.send(.setActiveTab(.transformations))
-        } label: {
-          Label("Transformations", systemImage: "wand.and.stars")
+        if store.allowsLLMFeatures {
+          Button {
+            store.send(.setActiveTab(.transformations))
+          } label: {
+            Label("Transformations", systemImage: "wand.and.stars")
+          }
+          .buttonStyle(.plain)
+          .tag(AppFeature.ActiveTab.transformations)
         }
-        .buttonStyle(.plain)
-        .tag(AppFeature.ActiveTab.transformations)
 
         Button {
           store.send(.setActiveTab(.history))
@@ -306,12 +312,24 @@ struct AppView: View {
           store: store.scope(state: \.settings, action: \.settings),
           microphonePermission: store.microphonePermission,
           accessibilityPermission: store.accessibilityPermission,
-          inputMonitoringPermission: store.inputMonitoringPermission
+          inputMonitoringPermission: store.inputMonitoringPermission,
+          allowsLLMFeatures: store.allowsLLMFeatures
         )
         .navigationTitle("Settings")
       case .transformations:
-        TextTransformationView(store: store.scope(state: \.textTransformations, action: \.textTransformations))
-          .navigationTitle("Text Transformations")
+        if store.allowsLLMFeatures {
+          TextTransformationView(store: store.scope(state: \.textTransformations, action: \.textTransformations))
+            .navigationTitle("Text Transformations")
+        } else {
+          SettingsView(
+            store: store.scope(state: \.settings, action: \.settings),
+            microphonePermission: store.microphonePermission,
+            accessibilityPermission: store.accessibilityPermission,
+            inputMonitoringPermission: store.inputMonitoringPermission,
+            allowsLLMFeatures: store.allowsLLMFeatures
+          )
+          .navigationTitle("Settings")
+        }
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")

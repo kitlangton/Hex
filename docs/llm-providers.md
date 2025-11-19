@@ -11,6 +11,10 @@ Hex now routes text transformations through a provider abstraction so Claude CLI
 
 All providers are defined under the `providers` array inside `text_transformations.json`. Each entry can optionally set a `displayName` for the Settings UI.
 
+### Binary Paths
+
+Hex automatically scans common install locations for Claude Desktop CLI (`claude` binary) and Ollama. When `binaryPath` is omitted or points to a missing file, Hex searches the user's `PATH`, Homebrew prefixes, `~/.nvm` shims, and the standard `/Applications/Claude.app` bundle to locate the executable. Keep `binaryPath` in the config only when you want to override the detected path.
+
 ### Placeholder Provider ID
 
 Set `"providerID": "hex-preferred-provider"` inside a transformation to defer to the user's choice in Settings → LLM Providers. When unset, Hex falls back to the first provider in the configuration.
@@ -43,3 +47,20 @@ Set `"providerID": "hex-preferred-provider"` inside a transformation to defer to
 Settings → “LLM Providers” lists every provider defined in `text_transformations.json`, shows whether it supports tools, and lets users choose a preferred provider/model. Transformations that use `hex-preferred-provider` respect this selection.
 
 Use the “Open Config File” button to jump directly to `~/Library/Application Support/Hex/text_transformations.json` when deeper edits are needed.
+
+## Developer Feature Flag
+
+The entire LLM configuration UI (Settings → LLM Providers and the Text Transformations tab) is hidden for non-developer builds. To opt in locally:
+
+1. Set an environment variable before launching Hex (persists per-login session):
+   ```bash
+   launchctl setenv HEX_ENABLE_LLM 1
+   # Remove with: launchctl unsetenv HEX_ENABLE_LLM
+   ```
+2. Or create a sentinel file under the app’s Application Support folder:
+   ```bash
+   mkdir -p "~/Library/Application Support/com.kitlangton.Hex/feature_flags"
+   touch "~/Library/Application Support/com.kitlangton.Hex/feature_flags/enable_llm_features"
+   ```
+
+Delete the file (or unset the env var) and relaunch Hex to hide the UI again.
