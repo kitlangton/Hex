@@ -327,6 +327,8 @@ extension Key {
     switch self {
     case .escape:
       return "⎋"
+    case .space:
+      return "␣"
     case .zero:
       return "0"
     case .one:
