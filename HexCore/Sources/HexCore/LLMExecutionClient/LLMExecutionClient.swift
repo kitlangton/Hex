@@ -51,24 +51,18 @@ private func runLLMProvider(
 ) async throws -> String {
     logger.info("Running LLM transformation with provider hint: \(config.providerID)")
 
-    var resolution = try resolveProvider(
+    let provider = try resolveProvider(
         config: config,
         providers: providers,
         preferences: preferences
     )
 
-    if let preferredModel = preferences.preferredModelID,
-       preferences.preferredProviderID == resolution.provider.id || resolution.shouldApplyPreferredModel {
-        logger.info("Overriding model for provider \(resolution.provider.id) with preferred model \(preferredModel)")
-        resolution.provider.defaultModel = preferredModel
-    }
-
-    let runtime = try runtime(for: resolution.provider)
-    let capabilities = LLMProviderCapabilitiesResolver.capabilities(for: resolution.provider)
+    let runtime = try runtime(for: provider)
+    let capabilities = LLMProviderCapabilitiesResolver.capabilities(for: provider)
     let toolingPolicy = ToolingPolicy(
         capabilities: capabilities,
         transformationTooling: config.tooling,
-        providerTooling: resolution.provider.tooling
+        providerTooling: provider.tooling
     )
 
     if let reason = toolingPolicy.disabledReason {
@@ -90,7 +84,7 @@ private func runLLMProvider(
     return try await runtime.run(
         config: config,
         input: input,
-        provider: resolution.provider,
+        provider: provider,
         toolingPolicy: toolingPolicy,
         toolServerEndpoint: serverEndpoint,
         capabilities: capabilities
@@ -101,28 +95,9 @@ private func resolveProvider(
     config: LLMTransformationConfig,
     providers: [LLMProvider],
     preferences: LLMProviderPreferences
-) throws -> ProviderResolution {
+) throws -> LLMProvider {
     if let exact = providers.first(where: { $0.id == config.providerID }) {
-        return ProviderResolution(provider: exact, shouldApplyPreferredModel: false)
-    }
-
-    let requestPreferred = config.providerID == LLMProvider.preferredProviderIdentifier
-
-    if requestPreferred,
-       let preferredID = preferences.preferredProviderID,
-       let provider = providers.first(where: { $0.id == preferredID }) {
-        return ProviderResolution(provider: provider, shouldApplyPreferredModel: true)
-    }
-
-    if let preferredID = preferences.preferredProviderID,
-       let provider = providers.first(where: { $0.id == preferredID }) {
-        logger.info("Provider \(config.providerID) missing; falling back to preferred provider \(preferredID)")
-        return ProviderResolution(provider: provider, shouldApplyPreferredModel: requestPreferred)
-    }
-
-    if let fallback = providers.first {
-        logger.warning("Provider \(config.providerID) missing; falling back to first available provider \(fallback.id)")
-        return ProviderResolution(provider: fallback, shouldApplyPreferredModel: requestPreferred)
+        return exact
     }
 
     throw LLMExecutionError.providerNotFound(config.providerID)
@@ -146,11 +121,6 @@ func buildLLMUserPrompt(config: LLMTransformationConfig, input: String) -> Strin
 
 IMPORTANT: Output ONLY the final result. Do not add commentary or explanations—just the transformed text.
 """
-}
-
-private struct ProviderResolution {
-    var provider: LLMProvider
-    var shouldApplyPreferredModel: Bool
 }
 
 public enum LLMExecutionError: Error, LocalizedError {

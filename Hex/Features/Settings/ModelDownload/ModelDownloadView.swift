@@ -6,9 +6,11 @@ public struct ModelDownloadView: View {
 	@ObserveInjection var inject
 
 	@Bindable var store: StoreOf<ModelDownloadFeature>
+	var shouldFlash: Bool = false
 
-	public init(store: StoreOf<ModelDownloadFeature>) {
+	public init(store: StoreOf<ModelDownloadFeature>, shouldFlash: Bool = false) {
 		self.store = store
+		self.shouldFlash = shouldFlash
 	}
 
 	public var body: some View {
@@ -22,6 +24,19 @@ public struct ModelDownloadView: View {
 					subtitle: message,
 					progress: nil,
 					style: .error
+				)
+			}
+			if !store.anyModelDownloaded {
+				AutoDownloadBannerView(
+					title: "Download a model to start transcribing",
+					subtitle: "Choose a model below and tap download. Without a model, recordings can't be transcribed.",
+					progress: store.isDownloading ? store.downloadProgress : nil,
+					style: .info
+				)
+				.overlay(
+					RoundedRectangle(cornerRadius: 8)
+						.stroke(Color.accentColor, lineWidth: shouldFlash ? 3 : 0)
+						.animation(.easeInOut(duration: 0.5).repeatCount(3, autoreverses: true), value: shouldFlash)
 				)
 			}
 			// Always show a concise, opinionated list (no dropdowns)
@@ -44,4 +59,3 @@ public struct ModelDownloadView: View {
 		.enableInjection()
 	}
 }
-

@@ -13,14 +13,18 @@ struct SettingsView: View {
   
 	var body: some View {
 		Form {
-			PermissionsSectionView(
-				store: store,
-				microphonePermission: microphonePermission,
-				accessibilityPermission: accessibilityPermission,
-				inputMonitoringPermission: inputMonitoringPermission
-			)
+			if microphonePermission != .granted
+				|| accessibilityPermission != .granted
+				|| inputMonitoringPermission != .granted {
+				PermissionsSectionView(
+					store: store,
+					microphonePermission: microphonePermission,
+					accessibilityPermission: accessibilityPermission,
+					inputMonitoringPermission: inputMonitoringPermission
+				)
+			}
 
-			ModelSectionView(store: store)
+			ModelSectionView(store: store, shouldFlash: store.shouldFlashModelSection)
 			if allowsLLMFeatures {
 				LLMProviderSectionView(store: store)
 			}

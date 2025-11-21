@@ -361,9 +361,8 @@ class KeyEventMonitorClientLive {
       return
     }
 
-    guard inputMonitoringTrusted else {
-      logger.error("Input Monitoring permission missing; cannot start key event monitoring (reason: \(reason)).")
-      return
+    if !inputMonitoringTrusted {
+      logger.notice("Input Monitoring not yet granted; creating event tap will trigger permission prompt (reason: \(reason)).")
     }
 
     let eventMask =

@@ -48,27 +48,6 @@ struct LLMProviderSectionView: View {
                     NSWorkspace.shared.open(.textTransformationsURL)
                 }
             } else {
-                Picker("Preferred Provider", selection: preferredProviderBinding) {
-                    Text("Follow transformation config")
-                        .tag("")
-                    ForEach(store.textTransformations.providers, id: \.id) { provider in
-                        Text(provider.displayName ?? provider.id)
-                            .tag(provider.id)
-                    }
-                }
-
-                if let provider = selectedProvider, !modelsForSelectedProvider.isEmpty {
-                    Picker("Preferred Model", selection: preferredModelBinding) {
-                        Text("Keep provider default")
-                            .tag("")
-                        ForEach(modelsForSelectedProvider) { metadata in
-                            Text(metadata.displayName ?? metadata.model)
-                                .tag(metadata.model)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-
                 providerSummaries
 
                 Button("Open Configuration File") {

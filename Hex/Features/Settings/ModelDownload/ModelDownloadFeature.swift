@@ -37,6 +37,15 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 	public var isDownloaded: Bool
 	public var id: String { internalName }
 
+	public var badge: String? {
+		if internalName == "parakeet-tdt-0.6b-v2-coreml" {
+			return "BEST FOR ENGLISH"
+		} else if internalName == "parakeet-tdt-0.6b-v3-coreml" {
+			return "BEST FOR MULTILINGUAL"
+		}
+		return nil
+	}
+
 	public init(
 		displayName: String,
 		internalName: String,

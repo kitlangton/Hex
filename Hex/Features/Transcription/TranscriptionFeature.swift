@@ -54,6 +54,9 @@ struct TranscriptionFeature {
     case transcriptionResult(String, URL)
     case transcriptionError(Error, URL?)
     case postProcessingComplete
+
+    // Model availability
+    case modelMissing
   }
 
   enum CancelID {
@@ -124,6 +127,9 @@ struct TranscriptionFeature {
 
       case .postProcessingComplete:
         state.isPostProcessing = false
+        return .none
+
+      case .modelMissing:
         return .none
 
       // MARK: - Cancel/Discard Flow
@@ -281,9 +287,10 @@ private extension TranscriptionFeature {
 private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
     guard state.modelBootstrapState.isModelReady else {
-      return .run { _ in
-        soundEffect.play(.cancel)
-      }
+      return .merge(
+        .send(.modelMissing),
+        .run { _ in soundEffect.play(.cancel) }
+      )
     }
     state.isRecording = true
     let startTime = Date()
@@ -391,6 +398,17 @@ private extension TranscriptionFeature {
   ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
+
+    // Check for force quit command (emergency escape hatch)
+    if ForceQuitCommandDetector.matches(result) {
+      transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
+      return .run { _ in
+        try? FileManager.default.removeItem(at: audioURL)
+        await MainActor.run {
+          NSApp.terminate(nil)
+        }
+      }
+    }
 
     // If empty text, nothing else to do
     guard !result.isEmpty else {
@@ -614,5 +632,22 @@ struct TranscriptionView: View {
       await store.send(.task).finish()
     }
     .enableInjection()
+  }
+}
+
+// MARK: - Force Quit Command
+
+private enum ForceQuitCommandDetector {
+  static func matches(_ text: String) -> Bool {
+    let normalized = normalize(text)
+    return normalized == "force quit hex now" || normalized == "force quit hex"
+  }
+
+  private static func normalize(_ text: String) -> String {
+    text
+      .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+      .components(separatedBy: CharacterSet.alphanumerics.inverted)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
   }
 }

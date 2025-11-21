@@ -44,6 +44,7 @@ struct SettingsFeature {
 
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
+    var shouldFlashModelSection = false
 
     // Diagnostics
     var isExportingLogs = false

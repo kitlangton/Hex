@@ -348,9 +348,6 @@
     "Exporting Logs…" : {
 
     },
-    "Follow transformation config" : {
-
-    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -427,9 +424,6 @@
 
     },
     "Input Monitoring is required so Hex can listen for your hotkey." : {
-
-    },
-    "Keep provider default" : {
 
     },
     "LLM Editing Guide" : {
@@ -579,12 +573,6 @@
           }
         }
       }
-    },
-    "Preferred Model" : {
-
-    },
-    "Preferred Provider" : {
-
     },
     "Prevent System Sleep while Recording" : {
       "comment" : "Label for general setting whether to prevent system sleep while recording.",

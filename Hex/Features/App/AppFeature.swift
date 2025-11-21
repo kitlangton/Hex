@@ -104,6 +104,19 @@ struct AppFeature {
           await pasteboard.paste(lastTranscript)
         }
         
+      case .transcription(.modelMissing):
+        HexLog.app.notice("Model missing - activating app and switching to settings")
+        state.activeTab = .settings
+        state.settings.shouldFlashModelSection = true
+        return .run { send in
+          await MainActor.run {
+            HexLog.app.notice("Activating app for model missing")
+            NSApplication.shared.activate(ignoringOtherApps: true)
+          }
+          try? await Task.sleep(for: .seconds(2))
+          await send(.settings(.set(\.shouldFlashModelSection, false)))
+        }
+
       case .transcription:
         return .none
 

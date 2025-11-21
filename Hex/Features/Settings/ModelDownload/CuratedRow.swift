@@ -32,6 +32,16 @@ struct CuratedRow: View {
 					HStack(spacing: 6) {
 						Text(model.displayName)
 							.font(.headline)
+						if let badge = model.badge {
+							Text(badge)
+								.font(.caption2)
+								.fontWeight(.semibold)
+								.foregroundStyle(.white)
+								.padding(.horizontal, 6)
+								.padding(.vertical, 2)
+								.background(Color.accentColor)
+								.clipShape(RoundedRectangle(cornerRadius: 4))
+						}
 					}
 					HStack(spacing: 16) {
 						HStack(spacing: 6) {
