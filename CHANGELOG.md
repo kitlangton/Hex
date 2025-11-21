@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2
+
+### Patch Changes
+
+- 7e325ad: Fix Sequoia hotkey deadlock by removing Input Monitoring guard that prevented CGEventTap creation. Tap creation triggers permission prompt naturally. Re-add 'force quit Hex now' voice escape hatch from v0.5.8 (#122 #124)
+- 7e325ad: Remove preferred provider concept - transformations now strictly use configured providerID from text_transformations.json. Throws error if provider not found instead of falling back.
+- 7e325ad: Add missing-model callout and focus settings when transcription starts without a model
+
 ## 0.6.1
 
 ### Patch Changes
