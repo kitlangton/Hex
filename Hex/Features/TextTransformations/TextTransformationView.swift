@@ -12,7 +12,7 @@ struct TextTransformationView: View {
 		VStack(alignment: .leading, spacing: 20) {
 		// Header
 		VStack(alignment: .leading, spacing: 12) {
-				Text("Text Transformation Modes")
+				Text("Modes")
 					.font(.title2.bold())
 				Text("Configure modes by editing the JSON file")
 					.font(.callout)

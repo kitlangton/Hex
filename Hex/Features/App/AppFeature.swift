@@ -296,7 +296,7 @@ struct AppView: View {
           Button {
             store.send(.setActiveTab(.transformations))
           } label: {
-            Label("Transformations", systemImage: "wand.and.stars")
+            Label("Modes", systemImage: "wand.and.stars")
           }
           .buttonStyle(.plain)
           .tag(AppFeature.ActiveTab.transformations)
@@ -332,7 +332,7 @@ struct AppView: View {
       case .transformations:
         if store.allowsLLMFeatures {
           TextTransformationView(store: store.scope(state: \.textTransformations, action: \.textTransformations))
-            .navigationTitle("Text Transformations")
+            .navigationTitle("Modes")
         } else {
           SettingsView(
             store: store.scope(state: \.settings, action: \.settings),
