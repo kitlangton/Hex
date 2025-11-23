@@ -114,10 +114,6 @@ class KeyEventMonitorClientLive {
     self.stopMonitoring()
   }
 
-  private var hasRequiredPermissions: Bool {
-    queue.sync { accessibilityTrusted && inputMonitoringTrusted }
-  }
-
   private var hasHandlers: Bool {
     queue.sync { !(continuations.isEmpty && inputContinuations.isEmpty) }
   }
@@ -132,7 +128,6 @@ class KeyEventMonitorClientLive {
     queue.sync {
       wantsMonitoring
         && accessibilityTrusted
-        && inputMonitoringTrusted
         && !(continuations.isEmpty && inputContinuations.isEmpty)
     }
   }
@@ -390,10 +385,6 @@ class KeyEventMonitorClientLive {
 
           if type == .tapDisabledByUserInput || type == .tapDisabledByTimeout {
             hotKeyClientLive.handleTapDisabledEvent(type)
-            return Unmanaged.passUnretained(cgEvent)
-          }
-
-          guard hotKeyClientLive.hasRequiredPermissions else {
             return Unmanaged.passUnretained(cgEvent)
           }
 
