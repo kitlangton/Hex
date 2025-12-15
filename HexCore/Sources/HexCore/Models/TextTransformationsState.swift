@@ -7,9 +7,19 @@ public struct TransformationMode: Codable, Equatable, Identifiable, Sendable {
 	public var appliesToBundleIdentifiers: [String]
 	public var voicePrefixes: [String]
 	public var autoSendCommand: KeyboardCommand?
-	
+
 	private enum CodingKeys: String, CodingKey {
 		case id, name, pipeline, appliesToBundleIdentifiers, voicePrefixes, voicePrefix, autoSendCommand
+	}
+
+	/// Returns the path to the persistent MCP config for this mode
+	public var mcpConfigPath: URL {
+		let fm = FileManager.default
+		let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+		let hexDir = appSupport.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
+		let modesDir = hexDir.appendingPathComponent("modes", isDirectory: true)
+		let modeDir = modesDir.appendingPathComponent(id.uuidString, isDirectory: true)
+		return modeDir.appendingPathComponent("mcp-config.json")
 	}
 	
 	public init(

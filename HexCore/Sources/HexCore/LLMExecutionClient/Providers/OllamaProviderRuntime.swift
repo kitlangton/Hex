@@ -9,7 +9,8 @@ struct OllamaProviderRuntime: LLMProviderRuntime {
         provider: LLMProvider,
         toolingPolicy: ToolingPolicy,
         toolServerEndpoint _: HexToolServerEndpoint?,
-        capabilities: LLMProviderCapabilities
+        capabilities: LLMProviderCapabilities,
+        mode _: TransformationMode?
     ) async throws -> String {
         guard let model = provider.defaultModel, !model.isEmpty else {
             throw LLMExecutionError.invalidConfiguration("Ollama provider missing defaultModel")

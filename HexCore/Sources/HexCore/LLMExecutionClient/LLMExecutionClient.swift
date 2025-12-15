@@ -7,25 +7,27 @@ public struct LLMExecutionClient: Sendable {
         _ input: String,
         _ providers: [LLMProvider],
         _ toolServer: HexToolServerClient,
-        _ preferences: LLMProviderPreferences
+        _ preferences: LLMProviderPreferences,
+        _ mode: TransformationMode?
     ) async throws -> String
 }
 
 extension LLMExecutionClient: DependencyKey {
     public static let liveValue = LLMExecutionClient(
-        run: { config, input, providers, toolServer, preferences in
+        run: { config, input, providers, toolServer, preferences, mode in
             try await runLLMProvider(
                 config: config,
                 input: input,
                 providers: providers,
                 toolServer: toolServer,
-                preferences: preferences
+                preferences: preferences,
+                mode: mode
             )
         }
     )
-    
+
     public static let testValue = LLMExecutionClient(
-        run: { _, _, _, _, _ in
+        run: { _, _, _, _, _, _ in
             return "Test Output"
         }
     )
@@ -47,7 +49,8 @@ private func runLLMProvider(
     input: String,
     providers: [LLMProvider],
     toolServer: HexToolServerClient,
-    preferences: LLMProviderPreferences
+    preferences: LLMProviderPreferences,
+    mode: TransformationMode?
 ) async throws -> String {
     logger.info("Running LLM transformation with provider hint: \(config.providerID)")
 
@@ -87,7 +90,8 @@ private func runLLMProvider(
         provider: provider,
         toolingPolicy: toolingPolicy,
         toolServerEndpoint: serverEndpoint,
-        capabilities: capabilities
+        capabilities: capabilities,
+        mode: mode
     )
 }
 

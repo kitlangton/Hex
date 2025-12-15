@@ -147,6 +147,13 @@ struct ModeRow: View {
 	let mode: TransformationMode
 	let providers: [LLMProvider]
 
+	private var usesClaudeCode: Bool {
+		providerIDsInMode.contains { providerID in
+			guard let provider = providers.first(where: { $0.id == providerID }) else { return false }
+			return provider.type == .claudeCode
+		}
+	}
+
 	private struct ProviderSummary: Identifiable {
 		let id: String
 		let name: String
@@ -215,6 +222,27 @@ struct ModeRow: View {
 				.font(.headline)
 
 			Spacer()
+
+			if usesClaudeCode {
+				HStack(spacing: 8) {
+					Button {
+						NSWorkspace.shared.open(mode.mcpConfigPath.deletingLastPathComponent())
+					} label: {
+						Label("Edit MCP Config", systemImage: "wrench.and.screwdriver")
+							.font(.caption)
+					}
+					.buttonStyle(.borderless)
+
+					Button {
+						NSPasteboard.general.clearContents()
+						NSPasteboard.general.setString(mode.mcpConfigPath.path, forType: .string)
+					} label: {
+						Label("Copy MCP Path", systemImage: "doc.on.doc")
+							.font(.caption)
+					}
+					.buttonStyle(.borderless)
+				}
+			}
 
 			Text("\(mode.pipeline.transformations.count) transformation\(mode.pipeline.transformations.count == 1 ? "" : "s")")
 				.font(.caption)

@@ -31,6 +31,7 @@ struct RecordingClient {
   var observeAudioLevel: @Sendable () async -> AsyncStream<Meter> = { AsyncStream { _ in } }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
   var warmUpRecorder: @Sendable () async -> Void = {}
+  var cleanup: @Sendable () async -> Void = {}
 }
 
 extension RecordingClient: DependencyKey {
@@ -42,7 +43,8 @@ extension RecordingClient: DependencyKey {
       requestMicrophoneAccess: { await live.requestMicrophoneAccess() },
       observeAudioLevel: { await live.observeAudioLevel() },
       getAvailableInputDevices: { await live.getAvailableInputDevices() },
-      warmUpRecorder: { await live.warmUpRecorder() }
+      warmUpRecorder: { await live.warmUpRecorder() },
+      cleanup: { await live.cleanup() }
     )
   }
 }
@@ -305,6 +307,7 @@ actor RecordingClientLive {
   private var recorder: AVAudioRecorder?
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
   private var isRecorderPrimedForNextSession = false
+  private var lastPrimedDeviceID: AudioDeviceID?
   private let recorderSettings: [String: Any] = [
     AVFormatIDKey: Int(kAudioFormatLinearPCM),
     AVSampleRateKey: 16000.0,
@@ -524,6 +527,35 @@ actor RecordingClientLive {
     await AVCaptureDevice.requestAccess(for: .audio)
   }
 
+  // MARK: - Input Device Query
+
+  /// Gets the current default input device ID
+  private func getDefaultInputDevice() -> AudioDeviceID? {
+    var deviceID = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+
+    let status = AudioObjectGetPropertyData(
+      AudioObjectID(kAudioObjectSystemObject),
+      &address,
+      0,
+      nil,
+      &size,
+      &deviceID
+    )
+
+    if status != 0 {
+      recordingLogger.error("Failed to get default input device: \(status)")
+      return nil
+    }
+
+    return deviceID
+  }
+
   // MARK: - Volume Control
 
   /// Mutes system volume and returns the previous volume level
@@ -667,20 +699,45 @@ actor RecordingClientLive {
       break
     }
 
-    // If user has selected a specific microphone, verify it exists and set it as the default input device
-    if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
-       let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
-      // Check if the selected device is still available
-      let devices = getAllAudioDevices()
-      if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
-        recordingLogger.debug("Setting selected input device to \(selectedDeviceID)")
-        setInputDevice(deviceID: selectedDeviceID)
+    // Determine target input device (custom selection or system default)
+    let targetDeviceID: AudioDeviceID? = {
+      if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
+         let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
+        // Verify the selected device is still available
+        let devices = getAllAudioDevices()
+        if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
+          return selectedDeviceID
+        } else {
+          recordingLogger.notice("Selected device \(selectedDeviceID) missing; using system default")
+          return nil
+        }
+      }
+      return nil  // Use system default
+    }()
+
+    // Get current default input device
+    let currentDefaultDevice = getDefaultInputDevice()
+
+    // Only change device if target differs from current default
+    if let target = targetDeviceID {
+      if target != currentDefaultDevice {
+        recordingLogger.notice("Switching input device from \(currentDefaultDevice ?? 0) to \(target)")
+        setInputDevice(deviceID: target)
+        // Invalidate primed state since device changed - recorder was prepared for old device
+        isRecorderPrimedForNextSession = false
+        lastPrimedDeviceID = nil
       } else {
-        // Device no longer available, fall back to system default
-        recordingLogger.notice("Selected device \(selectedDeviceID) missing; using system default")
+        recordingLogger.debug("Device \(target) already set as default, skipping setInputDevice()")
       }
     } else {
-      recordingLogger.debug("Using default system microphone")
+      // Using system default - check if primed device matches current default
+      if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
+        recordingLogger.notice("System default changed from \(primedDevice) to \(currentDefaultDevice ?? 0); invalidating primed state")
+        isRecorderPrimedForNextSession = false
+        lastPrimedDeviceID = nil
+      } else {
+        recordingLogger.debug("Using system default microphone")
+      }
     }
 
     do {
@@ -868,11 +925,13 @@ actor RecordingClientLive {
     let recorder = try recorderOrCreate()
     guard recorder.prepareToRecord() else {
       isRecorderPrimedForNextSession = false
+      lastPrimedDeviceID = nil
       throw RecorderPreparationError.failedToPrepareRecorder
     }
 
     isRecorderPrimedForNextSession = true
-    recordingLogger.debug("Recorder primed for next session")
+    lastPrimedDeviceID = getDefaultInputDevice()
+    recordingLogger.debug("Recorder primed for device \(self.lastPrimedDeviceID ?? 0)")
   }
 
   func startMeterTask() {
@@ -904,6 +963,19 @@ actor RecordingClientLive {
     } catch {
       recordingLogger.error("Failed to warm up recorder: \(error.localizedDescription)")
     }
+  }
+
+  /// Release recorder resources. Call on app termination.
+  func cleanup() {
+    if let recorder = recorder {
+      if recorder.isRecording {
+        recorder.stop()
+      }
+      self.recorder = nil
+    }
+    isRecorderPrimedForNextSession = false
+    lastPrimedDeviceID = nil
+    recordingLogger.notice("RecordingClient cleaned up")
   }
 }
 

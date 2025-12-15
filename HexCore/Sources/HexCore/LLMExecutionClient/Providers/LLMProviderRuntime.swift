@@ -7,6 +7,7 @@ protocol LLMProviderRuntime {
         provider: LLMProvider,
         toolingPolicy: ToolingPolicy,
         toolServerEndpoint: HexToolServerEndpoint?,
-        capabilities: LLMProviderCapabilities
+        capabilities: LLMProviderCapabilities,
+        mode: TransformationMode?
     ) async throws -> String
 }

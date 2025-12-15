@@ -477,7 +477,8 @@ private extension TranscriptionFeature {
             input,
             providers,
             toolServer,
-            providerPreferences
+            providerPreferences,
+            selectedMode
           )
         }
         let transformed = try await pipeline.process(textToProcess, executor: executor)

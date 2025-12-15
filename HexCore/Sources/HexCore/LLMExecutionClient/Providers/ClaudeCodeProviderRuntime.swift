@@ -9,7 +9,8 @@ struct ClaudeCodeProviderRuntime: LLMProviderRuntime {
         provider: LLMProvider,
         toolingPolicy: ToolingPolicy,
         toolServerEndpoint: HexToolServerEndpoint?,
-        capabilities: LLMProviderCapabilities
+        capabilities: LLMProviderCapabilities,
+        mode: TransformationMode?
     ) async throws -> String {
         guard let executableURL = LLMExecutableLocator.resolveBinaryURL(for: provider) else {
             throw LLMExecutionError.invalidConfiguration(
@@ -32,7 +33,10 @@ struct ClaudeCodeProviderRuntime: LLMProviderRuntime {
             process.currentDirectoryURL = URL(fileURLWithPath: (workingDir as NSString).expandingTildeInPath)
         }
 
-        let claudeEnvironment = try prepareClaudeEnvironment(serverEndpoint: toolServerEndpoint)
+        let claudeEnvironment = try prepareClaudeEnvironment(
+            serverEndpoint: toolServerEndpoint,
+            mode: mode
+        )
         var preserveDebugArtifacts = false
         defer {
             if preserveDebugArtifacts {
@@ -132,7 +136,10 @@ private struct ClaudeEnvironmentContext {
     }
 }
 
-private func prepareClaudeEnvironment(serverEndpoint: HexToolServerEndpoint?) throws -> ClaudeEnvironmentContext {
+private func prepareClaudeEnvironment(
+    serverEndpoint: HexToolServerEndpoint?,
+    mode: TransformationMode?
+) throws -> ClaudeEnvironmentContext {
     let fm = FileManager.default
     let base = fm.temporaryDirectory.appendingPathComponent("hex-claude-\(UUID().uuidString)", isDirectory: true)
     try fm.createDirectory(at: base, withIntermediateDirectories: true)
@@ -145,7 +152,41 @@ private func prepareClaudeEnvironment(serverEndpoint: HexToolServerEndpoint?) th
     }
 
     var mcpConfigPath: URL?
-    if let serverEndpoint {
+    if let mode {
+        let persistentConfig = mode.mcpConfigPath
+        let mergedConfigURL = base.appendingPathComponent(".mcp.json")
+
+        // Always merge Hex server with user config
+        if let serverEndpoint {
+            let hexConfig = ClaudeMCPConfiguration(serverEndpoint: serverEndpoint)
+            let mergedConfig: ClaudeMCPConfiguration
+
+            if fm.fileExists(atPath: persistentConfig.path),
+               let data = try? Data(contentsOf: persistentConfig),
+               let userConfig = try? JSONDecoder().decode(ClaudeMCPConfiguration.self, from: data) {
+                // Merge: Hex server + user servers
+                mergedConfig = hexConfig.merging(with: userConfig)
+            } else {
+                // No user config yet, create default
+                try fm.createDirectory(at: persistentConfig.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let defaultData = try encoder.encode(ClaudeMCPConfiguration(mcpServers: [:]))
+                try defaultData.write(to: persistentConfig, options: .atomic)
+                mergedConfig = hexConfig
+            }
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(mergedConfig)
+            try data.write(to: mergedConfigURL, options: .atomic)
+            mcpConfigPath = mergedConfigURL
+        } else if fm.fileExists(atPath: persistentConfig.path) {
+            // User config exists but no Hex server needed
+            mcpConfigPath = persistentConfig
+        }
+    } else if let serverEndpoint {
+        // Fallback to temp config if no mode
         let configURL = base.appendingPathComponent(".mcp.json")
         let configuration = ClaudeMCPConfiguration(serverEndpoint: serverEndpoint)
         let encoder = JSONEncoder()
@@ -163,10 +204,17 @@ private func prepareClaudeEnvironment(serverEndpoint: HexToolServerEndpoint?) th
 }
 
 
-private struct ClaudeMCPConfiguration: Encodable {
-    struct Server: Encodable {
+private struct ClaudeMCPConfiguration: Codable {
+    struct Server: Codable {
         let type: String
-        let url: String
+        let url: String?
+        let command: String?
+        let args: [String]?
+        let env: [String: String]?
+
+        enum CodingKeys: String, CodingKey {
+            case type, url, command, args, env
+        }
     }
 
     let mcpServers: [String: Server]
@@ -175,9 +223,24 @@ private struct ClaudeMCPConfiguration: Encodable {
         self.mcpServers = [
             serverEndpoint.serverName: Server(
                 type: "http",
-                url: serverEndpoint.baseURL.absoluteString
+                url: serverEndpoint.baseURL.absoluteString,
+                command: nil,
+                args: nil,
+                env: nil
             )
         ]
+    }
+
+    init(mcpServers: [String: Server]) {
+        self.mcpServers = mcpServers
+    }
+
+    func merging(with other: ClaudeMCPConfiguration) -> ClaudeMCPConfiguration {
+        var merged = self.mcpServers
+        for (key, value) in other.mcpServers {
+            merged[key] = value
+        }
+        return ClaudeMCPConfiguration(mcpServers: merged)
     }
 }
 
