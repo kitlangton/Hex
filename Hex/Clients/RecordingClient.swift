@@ -308,6 +308,8 @@ actor RecordingClientLive {
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
   private var isRecorderPrimedForNextSession = false
   private var lastPrimedDeviceID: AudioDeviceID?
+  private var recordingSessionID: UUID?
+  private var mediaControlTask: Task<Void, Never>?
   private let recorderSettings: [String: Any] = [
     AVFormatIDKey: Int(kAudioFormatLinearPCM),
     AVSampleRateKey: 16000.0,
@@ -659,27 +661,34 @@ actor RecordingClientLive {
   }
 
   func startRecording() async {
+    let sessionID = UUID()
+    recordingSessionID = sessionID
+    mediaControlTask?.cancel()
+    mediaControlTask = nil
+
     // Handle audio behavior based on user preference
     switch hexSettings.recordingAudioBehavior {
     case .pauseMedia:
       // Pause media in background - don't block recording from starting
-      Task {
-        if await self.pauseUsingMediaRemoteIfPossible() {
+      mediaControlTask = Task { [sessionID] in
+        guard await self.isCurrentSession(sessionID) else { return }
+        if await self.pauseUsingMediaRemoteIfPossible(sessionID: sessionID) {
           return
         }
 
         // First, pause all media applications using their AppleScript interface.
         let paused = await pauseAllMediaApplications()
-        self.updatePausedPlayers(paused)
+        await self.updatePausedPlayers(paused, sessionID: sessionID)
 
         // If no specific players were paused, pause generic media using the media key.
+        guard await self.isCurrentSession(sessionID) else { return }
         if paused.isEmpty {
           if await isAudioPlayingOnDefaultOutput() {
             mediaLogger.notice("Detected active audio on default output; sending media pause")
             await MainActor.run {
               sendMediaKey()
             }
-            self.setDidPauseMedia(true)
+            await self.setDidPauseMedia(true, sessionID: sessionID)
             mediaLogger.notice("Paused media via media key fallback")
           }
         } else {
@@ -689,9 +698,10 @@ actor RecordingClientLive {
 
     case .mute:
       // Mute system volume in background
-      Task {
+      mediaControlTask = Task { [sessionID] in
+        guard await self.isCurrentSession(sessionID) else { return }
         let volume = await self.muteSystemVolume()
-        self.setPreviousVolume(volume)
+        await self.setPreviousVolume(volume, sessionID: sessionID)
       }
 
     case .doNothing:
@@ -717,6 +727,10 @@ actor RecordingClientLive {
 
     // Get current default input device
     let currentDefaultDevice = getDefaultInputDevice()
+    if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
+      recordingLogger.notice("Default input changed from \(primedDevice) to \(currentDefaultDevice ?? 0); invalidating primed state")
+      invalidatePrimedState()
+    }
 
     // Only change device if target differs from current default
     if let target = targetDeviceID {
@@ -724,32 +738,26 @@ actor RecordingClientLive {
         recordingLogger.notice("Switching input device from \(currentDefaultDevice ?? 0) to \(target)")
         setInputDevice(deviceID: target)
         // Invalidate primed state since device changed - recorder was prepared for old device
-        isRecorderPrimedForNextSession = false
-        lastPrimedDeviceID = nil
+        invalidatePrimedState()
       } else {
         recordingLogger.debug("Device \(target) already set as default, skipping setInputDevice()")
       }
     } else {
-      // Using system default - check if primed device matches current default
-      if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
-        recordingLogger.notice("System default changed from \(primedDevice) to \(currentDefaultDevice ?? 0); invalidating primed state")
-        isRecorderPrimedForNextSession = false
-        lastPrimedDeviceID = nil
-      } else {
-        recordingLogger.debug("Using system default microphone")
-      }
+      recordingLogger.debug("Using system default microphone")
     }
 
     do {
       let recorder = try ensureRecorderReadyForRecording()
       guard recorder.record() else {
         recordingLogger.error("AVAudioRecorder refused to start recording")
+        endRecordingSession()
         return
       }
       startMeterTask()
       recordingLogger.notice("Recording started")
     } catch {
       recordingLogger.error("Failed to start recording: \(error.localizedDescription)")
+      endRecordingSession()
     }
   }
 
@@ -757,6 +765,7 @@ actor RecordingClientLive {
     let wasRecording = recorder?.isRecording == true
     recorder?.stop()
     stopMeterTask()
+    endRecordingSession()
     if wasRecording {
       recordingLogger.notice("Recording stopped")
     } else {
@@ -826,19 +835,38 @@ actor RecordingClientLive {
   }
 
   // Actor state update helpers
-  private func updatePausedPlayers(_ players: [String]) {
+  private func isCurrentSession(_ sessionID: UUID) -> Bool {
+    recordingSessionID == sessionID
+  }
+
+  private func endRecordingSession() {
+    recordingSessionID = nil
+    mediaControlTask?.cancel()
+    mediaControlTask = nil
+  }
+
+  private func invalidatePrimedState() {
+    isRecorderPrimedForNextSession = false
+    lastPrimedDeviceID = nil
+  }
+
+  private func updatePausedPlayers(_ players: [String], sessionID: UUID) {
+    guard recordingSessionID == sessionID else { return }
     pausedPlayers = players
   }
 
-  private func setDidPauseMedia(_ value: Bool) {
+  private func setDidPauseMedia(_ value: Bool, sessionID: UUID) {
+    guard recordingSessionID == sessionID else { return }
     didPauseMedia = value
   }
 
-  private func setDidPauseViaMediaRemote(_ value: Bool) {
+  private func setDidPauseViaMediaRemote(_ value: Bool, sessionID: UUID) {
+    guard recordingSessionID == sessionID else { return }
     didPauseViaMediaRemote = value
   }
 
-  private func setPreviousVolume(_ volume: Float) {
+  private func setPreviousVolume(_ volume: Float, sessionID: UUID) {
+    guard recordingSessionID == sessionID else { return }
     previousVolume = volume
   }
 
@@ -850,7 +878,7 @@ actor RecordingClientLive {
   }
 
   @discardableResult
-  private func pauseUsingMediaRemoteIfPossible() async -> Bool {
+  private func pauseUsingMediaRemoteIfPossible(sessionID: UUID) async -> Bool {
     guard let controller = mediaRemoteController else {
       return false
     }
@@ -865,7 +893,7 @@ actor RecordingClientLive {
       return false
     }
 
-    setDidPauseViaMediaRemote(true)
+    setDidPauseViaMediaRemote(true, sessionID: sessionID)
     mediaLogger.notice("Paused media via MediaRemote")
     return true
   }
@@ -967,6 +995,7 @@ actor RecordingClientLive {
 
   /// Release recorder resources. Call on app termination.
   func cleanup() {
+    endRecordingSession()
     if let recorder = recorder {
       if recorder.isRecording {
         recorder.stop()
