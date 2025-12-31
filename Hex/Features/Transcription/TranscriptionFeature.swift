@@ -21,7 +21,6 @@ struct TranscriptionFeature {
   struct State {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
-    var isPostProcessing: Bool = false
     var isPrewarming: Bool = false
     var error: String?
     var recordingStartTime: Date?
@@ -29,7 +28,7 @@ struct TranscriptionFeature {
     var sourceAppBundleID: String?
     var sourceAppName: String?
     @Shared(.hexSettings) var hexSettings: HexSettings
-    @Shared(.textTransformations) var textTransformations: TextTransformationsState
+    @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
   }
@@ -53,7 +52,6 @@ struct TranscriptionFeature {
     // Transcription result flow
     case transcriptionResult(String, URL)
     case transcriptionError(Error, URL?)
-    case postProcessingComplete
 
     // Model availability
     case modelMissing
@@ -71,8 +69,6 @@ struct TranscriptionFeature {
   @Dependency(\.soundEffects) var soundEffect
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
-  @Dependency(\.hexToolServer) var hexToolServer
-  @Dependency(\.llmExecution) var llmExecution
   @Dependency(\.transcriptPersistence) var transcriptPersistence
 
   var body: some ReducerOf<Self> {
@@ -125,10 +121,6 @@ struct TranscriptionFeature {
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
 
-      case .postProcessingComplete:
-        state.isPostProcessing = false
-        return .none
-
       case .modelMissing:
         return .none
 
@@ -136,7 +128,7 @@ struct TranscriptionFeature {
 
       case .cancel:
         // Only cancel if we're in the middle of recording, transcribing, or post-processing
-        guard state.isRecording || state.isTranscribing || state.isPostProcessing else {
+        guard state.isRecording || state.isTranscribing else {
           return .none
         }
         return handleCancel(&state)
@@ -417,84 +409,38 @@ private extension TranscriptionFeature {
 
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
-    // Debug logging
     transcriptionFeatureLogger.info("Raw transcription: '\(result)'")
-    let bundleID = state.sourceAppBundleID
-    let modes = state.textTransformations.modes
-    transcriptionFeatureLogger.info("Source app bundle ID: \(bundleID ?? "nil")")
-    transcriptionFeatureLogger.info("Available modes: \(modes.map { "\($0.name) (apps: \($0.appliesToBundleIdentifiers))" })")
-
-    // Mode selection
-    let resolution = state.textTransformations.resolveMode(for: result, bundleIdentifier: bundleID)
-    let selectedMode = resolution.mode
-    let processedResult = resolution.strippedText
-
-    if let prefix = resolution.matchedPrefix {
-        if resolution.matchedBundleID {
-            transcriptionFeatureLogger.info("✓ Voice prefix + bundle ID matched: '\(selectedMode?.name ?? "")' (prefix: '\(prefix)', bundle: \(bundleID ?? ""))")
-        } else {
-            transcriptionFeatureLogger.info("✓ Voice prefix matched: '\(selectedMode?.name ?? "")' (prefix: '\(prefix)')")
-        }
-        transcriptionFeatureLogger.info("  Stripped text: '\(String(processedResult.prefix(50)))...'")
-    } else if let mode = selectedMode {
-        transcriptionFeatureLogger.info("✓ Bundle ID matched: '\(mode.name)' (apps: \(mode.appliesToBundleIdentifiers))")
+    let remappings = state.hexSettings.wordRemappings
+    let remappedResult: String
+    if state.isRemappingScratchpadFocused {
+      remappedResult = result
+      transcriptionFeatureLogger.info("Scratchpad focused; skipping remappings")
     } else {
-        transcriptionFeatureLogger.warning("No mode selected, using empty pipeline")
+      remappedResult = WordRemappingApplier.apply(result, remappings: remappings)
+      if remappedResult != result {
+        transcriptionFeatureLogger.info("Applied \(remappings.count) word remapping(s)")
+      }
     }
 
-    let pipeline = selectedMode?.pipeline ?? state.textTransformations.pipeline(for: bundleID)
-    let providers = state.textTransformations.providers
-    let providerPreferences = LLMProviderPreferences(
-        preferredProviderID: state.hexSettings.preferredLLMProviderID,
-        preferredModelID: state.hexSettings.preferredLLMModelID
-    )
+    guard !remappedResult.isEmpty else {
+      return .none
+    }
+
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
-    let textToProcess = processedResult  // Capture immutable copy for concurrency
-    let autoSendCommand = selectedMode?.autoSendCommand
-
-    // Check if we have any LLM transformations that will trigger post-processing
-    let hasLLMTransformations = pipeline.transformations.contains { transformation in
-      if case .llm = transformation.type {
-        return transformation.isEnabled
-      }
-      return false
-    }
-
-    if hasLLMTransformations {
-      state.isPostProcessing = true
-    }
 
     return .run { send in
       do {
-        transcriptionFeatureLogger.info("Processing with \(pipeline.transformations.count) transformations, \(providers.count) providers")
-        let toolServer = hexToolServer
-        let executor = TextTransformationPipeline.Executor { config, input in
-          transcriptionFeatureLogger.info("Running LLM transformation with provider: \(config.providerID)")
-          return try await llmExecution.run(
-            config,
-            input,
-            providers,
-            toolServer,
-            providerPreferences,
-            selectedMode
-          )
-        }
-        let transformed = try await pipeline.process(textToProcess, executor: executor)
-        transcriptionFeatureLogger.info("Transformed text from \(textToProcess.count) to \(transformed.count) chars")
-        await send(.postProcessingComplete)
         try await finalizeRecordingAndStoreTranscript(
-          result: transformed,
+          result: remappedResult,
           duration: duration,
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,
           audioURL: audioURL,
-          transcriptionHistory: transcriptionHistory,
-          autoSendCommand: autoSendCommand
+          transcriptionHistory: transcriptionHistory
         )
       } catch {
-        await send(.postProcessingComplete)
         await send(.transcriptionError(error, audioURL))
       }
     }
@@ -524,8 +470,7 @@ private extension TranscriptionFeature {
     sourceAppBundleID: String?,
     sourceAppName: String?,
     audioURL: URL,
-    transcriptionHistory: Shared<TranscriptionHistory>,
-    autoSendCommand: KeyboardCommand?
+    transcriptionHistory: Shared<TranscriptionHistory>
   ) async throws {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -557,14 +502,6 @@ private extension TranscriptionFeature {
 
     await pasteboard.paste(result)
     soundEffect.play(.pasteTranscript)
-    
-    // Send keyboard command if configured (e.g., Enter, Cmd+Enter, etc.)
-    if let autoSendCommand {
-      // Small delay to ensure paste completes before sending keyboard command
-      try? await Task.sleep(for: .milliseconds(100))
-      await pasteboard.sendKeyboardCommand(autoSendCommand)
-      transcriptionFeatureLogger.info("Auto-sent keyboard command: \(autoSendCommand.displayName)")
-    }
   }
 }
 
@@ -574,7 +511,6 @@ private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
     state.isTranscribing = false
     state.isRecording = false
-    state.isPostProcessing = false
     state.isPrewarming = false
 
     return .merge(
@@ -611,9 +547,7 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isPostProcessing {
-      return .postProcessing
-    } else if store.isTranscribing {
+    if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording

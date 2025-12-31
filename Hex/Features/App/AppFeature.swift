@@ -15,7 +15,7 @@ import SwiftUI
 struct AppFeature {
   enum ActiveTab: Equatable {
     case settings
-    case transformations
+    case remappings
     case history
     case about
   }
@@ -25,9 +25,7 @@ struct AppFeature {
 		var transcription: TranscriptionFeature.State = .init()
 		var settings: SettingsFeature.State = .init()
 		var history: HistoryFeature.State = .init()
-		var textTransformations: TextTransformationFeature.State = .init()
 		var activeTab: ActiveTab = .settings
-		var allowsLLMFeatures: Bool = DeveloperAccess.allowsLLMFeatures
 		@Shared(.hexSettings) var hexSettings: HexSettings
 		@Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
 
@@ -42,7 +40,6 @@ struct AppFeature {
     case transcription(TranscriptionFeature.Action)
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
-    case textTransformations(TextTransformationFeature.Action)
     case setActiveTab(ActiveTab)
     case task
     case pasteLastTranscript
@@ -61,7 +58,6 @@ struct AppFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
   @Dependency(\.permissions) var permissions
-  @Dependency(\.hexToolServer) var hexToolServer
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -78,10 +74,6 @@ struct AppFeature {
       HistoryFeature()
     }
 
-    Scope(state: \.textTransformations, action: \.textTransformations) {
-      TextTransformationFeature()
-    }
-
     Reduce { state, action in
       switch action {
       case .binding:
@@ -91,8 +83,7 @@ struct AppFeature {
         return .merge(
           startPasteLastTranscriptMonitoring(),
           ensureSelectedModelReadiness(),
-          startPermissionMonitoring(),
-          prewarmToolServer()
+          startPermissionMonitoring()
         )
         
       case .pasteLastTranscript:
@@ -123,18 +114,12 @@ struct AppFeature {
       case .settings:
         return .none
 
-      case .textTransformations:
-        return .none
-
       case .history(.navigateToSettings):
         state.activeTab = .settings
         return .none
       case .history:
         return .none
 		case let .setActiveTab(tab):
-			if tab == .transformations, !state.allowsLLMFeatures {
-				return .none
-			}
 			state.activeTab = tab
 			return .none
 
@@ -270,11 +255,6 @@ struct AppFeature {
     }
   }
 
-  private func prewarmToolServer() -> Effect<Action> {
-    .run { _ in
-      _ = try? await hexToolServer.ensureServer(nil)
-    }
-  }
 }
 
 struct AppView: View {
@@ -292,15 +272,13 @@ struct AppView: View {
         .buttonStyle(.plain)
         .tag(AppFeature.ActiveTab.settings)
 
-        if store.allowsLLMFeatures {
-          Button {
-            store.send(.setActiveTab(.transformations))
-          } label: {
-            Label("Modes", systemImage: "wand.and.stars")
-          }
-          .buttonStyle(.plain)
-          .tag(AppFeature.ActiveTab.transformations)
+        Button {
+          store.send(.setActiveTab(.remappings))
+        } label: {
+          Label("Remappings", systemImage: "text.badge.plus")
         }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.remappings)
 
         Button {
           store.send(.setActiveTab(.history))
@@ -325,24 +303,12 @@ struct AppView: View {
           store: store.scope(state: \.settings, action: \.settings),
           microphonePermission: store.microphonePermission,
           accessibilityPermission: store.accessibilityPermission,
-          inputMonitoringPermission: store.inputMonitoringPermission,
-          allowsLLMFeatures: store.allowsLLMFeatures
+          inputMonitoringPermission: store.inputMonitoringPermission
         )
         .navigationTitle("Settings")
-      case .transformations:
-        if store.allowsLLMFeatures {
-          TextTransformationView(store: store.scope(state: \.textTransformations, action: \.textTransformations))
-            .navigationTitle("Modes")
-        } else {
-          SettingsView(
-            store: store.scope(state: \.settings, action: \.settings),
-            microphonePermission: store.microphonePermission,
-            accessibilityPermission: store.accessibilityPermission,
-            inputMonitoringPermission: store.inputMonitoringPermission,
-            allowsLLMFeatures: store.allowsLLMFeatures
-          )
-          .navigationTitle("Settings")
-        }
+      case .remappings:
+        WordRemappingsView(store: store.scope(state: \.settings, action: \.settings))
+          .navigationTitle("Remappings")
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")

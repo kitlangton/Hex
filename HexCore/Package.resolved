@@ -146,15 +146,6 @@
       }
     },
     {
-      "identity" : "swiftmcp",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Cocoanetics/SwiftMCP.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "2c979f614d766b649ad6df3ff81ff6a192618a08"
-      }
-    },
-    {
       "identity" : "xctest-dynamic-overlay",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/xctest-dynamic-overlay",

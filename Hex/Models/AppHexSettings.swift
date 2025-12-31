@@ -32,39 +32,6 @@ extension URL {
 	}
 }
 
-// MARK: - Developer Feature Flags
-
-enum DeveloperAccess {
-	private static let envKey = "HEX_ENABLE_LLM"
-	private static let featureDirectoryName = "feature_flags"
-	private static let sentinelFileName = "enable_llm_features"
-
-	static var allowsLLMFeatures: Bool {
-		if let envValue = ProcessInfo.processInfo.environment[envKey], isTruthy(envValue) {
-			return true
-		}
-
-		guard let sentinelURL = featureFlagURL else { return false }
-		return FileManager.default.fileExists(atPath: sentinelURL.path)
-	}
-
-	private static var featureFlagURL: URL? {
-		guard let base = try? URL.hexApplicationSupport else { return nil }
-		return base
-			.appending(component: featureDirectoryName)
-			.appending(component: sentinelFileName)
-	}
-
-	private static func isTruthy(_ value: String) -> Bool {
-		switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-		case "1", "true", "yes", "on":
-			return true
-		default:
-			return false
-		}
-	}
-}
-
 extension SharedReaderKey
 	where Self == FileStorageKey<HexSettings>.Default
 {

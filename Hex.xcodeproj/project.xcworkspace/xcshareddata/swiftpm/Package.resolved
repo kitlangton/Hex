@@ -290,15 +290,6 @@
       }
     },
     {
-      "identity" : "swiftmcp",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Cocoanetics/SwiftMCP.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "a84229a0a5571139dae74e0ec113ce52d1b368e3"
-      }
-    },
-    {
       "identity" : "whisperkit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/argmaxinc/WhisperKit",

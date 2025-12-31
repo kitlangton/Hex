@@ -214,7 +214,7 @@ struct PasteboardClientLive {
         if !hexSettings.copyToClipboard && pasteSucceeded {
             let savedSnapshot = snapshot
             Task { @MainActor in
-                // Give slower apps (e.g., Claude, Warp) a short window to read the plain-text entry
+                // Give slower apps a short window to read the plain-text entry
                 // before we repopulate the clipboard with the user's previous rich data.
                 try? await Task.sleep(for: .milliseconds(500))
                 pasteboard.clearContents()

@@ -4,13 +4,7 @@
     "" : {
       "shouldTranslate" : false
     },
-    "   +%lld more..." : {
-
-    },
     "(%@)" : {
-
-    },
-    "(disabled)" : {
 
     },
     "%@ %@" : {
@@ -23,24 +17,8 @@
         }
       }
     },
-    "%lld transformation%@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld transformation%2$@"
-          }
-        }
-      }
-    },
-    "%lld." : {
-
-    },
     "•" : {
       "shouldTranslate" : false
-    },
-    "+%lld more" : {
-
     },
     "50" : {
 
@@ -83,13 +61,10 @@
     "Accuracy" : {
 
     },
+    "Add Remapping" : {
+
+    },
     "Advanced" : {
-
-    },
-    "Applies to first matching app (no filters)" : {
-
-    },
-    "Applies to:" : {
 
     },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
@@ -107,9 +82,6 @@
 
     },
     "Audio Behavior while Recording" : {
-
-    },
-    "Auto-send:" : {
 
     },
     "Become a Sponsor" : {
@@ -184,9 +156,6 @@
         }
       }
     },
-    "Configure modes by editing the JSON file" : {
-
-    },
     "Copied" : {
       "comment" : "Transcription from history copied.",
       "localizations" : {
@@ -197,15 +166,6 @@
           }
         }
       }
-    },
-    "Copy LLM Instructions" : {
-
-    },
-    "Copy MCP Path" : {
-
-    },
-    "Copy Path" : {
-
     },
     "Copy to clipboard" : {
       "comment" : "copy transcription from history.",
@@ -219,9 +179,6 @@
       }
     },
     "Copy transcription text to clipboard in addition to pasting it" : {
-
-    },
-    "Create modes by editing the configuration file" : {
 
     },
     "Delete" : {
@@ -317,9 +274,6 @@
       }
     },
     "Downloading… %lld%%" : {
-
-    },
-    "Edit MCP Config" : {
 
     },
     "Enable in Settings" : {
@@ -432,19 +386,10 @@
     "Input Monitoring is required so Hex can listen for your hotkey." : {
 
     },
-    "LLM Editing Guide" : {
-
-    },
-    "LLM Providers" : {
-
-    },
-    "LLM Providers:" : {
+    "Match" : {
 
     },
     "Maximum History Entries" : {
-
-    },
-    "MCP Tools:" : {
 
     },
     "Microphone" : {
@@ -465,9 +410,6 @@
     "Model prewarming..." : {
 
     },
-    "Modes" : {
-
-    },
     "Modifier side" : {
 
     },
@@ -486,12 +428,6 @@
         }
       }
     },
-    "No Modes" : {
-
-    },
-    "No providers configured. Open the configuration file to add Claude or Ollama entries." : {
-
-    },
     "No Transcriptions" : {
       "comment" : "Empty history headline.",
       "localizations" : {
@@ -507,12 +443,6 @@
 
     },
     "Oldest entries will be automatically deleted when limit is reached" : {
-
-    },
-    "Open Configuration File" : {
-
-    },
-    "Open in Editor" : {
 
     },
     "Open Input Monitoring Settings" : {
@@ -594,10 +524,22 @@
         }
       }
     },
+    "Preview" : {
+
+    },
     "Quit" : {
 
     },
     "Refresh available input devices" : {
+
+    },
+    "Remappings" : {
+
+    },
+    "Replace" : {
+
+    },
+    "Replace specific words in every transcript. Matches whole words, case-insensitive, in order." : {
 
     },
     "Request Permission" : {
@@ -622,6 +564,12 @@
 
     },
     "Saves the last 30 minutes of Hex diagnostics so you can share them with support." : {
+
+    },
+    "Say something…" : {
+
+    },
+    "Scratchpad" : {
 
     },
     "Selected device not connected. System default will be used." : {
@@ -730,12 +678,6 @@
     "Support the developer" : {
 
     },
-    "Text-only" : {
-
-    },
-    "Tools" : {
-
-    },
     "Transcription history is currently disabled." : {
 
     },
@@ -803,13 +745,13 @@
         }
       }
     },
-    "Voice Prefixes:" : {
-
-    },
     "Volume" : {
 
     },
     "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
+
+    },
+    "Word Remappings" : {
 
     },
     "Your transcription history will appear here." : {

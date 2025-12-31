@@ -5,30 +5,13 @@
 ### Patch Changes
 
 - 7e325ad: Fix Sequoia hotkey deadlock by removing Input Monitoring guard that prevented CGEventTap creation. Tap creation triggers permission prompt naturally. Re-add 'force quit Hex now' voice escape hatch from v0.5.8 (#122 #124)
-- 7e325ad: Remove preferred provider concept - transformations now strictly use configured providerID from text_transformations.json. Throws error if provider not found instead of falling back.
 - 7e325ad: Add missing-model callout and focus settings when transcription starts without a model
-
-## 0.6.1
-
-### Patch Changes
-
-- 804651c: Make LLM processing interruptible by pressing Escape
 
 ## 0.6.0
 
-### Minor Changes
-
-- d583372: Add auto-send keyboard command feature to transformation modes (#119)
-
 ### Patch Changes
 
-- 9474ff7: Auto-detect Claude and Ollama provider binaries (#000)
-- 154238e: Rename transformation stacks to modes throughout codebase
 - 3bf2fb0: Fix voice prefix matching with punctuation - now strips punctuation (.,;:!?) when matching prefixes
-- e797194: Show MCP tool groups in transformation mode display
-- 154238e: MCP tools now configurable per mode instead of globally per provider
-- 9474ff7: Prefer Claude Code CLI binaries when auto-detecting providers (#000)
-- eab07f2: Gate LLM UI behind developer flag
 
 ## 0.5.13
 
@@ -78,7 +61,7 @@
 
 - a1eb1d0: Restore hotkeys when Input Monitoring permission is missing (#122, #124)
 - 1ee452a: Add non-interactive changeset creation for AI agents
-- 68475f5: Fix clipboard restore timing for slow apps – increased delay from 100ms to 500ms to prevent paste failures in apps that read clipboard asynchronously (e.g., Claude, Warp)
+- 68475f5: Fix clipboard restore timing for slow apps – increased delay from 100ms to 500ms to prevent paste failures in apps that read clipboard asynchronously
 
 ## 0.5.5
 
