@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.3
+
+### Patch Changes
+
+- b4c54ce: Fix microphone priming and media pause races
+- 5217d3f: Add word remappings and remove LLM UI (#000)
+- 4d38708: Add persistent MCP config editing for Claude Code modes
+- bbd0b80: Show system default mic name in picker
+- bbd0b80: Fix Parakeet polling cleanup and organize paste flow
+- 3413d68: Rename Transformations tab to Modes
+- 4d38708: Fix microphone freezing and speech cutoff when using custom microphone. Only switch input device when actually needed, re-prime recorder after device changes, and add cleanup on app termination.
+
 ## 0.6.2
 
 ### Patch Changes
