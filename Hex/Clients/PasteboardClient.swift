@@ -48,6 +48,37 @@ extension DependencyValues {
 
 struct PasteboardClientLive {
     @Shared(.hexSettings) var hexSettings: HexSettings
+    
+    private struct PasteboardSnapshot {
+        let items: [[String: Any]]
+        
+        init(pasteboard: NSPasteboard) {
+            var saved: [[String: Any]] = []
+            for item in pasteboard.pasteboardItems ?? [] {
+                var itemDict: [String: Any] = [:]
+                for type in item.types {
+                    if let data = item.data(forType: type) {
+                        itemDict[type.rawValue] = data
+                    }
+                }
+                saved.append(itemDict)
+            }
+            self.items = saved
+        }
+        
+        func restore(to pasteboard: NSPasteboard) {
+            pasteboard.clearContents()
+            for itemDict in items {
+                let item = NSPasteboardItem()
+                for (type, data) in itemDict {
+                    if let data = data as? Data {
+                        item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type))
+                    }
+                }
+                pasteboard.writeObjects([item])
+            }
+        }
+    }
 
     @MainActor
     func paste(text: String) async {
@@ -121,38 +152,6 @@ struct PasteboardClientLive {
         pasteboardLogger.debug("Sent keyboard command: \(command.displayName)")
     }
 
-    // Function to save the current state of the NSPasteboard
-    func savePasteboardState(pasteboard: NSPasteboard) -> [[String: Any]] {
-        var savedItems: [[String: Any]] = []
-        
-        for item in pasteboard.pasteboardItems ?? [] {
-            var itemDict: [String: Any] = [:]
-            for type in item.types {
-                if let data = item.data(forType: type) {
-                    itemDict[type.rawValue] = data
-                }
-            }
-            savedItems.append(itemDict)
-        }
-        
-        return savedItems
-    }
-
-    // Function to restore the saved state of the NSPasteboard
-    func restorePasteboardState(pasteboard: NSPasteboard, savedItems: [[String: Any]]) {
-        pasteboard.clearContents()
-        
-        for itemDict in savedItems {
-            let item = NSPasteboardItem()
-            for (type, data) in itemDict {
-                if let data = data as? Data {
-                    item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type))
-                }
-            }
-            pasteboard.writeObjects([item])
-        }
-    }
-
     /// Pastes current clipboard content to the frontmost application
     static func pasteToFrontmostApp() -> Bool {
         let script = """
@@ -204,22 +203,22 @@ struct PasteboardClientLive {
     @MainActor
     func pasteWithClipboard(_ text: String) async {
         let pasteboard = NSPasteboard.general
-        let originalItems = savePasteboardState(pasteboard: pasteboard)
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
         let targetChangeCount = writeAndTrackChangeCount(pasteboard: pasteboard, text: text)
         _ = await waitForPasteboardCommit(targetChangeCount: targetChangeCount)
-        let pasteSucceeded = await tryPaste(text)
+        let pasteSucceeded = await performPaste(text)
         
         // Only restore original pasteboard contents if:
         // 1. Copying to clipboard is disabled AND
         // 2. The paste operation succeeded
         if !hexSettings.copyToClipboard && pasteSucceeded {
-            let savedItems = originalItems
+            let savedSnapshot = snapshot
             Task { @MainActor in
                 // Give slower apps (e.g., Claude, Warp) a short window to read the plain-text entry
                 // before we repopulate the clipboard with the user's previous rich data.
                 try? await Task.sleep(for: .milliseconds(500))
                 pasteboard.clearContents()
-                restorePasteboardState(pasteboard: pasteboard, savedItems: savedItems)
+                savedSnapshot.restore(to: pasteboard)
             }
         }
         
@@ -269,14 +268,32 @@ struct PasteboardClientLive {
     // MARK: - Paste Orchestration
 
     @MainActor
-    private func tryPaste(_ text: String) async -> Bool {
-        // 1) Fast path: send Cmd+V (no delay)
-        if await postCmdV(delayMs: 0) { return true }
-        // 2) Menu fallback (quiet failure)
-        if PasteboardClientLive.pasteToFrontmostApp() { return true }
-        // 3) AX insert fallback
-        if (try? Self.insertTextAtCursor(text)) != nil { return true }
+    private enum PasteStrategy: CaseIterable {
+        case cmdV
+        case menuItem
+        case accessibility
+    }
+
+    @MainActor
+    private func performPaste(_ text: String) async -> Bool {
+        for strategy in PasteStrategy.allCases {
+            if await attemptPaste(text, using: strategy) {
+                return true
+            }
+        }
         return false
+    }
+
+    @MainActor
+    private func attemptPaste(_ text: String, using strategy: PasteStrategy) async -> Bool {
+        switch strategy {
+        case .cmdV:
+            return await postCmdV(delayMs: 0)
+        case .menuItem:
+            return PasteboardClientLive.pasteToFrontmostApp()
+        case .accessibility:
+            return (try? Self.insertTextAtCursor(text)) != nil
+        }
     }
 
     // MARK: - Helpers

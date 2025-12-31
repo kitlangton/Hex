@@ -201,6 +201,9 @@
     "Copy LLM Instructions" : {
 
     },
+    "Copy MCP Path" : {
+
+    },
     "Copy Path" : {
 
     },
@@ -314,6 +317,9 @@
       }
     },
     "Downloading… %lld%%" : {
+
+    },
+    "Edit MCP Config" : {
 
     },
     "Enable in Settings" : {
@@ -457,6 +463,9 @@
 
     },
     "Model prewarming..." : {
+
+    },
+    "Modes" : {
 
     },
     "Modifier side" : {
@@ -721,15 +730,6 @@
     "Support the developer" : {
 
     },
-    "System Default" : {
-
-    },
-    "Text Transformation Modes" : {
-
-    },
-    "Text Transformations" : {
-
-    },
     "Text-only" : {
 
     },
@@ -749,9 +749,6 @@
           }
         }
       }
-    },
-    "Transformations" : {
-
     },
     "Unlimited" : {
 

@@ -93,11 +93,11 @@ actor ParakeetClient {
         if Task.isCancelled { break }
       }
     }
+    defer { pollTask.cancel() }
 
     // Download + load the requested variant (returns when all assets are present)
     let models = try await AsrModels.downloadAndLoad(version: variant.asrVersion)
     self.models = models
-    pollTask.cancel()
     let manager = AsrManager(config: .init())
     try await manager.initialize(models: models)
     self.asr = manager

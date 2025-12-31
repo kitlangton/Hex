@@ -11,14 +11,20 @@ struct MicrophoneSelectionSectionView: View {
 			// Input device picker
 			HStack {
 				Label {
+					let systemLabel: String = {
+						if let name = store.defaultInputDeviceName, !name.isEmpty {
+							return "System Default (\(name))"
+						}
+						return "System Default"
+					}()
 					Picker("Input Device", selection: $store.hexSettings.selectedMicrophoneID) {
-						Text("System Default").tag(nil as String?)
+						Text(systemLabel).tag(nil as String?)
 						ForEach(store.availableInputDevices) { device in
 							Text(device.name).tag(device.id as String?)
 						}
 					}
 					.pickerStyle(.menu)
-					.id(UUID()) // Force refresh when devices change
+					.id(store.availableInputDevices.map(\.id).joined(separator: "|"))
 				} icon: {
 					Image(systemName: "mic.circle")
 				}

@@ -41,6 +41,7 @@ struct SettingsFeature {
     
     // Available microphones
     var availableInputDevices: [AudioInputDevice] = []
+    var defaultInputDeviceName: String?
 
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
@@ -71,7 +72,7 @@ struct SettingsFeature {
 
     // Microphone selection
     case loadAvailableInputDevices
-    case availableInputDevicesLoaded([AudioInputDevice])
+    case availableInputDevicesLoaded([AudioInputDevice], String?)
 
     // Model Management
     case modelDownload(ModelDownloadFeature.Action)
@@ -301,11 +302,13 @@ struct SettingsFeature {
       case .loadAvailableInputDevices:
         return .run { send in
           let devices = await recording.getAvailableInputDevices()
-          await send(.availableInputDevicesLoaded(devices))
+          let defaultName = await recording.getDefaultInputDeviceName()
+          await send(.availableInputDevicesLoaded(devices, defaultName))
         }
         
-      case let .availableInputDevicesLoaded(devices):
+      case let .availableInputDevicesLoaded(devices, defaultName):
         state.availableInputDevices = devices
+        state.defaultInputDeviceName = defaultName
         return .none
         
       case let .toggleSaveTranscriptionHistory(enabled):

@@ -30,6 +30,7 @@ struct RecordingClient {
   var requestMicrophoneAccess: @Sendable () async -> Bool = { false }
   var observeAudioLevel: @Sendable () async -> AsyncStream<Meter> = { AsyncStream { _ in } }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
+  var getDefaultInputDeviceName: @Sendable () async -> String? = { nil }
   var warmUpRecorder: @Sendable () async -> Void = {}
   var cleanup: @Sendable () async -> Void = {}
 }
@@ -43,6 +44,7 @@ extension RecordingClient: DependencyKey {
       requestMicrophoneAccess: { await live.requestMicrophoneAccess() },
       observeAudioLevel: { await live.observeAudioLevel() },
       getAvailableInputDevices: { await live.getAvailableInputDevices() },
+      getDefaultInputDeviceName: { await live.getDefaultInputDeviceName() },
       warmUpRecorder: { await live.warmUpRecorder() },
       cleanup: { await live.cleanup() }
     )
@@ -374,6 +376,19 @@ actor RecordingClientLive {
     }
     
     return inputDevices
+  }
+
+  /// Gets the current system default input device name
+  func getDefaultInputDeviceName() async -> String? {
+    guard let deviceID = getDefaultInputDevice() else { return nil }
+    if let cached = deviceCache[deviceID], cached.hasInput, let name = cached.name {
+      return name
+    }
+    let name = getDeviceName(deviceID: deviceID)
+    if let name {
+      deviceCache[deviceID] = (hasInput: true, name: name)
+    }
+    return name
   }
   
   // MARK: - Core Audio Helpers
