@@ -23,24 +23,12 @@ actor ParakeetClient {
       return false
     }
     if currentVariant == variant, asr != nil { return true }
-    let fm = FileManager.default
+
     logger.debug("Checking Parakeet availability variant=\(variant.identifier)")
-    for root in candidateRoots() {
-      for vendor in vendorDirs {
-        let base = root.appendingPathComponent(vendor, isDirectory: true)
-        let direct = base.appendingPathComponent(variant.identifier, isDirectory: true)
-        if directoryContainsMLModelC(direct) {
-          logger.notice("Found Parakeet cache at \(direct.path)")
-          return true
-        }
-        if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
-          for item in items where item.lastPathComponent.hasPrefix(variant.identifier) {
-            if directoryContainsMLModelC(item) {
-              logger.notice("Found Parakeet cache at \(item.path)")
-              return true
-            }
-          }
-        }
+    for dir in modelDirectories(variant) {
+      if directoryContainsMLModelC(dir) {
+        logger.notice("Found Parakeet cache at \(dir.path)")
+        return true
       }
     }
     logger.debug("No Parakeet cache detected variant=\(variant.identifier)")
@@ -134,22 +122,10 @@ actor ParakeetClient {
     let fm = FileManager.default
 
     var removedAny = false
-    for root in candidateRoots() {
-      for vendor in vendorDirs {
-        let base = root.appendingPathComponent(vendor, isDirectory: true)
-        // Remove exact match
-        let direct = base.appendingPathComponent(variant.identifier, isDirectory: true)
-        if fm.fileExists(atPath: direct.path) {
-          try? fm.removeItem(at: direct)
-          removedAny = true
-        }
-        // Remove any prefixed folders
-        if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
-          for item in items where item.lastPathComponent.hasPrefix(variant.identifier) {
-            try? fm.removeItem(at: item)
-            removedAny = true
-          }
-        }
+    for dir in modelDirectories(variant) {
+      if fm.fileExists(atPath: dir.path) {
+        try? fm.removeItem(at: dir)
+        removedAny = true
       }
     }
 
@@ -161,6 +137,29 @@ actor ParakeetClient {
         currentVariant = nil
       }
     }
+  }
+
+  /// Returns all candidate directories where a Parakeet model might be cached.
+  /// Includes both exact matches and prefixed directories (e.g. versioned folders).
+  private func modelDirectories(_ variant: ParakeetModel) -> [URL] {
+    let fm = FileManager.default
+    var result: [URL] = []
+
+    for root in candidateRoots() {
+      for vendor in vendorDirs {
+        let base = root.appendingPathComponent(vendor, isDirectory: true)
+        // Exact match directory
+        let direct = base.appendingPathComponent(variant.identifier, isDirectory: true)
+        result.append(direct)
+        // Prefixed directories (e.g. versioned folders)
+        if let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles) {
+          for item in items where item.lastPathComponent.hasPrefix(variant.identifier) && item != direct {
+            result.append(item)
+          }
+        }
+      }
+    }
+    return result
   }
 
   private func candidateRoots() -> [URL] {

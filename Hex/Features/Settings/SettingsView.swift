@@ -47,3 +47,12 @@ struct SettingsView: View {
 		.enableInjection()
 	}
 }
+
+// MARK: - Shared Styles
+
+extension Text {
+	/// Applies caption font with secondary color, commonly used for helper/description text in settings.
+	func settingsCaption() -> some View {
+		self.font(.caption).foregroundStyle(.secondary)
+	}
+}

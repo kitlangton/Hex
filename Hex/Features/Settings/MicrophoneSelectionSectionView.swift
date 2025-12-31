@@ -43,8 +43,7 @@ struct MicrophoneSelectionSectionView: View {
 			   !store.availableInputDevices.contains(where: { $0.id == selectedID })
 			{
 				Text("Selected device not connected. System default will be used.")
-					.font(.caption)
-					.foregroundColor(.secondary)
+					.settingsCaption()
 			}
 		} header: {
 			Text("Microphone Selection")

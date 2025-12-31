@@ -22,8 +22,7 @@ struct AdvancedSectionView: View {
           .disabled(store.isExportingLogs)
 
           Text("Saves the last 30 minutes of Hex diagnostics so you can share them with support.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .settingsCaption()
 
           if let status = store.logExportStatus {
             statusView(status)

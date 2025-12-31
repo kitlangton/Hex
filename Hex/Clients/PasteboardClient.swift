@@ -369,16 +369,7 @@ struct PasteboardClientLive {
         if !supportsText && !supportsSelectedText {
             throw PasteError.elementDoesNotSupportTextEditing
         }
-        
-        // // Get any selected text
-        // var selectedText: String = ""
-        // if AXUIElementCopyAttributeValue(focusedElement, kAXSelectedTextAttribute as CFString, &value) == .success,
-        //    let selectedValue = value as? String {
-        //     selectedText = selectedValue
-        // }
-        
-        // print("selected text: \(selectedText)")
-        
+
         // Insert text at cursor position by replacing selected text (or empty selection)
         let insertResult = AXUIElementSetAttributeValue(focusedElement, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
         

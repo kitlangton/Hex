@@ -80,8 +80,7 @@ private struct ModifierSideControls: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("\(kind.symbol) \(kind.displayName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .settingsCaption()
 
                         Picker("Modifier side", selection: binding) {
                             ForEach(Modifier.Side.allCases, id: \.self) { side in

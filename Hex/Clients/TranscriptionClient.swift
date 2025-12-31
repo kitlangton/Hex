@@ -6,7 +6,6 @@
 //
 
 import AVFoundation
-import Darwin
 import Dependencies
 import DependenciesMacros
 import Foundation
@@ -295,19 +294,18 @@ actor TranscriptionClientLive {
   /// Resolve wildcard patterns (e.g. "distil*large-v3") to a concrete model name.
   /// Preference: downloaded > non-turbo > any match.
   private func resolveVariant(_ variant: String) async -> String {
-    if !(variant.contains("*") || variant.contains("?")) { return variant }
+    guard variant.contains("*") || variant.contains("?") else { return variant }
+
     let names: [String]
     do { names = try await WhisperKit.fetchAvailableModels() } catch { return variant }
-    let matches = names.filter { fnmatch(variant, $0, 0) == 0 }
-    guard !matches.isEmpty else { return variant }
-    var downloaded: [String] = []
-    for name in matches { if await isModelDownloaded(name) { downloaded.append(name) } }
-    if !downloaded.isEmpty {
-      if let nonTurbo = downloaded.first(where: { !$0.localizedCaseInsensitiveContains("turbo") }) { return nonTurbo }
-      return downloaded[0]
+
+    // Build tuple array with download status for matching models
+    var models: [(name: String, isDownloaded: Bool)] = []
+    for name in names where ModelPatternMatcher.matches(variant, name) {
+      models.append((name, await isModelDownloaded(name)))
     }
-    if let nonTurbo = matches.first(where: { !$0.localizedCaseInsensitiveContains("turbo") }) { return nonTurbo }
-    return matches[0]
+
+    return ModelPatternMatcher.resolvePattern(variant, from: models) ?? variant
   }
 
   private func isParakeet(_ name: String) -> Bool {
@@ -386,9 +384,7 @@ actor TranscriptionClientLive {
       modelsLogger.info("Downloaded model to \(modelFolder.path)")
     } catch {
       // Clean up any partial download if an error occurred
-      if FileManager.default.fileExists(atPath: modelFolder.path) {
-        try? FileManager.default.removeItem(at: modelFolder)
-      }
+      FileManager.default.removeItemIfExists(at: modelFolder)
 
       // Rethrow the original error
       modelsLogger.error("Error downloading model \(variant): \(error.localizedDescription)")

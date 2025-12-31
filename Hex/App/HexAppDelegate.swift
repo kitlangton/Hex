@@ -35,7 +35,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		NotificationCenter.default.addObserver(
 			self,
 			selector: #selector(handleAppModeUpdate),
-			name: NSNotification.Name("UpdateAppMode"),
+			name: .updateAppMode,
 			object: nil
 		)
 

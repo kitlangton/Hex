@@ -15,8 +15,7 @@ struct HistorySectionView: View {
 					set: { store.send(.toggleSaveTranscriptionHistory($0)) }
 				))
 				Text("Save transcriptions and audio recordings for later access")
-					.font(.caption)
-					.foregroundColor(.secondary)
+					.settingsCaption()
 			} icon: {
 				Image(systemName: "clock.arrow.circlepath")
 			}
@@ -48,8 +47,7 @@ struct HistorySectionView: View {
 
 				if store.hexSettings.maxHistoryEntries != nil {
 					Text("Oldest entries will be automatically deleted when limit is reached")
-						.font(.caption)
-						.foregroundColor(.secondary)
+						.settingsCaption()
 						.padding(.leading, 28)
 				}
 
@@ -81,8 +79,7 @@ private struct PasteLastTranscriptHotkeyRow: View {
 					Text("Paste Last Transcript")
 						.font(.subheadline.weight(.semibold))
 					Text("Assign a shortcut (modifier + key) to instantly paste your last transcription.")
-						.font(.caption)
-						.foregroundColor(.secondary)
+						.settingsCaption()
 				}
 			} icon: {
 				Image(systemName: "doc.on.clipboard")
@@ -98,8 +95,7 @@ private struct PasteLastTranscriptHotkeyRow: View {
 
 					if !store.isSettingPasteLastTranscriptHotkey, pasteHotkey == nil {
 						Text("Not set")
-							.font(.caption)
-							.foregroundStyle(.secondary)
+							.settingsCaption()
 					}
 				}
 				.contentShape(Rectangle())
@@ -111,8 +107,7 @@ private struct PasteLastTranscriptHotkeyRow: View {
 
 			if store.isSettingPasteLastTranscriptHotkey {
 				Text("Use at least one modifier (⌘, ⌥, ⇧, ⌃) plus a key.")
-					.font(.caption)
-					.foregroundStyle(.secondary)
+					.settingsCaption()
 			} else if pasteHotkey != nil {
 				Button {
 					store.send(.clearPasteLastTranscriptHotkey)

@@ -5,7 +5,6 @@
 
 import AppKit
 import ComposableArchitecture
-import Darwin
 import Dependencies
 import HexCore
 import IdentifiedCollections
@@ -167,40 +166,12 @@ public struct ModelDownloadFeature {
 
 	// MARK: - Helpers (pattern matching)
 
-	private func matches(_ pattern: String, _ text: String) -> Bool {
-		if pattern.contains("*") || pattern.contains("?") {
-			return fnmatch(pattern, text, 0) == 0
-		}
-		return pattern == text
-	}
-
 	private func resolvePattern(_ pattern: String, from available: [ModelInfo]) -> String? {
-		// No glob characters: return as-is
-		if !(pattern.contains("*") || pattern.contains("?")) { return pattern }
-
-		// All matches
-		let matches = available.filter { fnmatch(pattern, $0.name, 0) == 0 }
-		guard !matches.isEmpty else { return nil }
-
-		// Prefer already-downloaded matches
-		let downloaded = matches.filter { $0.isDownloaded }
-		if !downloaded.isEmpty {
-			// Prefer non-turbo if both exist, otherwise turbo
-			if let nonTurbo = downloaded.first(where: { !$0.name.localizedCaseInsensitiveContains("turbo") }) {
-				return nonTurbo.name
-			}
-			return downloaded.first!.name
-		}
-
-		// If none downloaded yet, prefer non-turbo first
-		if let nonTurbo = matches.first(where: { !$0.name.localizedCaseInsensitiveContains("turbo") }) {
-			return nonTurbo.name
-		}
-		return matches.first!.name
+		ModelPatternMatcher.resolvePattern(pattern, from: available.map { ($0.name, $0.isDownloaded) })
 	}
 
 	private func curatedDisplayName(for model: String, curated: IdentifiedArrayOf<CuratedModelInfo>) -> String {
-		if let match = curated.first(where: { matches($0.internalName, model) }) {
+		if let match = curated.first(where: { ModelPatternMatcher.matches($0.internalName, model) }) {
 			return match.displayName
 		}
 		return model
@@ -294,7 +265,7 @@ public struct ModelDownloadFeature {
 			var curated = CuratedModelLoader.load()
 			for idx in curated.indices {
 				let internalName = curated[idx].internalName
-				if let match = available.first(where: { matches(internalName, $0.name) }) {
+				if let match = available.first(where: { ModelPatternMatcher.matches(internalName, $0.name) }) {
 					curated[idx].isDownloaded = match.isDownloaded
 				} else {
 					curated[idx].isDownloaded = false

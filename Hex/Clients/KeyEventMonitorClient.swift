@@ -455,32 +455,22 @@ class KeyEventMonitorClientLive {
     }
   }
 
-  private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
-    // Read with concurrent access (no barrier)
-    let handlers = queue.sync { Array(continuations.values) }
-
-    var handled = false
-    for continuation in handlers {
-      if continuation(keyEvent) {
-        handled = true
-      }
+  private func processEvent<T>(
+    _ event: T,
+    handlers: [UUID: @Sendable (T) -> Bool]
+  ) -> Bool {
+    let handlerList = queue.sync { Array(handlers.values) }
+    return handlerList.reduce(false) { handled, handler in
+      handler(event) || handled
     }
+  }
 
-    return handled
+  private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
+    processEvent(keyEvent, handlers: continuations)
   }
 
   private func processInputEvent(_ inputEvent: InputEvent) -> Bool {
-    // Read with concurrent access (no barrier)
-    let handlers = queue.sync { Array(inputContinuations.values) }
-
-    var handled = false
-    for continuation in handlers {
-      if continuation(inputEvent) {
-        handled = true
-      }
-    }
-
-    return handled
+    processEvent(inputEvent, handlers: inputContinuations)
   }
 }
 

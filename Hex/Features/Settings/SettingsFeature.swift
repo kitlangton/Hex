@@ -119,7 +119,7 @@ struct SettingsFeature {
       case .binding:
         return .run { _ in
           await MainActor.run {
-            NotificationCenter.default.post(name: NSNotification.Name("UpdateAppMode"), object: nil)
+            NotificationCenter.default.post(name: .updateAppMode, object: nil)
           }
         }
 

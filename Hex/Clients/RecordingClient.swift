@@ -392,15 +392,24 @@ actor RecordingClientLive {
   }
   
   // MARK: - Core Audio Helpers
-  
+
+  /// Creates an AudioObjectPropertyAddress with common defaults.
+  private func audioPropertyAddress(
+    _ selector: AudioObjectPropertySelector,
+    scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
+    element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain
+  ) -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+      mSelector: selector,
+      mScope: scope,
+      mElement: element
+    )
+  }
+
   /// Get all available audio devices
   private func getAllAudioDevices() -> [AudioDeviceID] {
     var propertySize: UInt32 = 0
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyDevices,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioHardwarePropertyDevices)
     
     // Get the property data size
     var status = AudioObjectGetPropertyDataSize(
@@ -440,11 +449,7 @@ actor RecordingClientLive {
   
   /// Get device name for the given device ID
   private func getDeviceName(deviceID: AudioDeviceID) -> String? {
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyDeviceNameCFString,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioDevicePropertyDeviceNameCFString)
     
     var deviceName: CFString? = nil
     var size = UInt32(MemoryLayout<CFString?>.size)
@@ -474,11 +479,7 @@ actor RecordingClientLive {
   
   /// Check if device has input capabilities
   private func deviceHasInput(deviceID: AudioDeviceID) -> Bool {
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioDevicePropertyStreamConfiguration,
-      mScope: kAudioDevicePropertyScopeInput,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioDevicePropertyStreamConfiguration, scope: kAudioDevicePropertyScopeInput)
     
     var propertySize: UInt32 = 0
     let status = AudioObjectGetPropertyDataSize(
@@ -518,11 +519,7 @@ actor RecordingClientLive {
   private func setInputDevice(deviceID: AudioDeviceID) {
     var device = deviceID
     let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyDefaultInputDevice,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioHardwarePropertyDefaultInputDevice)
     
     let status = AudioObjectSetPropertyData(
       AudioObjectID(kAudioObjectSystemObject),
@@ -550,11 +547,7 @@ actor RecordingClientLive {
   private func getDefaultInputDevice() -> AudioDeviceID? {
     var deviceID = AudioDeviceID(0)
     var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyDefaultInputDevice,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioHardwarePropertyDefaultInputDevice)
 
     let status = AudioObjectGetPropertyData(
       AudioObjectID(kAudioObjectSystemObject),
@@ -593,11 +586,7 @@ actor RecordingClientLive {
   private func getDefaultOutputDevice() -> AudioDeviceID? {
     var deviceID = AudioDeviceID(0)
     var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-      mScope: kAudioObjectPropertyScopeGlobal,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioHardwarePropertyDefaultOutputDevice)
 
     let status = AudioObjectGetPropertyData(
       AudioObjectID(kAudioObjectSystemObject),
@@ -624,11 +613,7 @@ actor RecordingClientLive {
 
     var volume: Float32 = 0.0
     var size = UInt32(MemoryLayout<Float32>.size)
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-      mScope: kAudioDevicePropertyScopeOutput,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)
 
     let status = AudioObjectGetPropertyData(
       deviceID,
@@ -655,11 +640,7 @@ actor RecordingClientLive {
 
     var newVolume = volume
     let size = UInt32(MemoryLayout<Float32>.size)
-    var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-      mScope: kAudioDevicePropertyScopeOutput,
-      mElement: kAudioObjectPropertyElementMain
-    )
+    var address = audioPropertyAddress(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)
 
     let status = AudioObjectSetPropertyData(
       deviceID,

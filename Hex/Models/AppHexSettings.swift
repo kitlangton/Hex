@@ -32,6 +32,20 @@ extension URL {
 	}
 }
 
+extension FileManager {
+	/// Copies a file from legacy location to new location if legacy exists and new doesn't.
+	func migrateIfNeeded(from legacy: URL, to new: URL) {
+		guard fileExists(atPath: legacy.path), !fileExists(atPath: new.path) else { return }
+		try? copyItem(at: legacy, to: new)
+	}
+
+	/// Removes an item only if it exists, swallowing any errors.
+	func removeItemIfExists(at url: URL) {
+		guard fileExists(atPath: url.path) else { return }
+		try? removeItem(at: url)
+	}
+}
+
 extension SharedReaderKey
 	where Self == FileStorageKey<HexSettings>.Default
 {
@@ -51,13 +65,7 @@ extension URL {
 			let newURL = (try? URL.hexApplicationSupport.appending(component: "hex_settings.json"))
 				?? URL.documentsDirectory.appending(component: "hex_settings.json")
 			let legacyURL = URL.legacyDocumentsDirectory.appending(component: "hex_settings.json")
-
-			// Migrate if needed
-			if FileManager.default.fileExists(atPath: legacyURL.path),
-			   !FileManager.default.fileExists(atPath: newURL.path) {
-				try? FileManager.default.copyItem(at: legacyURL, to: newURL)
-			}
-
+			FileManager.default.migrateIfNeeded(from: legacyURL, to: newURL)
 			return newURL
 		}
 	}

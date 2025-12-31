@@ -50,15 +50,10 @@ extension SharedReaderKey
 extension URL {
 	static var transcriptionHistoryURL: URL {
 		get {
-			let newURL = (try? URL.hexApplicationSupport.appending(component: "transcription_history.json")) ?? URL.documentsDirectory.appending(component: "transcription_history.json")
+			let newURL = (try? URL.hexApplicationSupport.appending(component: "transcription_history.json"))
+				?? URL.documentsDirectory.appending(component: "transcription_history.json")
 			let legacyURL = URL.legacyDocumentsDirectory.appending(component: "transcription_history.json")
-			
-			// Migrate if needed
-			if FileManager.default.fileExists(atPath: legacyURL.path),
-			   !FileManager.default.fileExists(atPath: newURL.path) {
-				try? FileManager.default.copyItem(at: legacyURL, to: newURL)
-			}
-			
+			FileManager.default.migrateIfNeeded(from: legacyURL, to: newURL)
 			return newURL
 		}
 	}
@@ -100,6 +95,13 @@ struct HistoryFeature {
 		var playingTranscriptID: UUID?
 		var audioPlayer: AVAudioPlayer?
 		var audioPlayerController: AudioPlayerController?
+
+		mutating func stopAudioPlayback() {
+			audioPlayerController?.stop()
+			audioPlayer = nil
+			audioPlayerController = nil
+			playingTranscriptID = nil
+		}
 	}
 
 	enum Action {
@@ -121,17 +123,12 @@ struct HistoryFeature {
 			case let .playTranscript(id):
 				if state.playingTranscriptID == id {
 					// Stop playback if tapping the same transcript
-					state.audioPlayerController?.stop()
-					state.audioPlayer = nil
-					state.audioPlayerController = nil
-					state.playingTranscriptID = nil
+					state.stopAudioPlayback()
 					return .none
 				}
 
 				// Stop any existing playback
-				state.audioPlayerController?.stop()
-				state.audioPlayer = nil
-				state.audioPlayerController = nil
+				state.stopAudioPlayback()
 
 				// Find the transcript and play its audio
 				guard let transcript = state.transcriptionHistory.history.first(where: { $0.id == id }) else {
@@ -165,10 +162,7 @@ struct HistoryFeature {
 				}
 
 			case .stopPlayback, .playbackFinished:
-				state.audioPlayerController?.stop()
-				state.audioPlayer = nil
-				state.audioPlayerController = nil
-				state.playingTranscriptID = nil
+				state.stopAudioPlayback()
 				return .none
 
 			case let .copyToClipboard(text):
@@ -184,10 +178,7 @@ struct HistoryFeature {
 				let transcript = state.transcriptionHistory.history[index]
 
 				if state.playingTranscriptID == id {
-					state.audioPlayerController?.stop()
-					state.audioPlayer = nil
-					state.audioPlayerController = nil
-					state.playingTranscriptID = nil
+					state.stopAudioPlayback()
 				}
 
 				_ = state.$transcriptionHistory.withLock { history in
@@ -203,11 +194,7 @@ struct HistoryFeature {
 
 			case .confirmDeleteAll:
 				let transcripts = state.transcriptionHistory.history
-
-				state.audioPlayerController?.stop()
-				state.audioPlayer = nil
-				state.audioPlayerController = nil
-				state.playingTranscriptID = nil
+				state.stopAudioPlayback()
 
 				state.$transcriptionHistory.withLock { history in
 					history.history.removeAll()
