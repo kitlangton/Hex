@@ -139,3 +139,78 @@ FluidAudio models reside under `Application Support/FluidAudio/Models`.
 - Use a concise, descriptive subject line that captures the user-facing impact (roughly 50–70 characters).
 - Follow up with as much context as needed in the body. Include the rationale, notable tradeoffs, relevant logs, or reproduction steps—future debugging benefits from having the full story directly in git history.
 - Reference any related GitHub issues in the body if the change tracks ongoing work.
+
+## Releasing a New Version
+
+Releases are automated via a local CLI tool that handles building, signing, notarizing, and uploading.
+
+### Prerequisites
+
+1. **AWS credentials** must be set (for S3 uploads):
+   ```bash
+   export AWS_ACCESS_KEY_ID=...
+   export AWS_SECRET_ACCESS_KEY=...
+   ```
+
+2. **Notarization credentials** stored in keychain (one-time setup):
+   ```bash
+   xcrun notarytool store-credentials "AC_PASSWORD"
+   ```
+
+3. **Dependencies installed** at project root and in tools:
+   ```bash
+   bun install                # project root (for changesets)
+   cd tools && bun install    # tools dependencies
+   ```
+
+### Release Steps
+
+1. **Ensure all changes are committed** - the release tool requires a clean working tree
+
+2. **Ensure changesets exist** - any user-facing change should have a `.changeset/*.md` file:
+   ```bash
+   bun run changeset:add-ai patch "Fix microphone selection"
+   ```
+
+3. **Run the release command** from project root:
+   ```bash
+   bun run tools/src/cli.ts release
+   ```
+
+### What the Release Tool Does
+
+1. Checks for clean working tree
+2. Finds pending changesets and applies them (bumps version in `package.json`)
+3. Syncs changelog to `Hex/Resources/changelog.md`
+4. Updates `Info.plist` and `project.pbxproj` with new version
+5. Increments build number
+6. Cleans DerivedData and archives with xcodebuild
+7. Exports and signs with Developer ID
+8. Notarizes app with Apple
+9. Creates and signs DMG
+10. Notarizes DMG
+11. Generates Sparkle appcast
+12. Uploads to S3 (versioned DMG + `hex-latest.dmg` + appcast.xml)
+13. Commits version changes, creates git tag, pushes
+14. Creates GitHub release with DMG and ZIP attachments
+
+### If No Changesets Exist
+
+The tool will prompt you to either:
+- Stop and create a changeset (recommended)
+- Continue with manual version bump (useful for re-running failed releases)
+
+### Artifacts
+
+Each release produces:
+- `Hex-{version}.dmg` - Signed, notarized DMG
+- `Hex-{version}.zip` - For Homebrew cask
+- `hex-latest.dmg` - Always points to latest
+- `appcast.xml` - Sparkle update feed
+
+### Troubleshooting
+
+- **"Working tree is not clean"**: Commit or stash all changes before releasing
+- **Notarization fails**: Check Apple ID credentials and app-specific password
+- **S3 upload fails**: Verify AWS credentials and bucket permissions
+- **Build fails**: Ensure Xcode 16+ and valid code signing certificates
