@@ -1,6 +1,6 @@
 {
   "name": "hex-app",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Release metadata + changelog automation for the Hex macOS app.",
   "private": true,
   "license": "MIT",

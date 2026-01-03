@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4
+
+### Patch Changes
+
+- c00f79e: Reduce code duplication: add ModelPatternMatcher, FileManager helpers, settingsCaption style, notification constants, and Core Audio helper
+- 658a755: Fix silent recordings caused by device-level microphone mute - automatically detects and fixes muted input devices before recording
+
 ## 0.6.3
 
 ### Patch Changes
