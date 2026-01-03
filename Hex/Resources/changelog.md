@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5
+
+### Patch Changes
+
+- 140c205: Fix Sparkle auto-update for sandboxed app by adding required XPC entitlements and SUEnableInstallerLauncherService. Users on 0.6.3 will need to manually download this update.
+
 ## 0.6.4
 
 ### Patch Changes
