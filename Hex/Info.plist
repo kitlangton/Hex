@@ -19,5 +19,7 @@
 	<string>https://hex-updates.s3.amazonaws.com/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>mIek27lttJe8cIBqVZFhh6reRKjpTx1h9ZY9OKWPtuM=</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
 </dict>
 </plist>
