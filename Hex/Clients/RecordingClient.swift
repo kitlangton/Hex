@@ -566,6 +566,60 @@ actor RecordingClientLive {
     return deviceID
   }
 
+  // MARK: - Input Device Mute Detection & Fix
+
+  /// Checks if the input device is muted at the Core Audio device level
+  private func isInputDeviceMuted(_ deviceID: AudioDeviceID) -> Bool {
+    var address = audioPropertyAddress(kAudioDevicePropertyMute, scope: kAudioDevicePropertyScopeInput)
+    var muted: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+
+    let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &muted)
+    if status != noErr {
+      // Property not supported on this device
+      return false
+    }
+    return muted == 1
+  }
+
+  /// Unmutes the input device at the Core Audio device level
+  private func unmuteInputDevice(_ deviceID: AudioDeviceID) {
+    var address = audioPropertyAddress(kAudioDevicePropertyMute, scope: kAudioDevicePropertyScopeInput)
+    var muted: UInt32 = 0
+    let size = UInt32(MemoryLayout<UInt32>.size)
+
+    let status = AudioObjectSetPropertyData(deviceID, &address, 0, nil, size, &muted)
+    if status == noErr {
+      recordingLogger.warning("Input device \(deviceID) was muted at device level - automatically unmuted")
+    } else {
+      recordingLogger.error("Failed to unmute input device \(deviceID): \(status)")
+    }
+  }
+
+  /// Checks and fixes muted input device before recording
+  private func ensureInputDeviceUnmuted() {
+    // Check the selected device if specified, otherwise the default
+    var deviceIDsToCheck: [AudioDeviceID] = []
+
+    if let selectedIDString = hexSettings.selectedMicrophoneID,
+       let selectedID = AudioDeviceID(selectedIDString) {
+      deviceIDsToCheck.append(selectedID)
+    }
+
+    if let defaultID = getDefaultInputDevice() {
+      if !deviceIDsToCheck.contains(defaultID) {
+        deviceIDsToCheck.append(defaultID)
+      }
+    }
+
+    for deviceID in deviceIDsToCheck {
+      if isInputDeviceMuted(deviceID) {
+        recordingLogger.error("⚠️ Input device \(deviceID) is MUTED at Core Audio level! This causes silent recordings.")
+        unmuteInputDevice(deviceID)
+      }
+    }
+  }
+
   // MARK: - Volume Control
 
   /// Mutes system volume and returns the previous volume level
@@ -657,6 +711,9 @@ actor RecordingClientLive {
   }
 
   func startRecording() async {
+    // Check and fix device-level mute before recording
+    ensureInputDeviceUnmuted()
+
     let sessionID = UUID()
     recordingSessionID = sessionID
     mediaControlTask?.cancel()

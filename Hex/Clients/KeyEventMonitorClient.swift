@@ -53,8 +53,8 @@ public extension KeyEvent {
 @DependencyClient
 struct KeyEventMonitorClient {
   var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
-  var handleKeyEvent: @Sendable (@escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
-  var handleInputEvent: @Sendable (@escaping (InputEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
+  var handleKeyEvent: @Sendable (@Sendable @escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
+  var handleInputEvent: @Sendable (@Sendable @escaping (InputEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
   var startMonitoring: @Sendable () async -> Void = {}
   var stopMonitoring: @Sendable () -> Void = {}
 }
@@ -92,8 +92,8 @@ extension DependencyValues {
 class KeyEventMonitorClientLive {
   private var eventTapPort: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
-  private var continuations: [UUID: (KeyEvent) -> Bool] = [:]
-  private var inputContinuations: [UUID: (InputEvent) -> Bool] = [:]
+  private var continuations: [UUID: @Sendable (KeyEvent) -> Bool] = [:]
+  private var inputContinuations: [UUID: @Sendable (InputEvent) -> Bool] = [:]
   private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
   private var isMonitoring = false
   private var wantsMonitoring = false
@@ -192,7 +192,7 @@ class KeyEventMonitorClientLive {
     }
   }
   // TODO: Handle removing the handler from the continuations on deinit/cancellation
-  func handleKeyEvent(_ handler: @escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken {
+  func handleKeyEvent(_ handler: @Sendable @escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken {
     let uuid = UUID()
 
     queue.async(flags: .barrier) { [weak self] in
@@ -210,7 +210,7 @@ class KeyEventMonitorClientLive {
     }
   }
 
-  func handleInputEvent(_ handler: @escaping (InputEvent) -> Bool) -> KeyEventMonitorToken {
+  func handleInputEvent(_ handler: @Sendable @escaping (InputEvent) -> Bool) -> KeyEventMonitorToken {
     let uuid = UUID()
 
     queue.async(flags: .barrier) { [weak self] in
