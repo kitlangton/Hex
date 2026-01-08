@@ -124,9 +124,49 @@ class MediaRemoteController {
 // Global instance of MediaRemoteController
 private let mediaRemoteController = MediaRemoteController()
 
-func isAudioPlayingOnDefaultOutput() async -> Bool {
-  // Refresh the state before checking
-  return await mediaRemoteController?.isMediaPlaying() ?? false
+/// Checks if audio is actively being output on the default output device using Core Audio.
+/// This is more reliable than MediaRemote in sandboxed apps.
+func isAudioPlayingOnDefaultOutput() -> Bool {
+  // Get the default output device
+  var deviceID = AudioDeviceID(0)
+  var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+  var address = AudioObjectPropertyAddress(
+    mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain
+  )
+
+  var status = AudioObjectGetPropertyData(
+    AudioObjectID(kAudioObjectSystemObject),
+    &address,
+    0,
+    nil,
+    &size,
+    &deviceID
+  )
+
+  guard status == noErr else {
+    mediaLogger.error("Failed to get default output device: \(status)")
+    return false
+  }
+
+  // Check if the device is running (audio is being output)
+  var isRunning: UInt32 = 0
+  size = UInt32(MemoryLayout<UInt32>.size)
+  address = AudioObjectPropertyAddress(
+    mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain
+  )
+
+  status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &isRunning)
+
+  guard status == noErr else {
+    mediaLogger.error("Failed to check if audio device is running: \(status)")
+    return false
+  }
+
+  return isRunning != 0
 }
 
 /// Check if an application is installed by looking for its bundle
@@ -736,7 +776,7 @@ actor RecordingClientLive {
         // If no specific players were paused, pause generic media using the media key.
         guard await self.isCurrentSession(sessionID) else { return }
         if paused.isEmpty {
-          if await isAudioPlayingOnDefaultOutput() {
+          if isAudioPlayingOnDefaultOutput() {
             mediaLogger.notice("Detected active audio on default output; sending media pause")
             await MainActor.run {
               sendMediaKey()
