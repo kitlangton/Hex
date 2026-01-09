@@ -816,11 +816,19 @@ actor RecordingClientLive {
 
   func stopRecording() async -> URL {
     let wasRecording = recorder?.isRecording == true
-    recorder?.stop()
+    
+    // CRITICAL FIX: Stop and DESTROY the recorder to release CoreAudio connection
+    // We cannot reuse the same recorder instance after stop() - must create fresh one
+    if let recorder = recorder {
+      recorder.stop()
+      recordingLogger.debug("Stopped recorder")
+    }
+    self.recorder = nil  // DESTROY to fully release CoreAudio connection
+    
     stopMeterTask()
     endRecordingSession()
     if wasRecording {
-      recordingLogger.notice("Recording stopped")
+      recordingLogger.notice("Recording stopped and recorder destroyed")
     } else {
       recordingLogger.notice("stopRecording() called while recorder was idle")
     }
@@ -836,6 +844,11 @@ actor RecordingClientLive {
     }
 
     if didCopyRecording {
+      // CRITICAL: Give CoreAudio time to fully release the old recorder's connection
+      // before creating and priming a new one. Without this delay, CoreAudio may
+      // keep the old connection active, causing 10% CPU leak.
+      try? await Task.sleep(for: .milliseconds(200))
+      
       do {
         try primeRecorderForNextSession()
       } catch {
@@ -968,6 +981,9 @@ actor RecordingClientLive {
       recordingLogger.notice("Recorder already primed, skipping prepareToRecord()")
     }
 
+    // Enable metering for recording session
+    recorder.isMeteringEnabled = true
+    
     isRecorderPrimedForNextSession = false
     return recorder
   }
@@ -978,8 +994,12 @@ actor RecordingClientLive {
     }
 
     let recorder = try AVAudioRecorder(url: recordingURL, settings: recorderSettings)
-    recorder.isMeteringEnabled = true
+    // OPTIMIZATION: Don't enable metering by default
+    // It will be enabled in ensureRecorderReadyForRecording() when actually recording
+    // Metering can cause continuous audio monitoring even when idle
+    recorder.isMeteringEnabled = false
     self.recorder = recorder
+    recordingLogger.debug("Created new AVAudioRecorder instance")
     return recorder
   }
 
@@ -1003,6 +1023,8 @@ actor RecordingClientLive {
   }
 
   private func primeRecorderForNextSession() throws {
+    // Recorder should be nil at this point (destroyed in stopRecording)
+    // Create a fresh recorder and prime it
     let recorder = try recorderOrCreate()
     guard recorder.prepareToRecord() else {
       isRecorderPrimedForNextSession = false
@@ -1012,7 +1034,7 @@ actor RecordingClientLive {
 
     isRecorderPrimedForNextSession = true
     lastPrimedDeviceID = getDefaultInputDevice()
-    recordingLogger.debug("Recorder primed for device \(self.lastPrimedDeviceID ?? 0)")
+    recordingLogger.debug("Fresh recorder created and primed for device \(self.lastPrimedDeviceID ?? 0)")
   }
 
   func startMeterTask() {
@@ -1039,8 +1061,10 @@ actor RecordingClientLive {
   }
 
   func warmUpRecorder() async {
+    recordingLogger.debug("Warm-up recorder requested")
     do {
       try primeRecorderForNextSession()
+      recordingLogger.debug("Warm-up recorder completed; primed=\(self.isRecorderPrimedForNextSession)")
     } catch {
       recordingLogger.error("Failed to warm up recorder: \(error.localizedDescription)")
     }
@@ -1050,9 +1074,13 @@ actor RecordingClientLive {
   func cleanup() {
     endRecordingSession()
     if let recorder = recorder {
-      if recorder.isRecording {
-        recorder.stop()
-      }
+      // CRITICAL FIX: Always call stop() to release CoreAudio client connection,
+      // even if not currently recording. A primed recorder (prepareToRecord() called)
+      // keeps an active audio IO thread in coreaudiod that must be explicitly closed.
+      // Without this, coreaudiod will consume 10% CPU waiting for callbacks that never come.
+      recorder.stop()
+      recordingLogger.debug("Called recorder.stop() to release CoreAudio connection")
+      
       self.recorder = nil
     }
     isRecorderPrimedForNextSession = false
