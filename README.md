@@ -7,7 +7,7 @@ Press-and-hold a hotkey to transcribe your voice and paste the result wherever y
 > **Note:** Hex is currently only available for **Apple Silicon** Macs.
 
 Or download via homebrew:
-```
+```bash
 brew install --cask kitlangton-hex
 ```
 
