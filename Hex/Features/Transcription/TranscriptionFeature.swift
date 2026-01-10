@@ -411,18 +411,30 @@ private extension TranscriptionFeature {
 
     transcriptionFeatureLogger.info("Raw transcription: '\(result)'")
     let remappings = state.hexSettings.wordRemappings
-    let remappedResult: String
+    let removalsEnabled = state.hexSettings.wordRemovalsEnabled
+    let removals = state.hexSettings.wordRemovals
+    let modifiedResult: String
     if state.isRemappingScratchpadFocused {
-      remappedResult = result
-      transcriptionFeatureLogger.info("Scratchpad focused; skipping remappings")
+      modifiedResult = result
+      transcriptionFeatureLogger.info("Scratchpad focused; skipping word modifications")
     } else {
-      remappedResult = WordRemappingApplier.apply(result, remappings: remappings)
-      if remappedResult != result {
+      var output = result
+      if removalsEnabled {
+        let removedResult = WordRemovalApplier.apply(output, removals: removals)
+        if removedResult != output {
+          let enabledRemovalCount = removals.filter(\.isEnabled).count
+          transcriptionFeatureLogger.info("Applied \(enabledRemovalCount) word removal(s)")
+        }
+        output = removedResult
+      }
+      let remappedResult = WordRemappingApplier.apply(output, remappings: remappings)
+      if remappedResult != output {
         transcriptionFeatureLogger.info("Applied \(remappings.count) word remapping(s)")
       }
+      modifiedResult = remappedResult
     }
 
-    guard !remappedResult.isEmpty else {
+    guard !modifiedResult.isEmpty else {
       return .none
     }
 
@@ -433,7 +445,7 @@ private extension TranscriptionFeature {
     return .run { send in
       do {
         try await finalizeRecordingAndStoreTranscript(
-          result: remappedResult,
+          result: modifiedResult,
           duration: duration,
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,

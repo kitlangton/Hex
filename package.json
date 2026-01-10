@@ -15,6 +15,6 @@
     "sync-changelog": "bun run tools/scripts/sync-changelog.ts"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.7"
+    "@changesets/cli": "^2.29.8"
   }
 }
