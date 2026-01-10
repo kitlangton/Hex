@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.7
+
+### Patch Changes
+
+- cc99650: Prepare release metadata for 0.6.6
+
 ## 0.6.6
 
 ### Patch Changes
