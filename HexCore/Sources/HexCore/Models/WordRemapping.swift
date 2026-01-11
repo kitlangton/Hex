@@ -59,6 +59,11 @@ public enum WordRemappingApplier {
 			let pattern: String
 			if remapping.appendNewline {
 				pattern = "(?<!\\w)\(escaped)(?!\\w)[\\p{P}]*"
+			} else if isPunctuationOnlyReplacement(remapping.replacement) {
+				let punctuation = NSRegularExpression.escapedPattern(
+					for: remapping.replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+				)
+				pattern = "(?<!\\w)\(escaped)(?!\\w)(?:\\s*\(punctuation))*"
 			} else {
 				pattern = "(?<!\\w)\(escaped)(?!\\w)"
 			}
@@ -70,5 +75,12 @@ public enum WordRemappingApplier {
 			)
 		}
 		return output
+	}
+
+	private static func isPunctuationOnlyReplacement(_ replacement: String) -> Bool {
+		let trimmed = replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard trimmed.count == 1 else { return false }
+		let punctuation: Set<Character> = [",", ".", "!", "?", ":", ";"]
+		return trimmed.first.map { punctuation.contains($0) } ?? false
 	}
 }
