@@ -5,17 +5,46 @@ public struct WordRemapping: Codable, Equatable, Identifiable, Sendable {
 	public var isEnabled: Bool
 	public var match: String
 	public var replacement: String
+	public var appendNewline: Bool
 
 	public init(
 		id: UUID = UUID(),
 		isEnabled: Bool = true,
 		match: String,
-		replacement: String
+		replacement: String,
+		appendNewline: Bool = false
 	) {
 		self.id = id
 		self.isEnabled = isEnabled
 		self.match = match
 		self.replacement = replacement
+		self.appendNewline = appendNewline
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case id
+		case isEnabled
+		case match
+		case replacement
+		case appendNewline
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		id = try container.decode(UUID.self, forKey: .id)
+		isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+		match = try container.decode(String.self, forKey: .match)
+		replacement = try container.decode(String.self, forKey: .replacement)
+		appendNewline = try container.decodeIfPresent(Bool.self, forKey: .appendNewline) ?? false
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(id, forKey: .id)
+		try container.encode(isEnabled, forKey: .isEnabled)
+		try container.encode(match, forKey: .match)
+		try container.encode(replacement, forKey: .replacement)
+		try container.encode(appendNewline, forKey: .appendNewline)
 	}
 }
 
@@ -28,9 +57,10 @@ public enum WordRemappingApplier {
 			guard !trimmed.isEmpty else { continue }
 			let escaped = NSRegularExpression.escapedPattern(for: trimmed)
 			let pattern = "(?<!\\w)\(escaped)(?!\\w)"
+			let replacement = remapping.replacement + (remapping.appendNewline ? "\n" : "")
 			output = output.replacingOccurrences(
 				of: pattern,
-				with: remapping.replacement,
+				with: replacement,
 				options: [.regularExpression, .caseInsensitive]
 			)
 		}

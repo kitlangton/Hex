@@ -109,6 +109,10 @@ private struct RemappingRow: View {
 				.foregroundStyle(.secondary)
 			TextField("Replace", text: $remapping.replacement)
 
+			Toggle("↵", isOn: $remapping.appendNewline)
+				.toggleStyle(.checkbox)
+				.help("Append newline after replacement")
+
 			Button(role: .destructive, action: onDelete) {
 				Image(systemName: "trash")
 			}
