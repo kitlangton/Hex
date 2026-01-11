@@ -56,7 +56,12 @@ public enum WordRemappingApplier {
 			let trimmed = remapping.match.trimmingCharacters(in: .whitespacesAndNewlines)
 			guard !trimmed.isEmpty else { continue }
 			let escaped = NSRegularExpression.escapedPattern(for: trimmed)
-			let pattern = "(?<!\\w)\(escaped)(?!\\w)"
+			let pattern: String
+			if remapping.appendNewline {
+				pattern = "(?<!\\w)\(escaped)(?!\\w)[\\p{P}]*"
+			} else {
+				pattern = "(?<!\\w)\(escaped)(?!\\w)"
+			}
 			let replacement = remapping.replacement + (remapping.appendNewline ? "\n" : "")
 			output = output.replacingOccurrences(
 				of: pattern,
