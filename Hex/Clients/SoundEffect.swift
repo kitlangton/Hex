@@ -74,6 +74,8 @@ actor SoundEffectsClientLive {
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
   private var isEngineRunning = false
   private var activePlays = 0
+  private var activePlayTokens = Set<UUID>()
+  private var tokensByEffect: [SoundEffect: Set<UUID>] = [:]
 
   func play(_ soundEffect: SoundEffect) {
 	guard hexSettings.soundEffectsEnabled else { return }
@@ -85,21 +87,32 @@ actor SoundEffectsClientLive {
 	let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
 	player.volume = Float(clampedVolume)
 	player.stop()
+  let token = UUID()
+  activePlayTokens.insert(token)
+  tokensByEffect[soundEffect, default: []].insert(token)
   activePlays += 1
 	player.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
-    Task { await self?.handlePlaybackEnded() }
+    Task { await self?.handlePlaybackEnded(token: token) }
   }
 	player.play()
   }
 
   func stop(_ soundEffect: SoundEffect) {
     playerNodes[soundEffect]?.stop()
-    activePlays = max(activePlays - 1, 0)
+    if let tokens = tokensByEffect.removeValue(forKey: soundEffect) {
+      for token in tokens {
+        if activePlayTokens.remove(token) != nil {
+          activePlays = max(activePlays - 1, 0)
+        }
+      }
+    }
     stopEngineIfIdle()
   }
 
   func stopAll() {
     playerNodes.values.forEach { $0.stop() }
+    activePlayTokens.removeAll()
+    tokensByEffect.removeAll()
     activePlays = 0
     stopEngineIfIdle()
   }
@@ -161,7 +174,8 @@ actor SoundEffectsClientLive {
     }
   }
 
-  private func handlePlaybackEnded() {
+  private func handlePlaybackEnded(token: UUID) {
+    guard activePlayTokens.remove(token) != nil else { return }
     activePlays = max(activePlays - 1, 0)
     stopEngineIfIdle()
   }
