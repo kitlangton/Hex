@@ -22,9 +22,6 @@ let package = Package(
 	            .product(name: "Logging", package: "swift-log"),
 	        ],
 	        path: "Sources/HexCore",
-	        resources: [
-	            .copy("Resources")
-	        ],
 	        linkerSettings: [
 	            .linkedFramework("IOKit")
 	        ]
