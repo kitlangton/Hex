@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.7
+
+### Patch Changes
+
+- cc99650: Prepare release metadata for 0.6.6
+
+## 0.6.6
+
+### Patch Changes
+
+- 3b6c966: Improve transcript modifications layout and remove log export settings
+- 3b6c966: Add opt-in regex word removals for transcripts (#121)
+
 ## 0.6.5
 
 ### Patch Changes

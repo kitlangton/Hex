@@ -3,9 +3,15 @@
 Press-and-hold a hotkey to transcribe your voice and paste the result wherever you're typing.
 
 **[Download Hex for macOS](https://hex-updates.s3.us-east-1.amazonaws.com/hex-latest.dmg)**
+
 > **Note:** Hex is currently only available for **Apple Silicon** Macs.
 
 > **Another Note:** The most recent version is unstable on **macOS Sequoia**; please download [version 0.4.0](https://github.com/kitlangton/Hex/releases/download/v0.4.0/Hex-0.4.0.dmg) instead or upgrade to macOS Tahoe.
+
+Or download via homebrew:
+```bash
+brew install --cask kitlangton-hex
+```
 
 I've opened-sourced the project in the hopes that others will find it useful! Hex supports both [Parakeet TDT v3](https://github.com/FluidInference/FluidAudio) via the awesome [FluidAudio](https://github.com/FluidInference/FluidAudio) (the default—it's frickin' unbelievable: fast, multilingual, and cloud-optimized) and the awesome [WhisperKit](https://github.com/argmaxinc/WhisperKit) for on-device transcription. We use the incredible [Swift Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) for structuring the app. Please open issues with any questions or feedback! ❤️
 

@@ -52,9 +52,6 @@ struct SettingsFeature {
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
 
-    // Diagnostics
-    var isExportingLogs = false
-    var logExportStatus: LogExportStatus?
   }
 
   enum Action: BindableAction {
@@ -88,13 +85,9 @@ struct SettingsFeature {
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
 
-    // Diagnostics
-    case exportLogsButtonTapped
-    case logExportFinished(URL)
-    case logExportFailed(String)
-    case logExportCancelled
-
     // Word remappings
+    case addWordRemoval
+    case removeWordRemoval(UUID)
     case addWordRemapping
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
@@ -105,7 +98,6 @@ struct SettingsFeature {
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
   @Dependency(\.permissions) var permissions
-  @Dependency(\.logExporter) var logExporter
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -196,6 +188,18 @@ struct SettingsFeature {
 
       case .startSettingHotKey:
         state.$isSettingHotKey.withLock { $0 = true }
+        return .none
+
+      case .addWordRemoval:
+        state.$hexSettings.withLock {
+          $0.wordRemovals.append(.init(pattern: ""))
+        }
+        return .none
+
+      case let .removeWordRemoval(id):
+        state.$hexSettings.withLock {
+          $0.wordRemovals.removeAll { $0.id == id }
+        }
         return .none
 
       case .addWordRemapping:
@@ -366,47 +370,7 @@ struct SettingsFeature {
         }
         return .none
 
-      case .exportLogsButtonTapped:
-        guard !state.isExportingLogs else { return .none }
-        state.isExportingLogs = true
-        state.logExportStatus = nil
-        return .run { send in
-          do {
-            if let url = try await logExporter.exportLogs(30) {
-              await send(.logExportFinished(url))
-            } else {
-              await send(.logExportCancelled)
-            }
-          } catch {
-            await send(.logExportFailed(error.localizedDescription))
-          }
-        }
-
-      case let .logExportFinished(url):
-        state.isExportingLogs = false
-        state.logExportStatus = .success(url.path)
-        return .run { _ in
-          await MainActor.run {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-          }
-        }
-
-      case .logExportCancelled:
-        state.isExportingLogs = false
-        return .none
-
-      case let .logExportFailed(message):
-        state.isExportingLogs = false
-        state.logExportStatus = .failure(message)
-        return .none
       }
     }
-  }
-}
-
-extension SettingsFeature.State {
-  enum LogExportStatus: Equatable {
-    case success(String)
-    case failure(String)
   }
 }

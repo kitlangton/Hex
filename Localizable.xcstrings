@@ -64,6 +64,9 @@
     "Add Remapping" : {
 
     },
+    "Add Removal" : {
+
+    },
     "Advanced" : {
 
     },
@@ -279,6 +282,9 @@
     "Enable in Settings" : {
 
     },
+    "Enable Word Removals" : {
+
+    },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
       "extractionState" : "stale",
@@ -410,6 +416,9 @@
     "Model prewarming..." : {
 
     },
+    "Modification Type" : {
+
+    },
     "Modifier side" : {
 
     },
@@ -445,6 +454,9 @@
     "Oldest entries will be automatically deleted when limit is reached" : {
 
     },
+    "On" : {
+
+    },
     "Open Input Monitoring Settings" : {
 
     },
@@ -474,6 +486,9 @@
 
     },
     "Paste Last Transcript" : {
+
+    },
+    "Pattern" : {
 
     },
     "Pause Media" : {
@@ -533,7 +548,13 @@
     "Refresh available input devices" : {
 
     },
-    "Remappings" : {
+    "Regex Pattern" : {
+
+    },
+    "Remove filler words using case-insensitive regex patterns." : {
+
+    },
+    "Remove or replace words in every transcript. Removals use regex patterns and match whole words." : {
 
     },
     "Replace" : {
@@ -678,6 +699,9 @@
     "Support the developer" : {
 
     },
+    "Transcript Modifications" : {
+
+    },
     "Transcription history is currently disabled." : {
 
     },
@@ -691,6 +715,9 @@
           }
         }
       }
+    },
+    "Transforms" : {
+
     },
     "Unlimited" : {
 
@@ -752,6 +779,9 @@
 
     },
     "Word Remappings" : {
+
+    },
+    "Word Removals" : {
 
     },
     "Your transcription history will appear here." : {
