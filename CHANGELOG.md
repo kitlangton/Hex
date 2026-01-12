@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.8
+
+### Patch Changes
+
+- e2000d8: Fix Icon Composer app icon not displaying (#148)
+- 75bc323: Update macOS Tahoe app icon (#145)
+
 ## 0.6.7
 
 ### Patch Changes
