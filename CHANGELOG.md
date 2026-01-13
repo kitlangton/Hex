@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.9
+
+### Patch Changes
+
+- 74893ab: Support escape sequences (\n, \t, \\) in word remappings for newlines, tabs, and literal backslashes (#140)
+
 ## 0.6.8
 
 ### Patch Changes
