@@ -237,13 +237,11 @@ private extension TranscriptionFeature {
         }
       }
 
-      // defer { token.cancel() }
+      defer { token.cancel() }
 
       await withTaskCancellationHandler {
-        do {
-          try await Task.sleep(nanoseconds: .max)
-        } catch {
-          // Cancellation expected
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(60))
         }
       } onCancel: {
         token.cancel()

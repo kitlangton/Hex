@@ -202,10 +202,8 @@ struct AppFeature {
       defer { token.cancel() }
 
       await withTaskCancellationHandler {
-        do {
-          try await Task.sleep(nanoseconds: .max)
-        } catch {
-          // Expected on cancellation
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(60))
         }
       } onCancel: {
         token.cancel()
