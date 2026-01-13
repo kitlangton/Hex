@@ -28,12 +28,26 @@ public enum WordRemappingApplier {
 			guard !trimmed.isEmpty else { continue }
 			let escaped = NSRegularExpression.escapedPattern(for: trimmed)
 			let pattern = "(?<!\\w)\(escaped)(?!\\w)"
+			let replacement = processEscapeSequences(remapping.replacement)
+			// Escape backslashes for regex replacement (backslash is special in replacement strings)
+			let escapedReplacement = replacement.replacingOccurrences(of: "\\", with: "\\\\")
 			output = output.replacingOccurrences(
 				of: pattern,
-				with: remapping.replacement,
+				with: escapedReplacement,
 				options: [.regularExpression, .caseInsensitive]
 			)
 		}
 		return output
+	}
+
+	/// Processes escape sequences in a string: `\n` → newline, `\t` → tab, `\\` → backslash
+	private static func processEscapeSequences(_ string: String) -> String {
+		let placeholder = "\u{0000}"
+		return string
+			.replacingOccurrences(of: "\\\\", with: placeholder)
+			.replacingOccurrences(of: "\\n", with: "\n")
+			.replacingOccurrences(of: "\\t", with: "\t")
+			.replacingOccurrences(of: "\\r", with: "\r")
+			.replacingOccurrences(of: placeholder, with: "\\")
 	}
 }
