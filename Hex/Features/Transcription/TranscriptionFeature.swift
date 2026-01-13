@@ -237,7 +237,7 @@ private extension TranscriptionFeature {
         }
       }
 
-      defer { token.cancel() }
+      // defer { token.cancel() }
 
       await withTaskCancellationHandler {
         do {
