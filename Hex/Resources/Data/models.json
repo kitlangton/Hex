@@ -16,6 +16,14 @@
     "storageSize": "650MB"
   },
   {
+    "displayName": "SenseVoice Small",
+    "internalName": "sensevoice-small-coreml",
+    "size": "Multilingual",
+    "accuracyStars": 5,
+    "speedStars": 5,
+    "storageSize": "450MB"
+  },
+  {
     "displayName": "Whisper Small (Tiny)",
     "internalName": "openai_whisper-tiny",
     "size": "Multilingual",

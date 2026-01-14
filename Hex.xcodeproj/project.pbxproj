@@ -18,6 +18,7 @@
 		47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E0B2D44525B00D26DA6 /* DependenciesMacros */; };
 		47E16A622EC6C9D300885CF7 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 47E16A612EC6C9D300885CF7 /* FluidAudio */; };
 		B5045C972D78DED500D0A119 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = B5045C962D78DED500D0A119 /* MarkdownUI */; };
+		B5F0C0A12F0A0B0C0D0E0F10 /* SentencepieceTokenizer in Frameworks */ = {isa = PBXBuildFile; productRef = B5F0C0A22F0A0B0C0D0E0F10 /* SentencepieceTokenizer */; };
 		B53356002D7B8D4900E5F542 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
@@ -77,6 +78,7 @@
 				47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */,
 				B5045C972D78DED500D0A119 /* MarkdownUI in Frameworks */,
 				47512ABF2E14D8C9000E25BA /* WhisperKit in Frameworks */,
+				B5F0C0A12F0A0B0C0D0E0F10 /* SentencepieceTokenizer in Frameworks */,
 				47E05E052D444EF800D26DA6 /* Sauce in Frameworks */,
 				47E16A622EC6C9D300885CF7 /* FluidAudio in Frameworks */,
 				47C08AB62DE9F61B00564AE6 /* Inject in Frameworks */,
@@ -166,6 +168,7 @@
 				B5045C962D78DED500D0A119 /* MarkdownUI */,
 				47C08AB52DE9F61B00564AE6 /* Inject */,
 				47512ABE2E14D8C9000E25BA /* WhisperKit */,
+				B5F0C0A22F0A0B0C0D0E0F10 /* SentencepieceTokenizer */,
 				476316262E5FB31400913CDE /* HexCore */,
 				47E16A612EC6C9D300885CF7 /* FluidAudio */,
 			);
@@ -209,6 +212,7 @@
 				476BAD3C2D47E7880088C61F /* XCRemoteSwiftPackageReference "Sparkle" */,
 				B5045C952D78DED500D0A119 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				47C08AB42DE9F61B00564AE6 /* XCRemoteSwiftPackageReference "Inject" */,
+				B5F0C0A32F0A0B0C0D0E0F10 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */,
 				47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */,
 				47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */,
@@ -639,6 +643,14 @@
 				minimumVersion = 2.4.1;
 			};
 		};
+		B5F0C0A32F0A0B0C0D0E0F10 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jkrukowski/swift-sentencepiece";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.0.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -695,6 +707,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B5045C952D78DED500D0A119 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		B5F0C0A22F0A0B0C0D0E0F10 /* SentencepieceTokenizer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B5F0C0A32F0A0B0C0D0E0F10 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */;
+			productName = SentencepieceTokenizer;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

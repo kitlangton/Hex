@@ -73,6 +73,7 @@ actor TranscriptionClientLive {
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
   private var parakeet: ParakeetClient = ParakeetClient()
+  private lazy var senseVoice: SenseVoiceClient = SenseVoiceClient(modelsBaseFolder: modelsBaseFolder)
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -101,7 +102,14 @@ actor TranscriptionClientLive {
   func downloadAndLoadModel(variant: String, progressCallback: @escaping (Progress) -> Void) async throws {
     // If Parakeet, use Parakeet client path
     if isParakeet(variant) {
+      await unloadCurrentModel()
       try await parakeet.ensureLoaded(modelName: variant, progress: progressCallback)
+      currentModelName = variant
+      return
+    }
+    if isSenseVoice(variant) {
+      await unloadCurrentModel()
+      try await senseVoice.ensureLoaded(modelName: variant, progress: progressCallback)
       currentModelName = variant
       return
     }
@@ -153,7 +161,12 @@ actor TranscriptionClientLive {
   func deleteModel(variant: String) async throws {
     if isParakeet(variant) {
       try await parakeet.deleteCaches(modelName: variant)
-      if currentModelName == variant { unloadCurrentModel() }
+      if currentModelName == variant { await unloadCurrentModel() }
+      return
+    }
+    if isSenseVoice(variant) {
+      try await senseVoice.deleteCaches(modelName: variant)
+      if currentModelName == variant { await unloadCurrentModel() }
       return
     }
     let modelFolder = modelPath(for: variant)
@@ -166,7 +179,7 @@ actor TranscriptionClientLive {
 
     // If this is the currently loaded model, unload it first
     if currentModelName == variant {
-      unloadCurrentModel()
+      await unloadCurrentModel()
     }
 
     // Delete the model directory
@@ -181,6 +194,11 @@ actor TranscriptionClientLive {
     if isParakeet(modelName) {
       let available = await parakeet.isModelAvailable(modelName)
       parakeetLogger.debug("Parakeet available? \(available)")
+      return available
+    }
+    if isSenseVoice(modelName) {
+      let available = await senseVoice.isModelAvailable(modelName)
+      modelsLogger.debug("SenseVoice available? \(available)")
       return available
     }
     let modelFolderPath = modelPath(for: modelName).path
@@ -226,6 +244,9 @@ actor TranscriptionClientLive {
       if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
     }
     #endif
+    for model in SenseVoiceModel.allCases.reversed() {
+      if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
+    }
     return names
   }
 
@@ -254,10 +275,24 @@ actor TranscriptionClientLive {
       transcriptionLogger.info("Parakeet request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
       return text
     }
+    if isSenseVoice(model) {
+      transcriptionLogger.notice("Transcribing with SenseVoice model=\(model) file=\(url.lastPathComponent)")
+      let startLoad = Date()
+      try await downloadAndLoadModel(variant: model) { p in
+        progressCallback(p)
+      }
+      transcriptionLogger.info("SenseVoice ensureLoaded took \(String(format: "%.2f", Date().timeIntervalSince(startLoad)))s")
+      let startTx = Date()
+      // SenseVoice has strong built-in LID; forcing auto avoids mismatches with the app's language setting.
+      let text = try await senseVoice.transcribe(url, language: nil, useITN: true)
+      transcriptionLogger.info("SenseVoice transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
+      transcriptionLogger.info("SenseVoice request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
+      return text
+    }
     let model = await resolveVariant(model)
     // Load or switch to the required model if needed.
     if whisperKit == nil || model != currentModelName {
-      unloadCurrentModel()
+      await unloadCurrentModel()
       let startLoad = Date()
       try await downloadAndLoadModel(variant: model) { p in
         // Debug logging, or scale as desired:
@@ -312,6 +347,10 @@ actor TranscriptionClientLive {
     ParakeetModel(rawValue: name) != nil
   }
 
+  private func isSenseVoice(_ name: String) -> Bool {
+    SenseVoiceModel(rawValue: name) != nil
+  }
+
   /// Creates or returns the local folder (on disk) for a given `variant` model.
   private func modelPath(for variant: String) -> URL {
     // Remove any possible path traversal or invalid characters from variant name
@@ -328,10 +367,15 @@ actor TranscriptionClientLive {
     modelPath(for: variant).appendingPathComponent("tokenizer", isDirectory: true)
   }
 
-  // Unloads any currently loaded model (clears `whisperKit` and `currentModelName`).
-  private func unloadCurrentModel() {
+  // Unloads any currently loaded model and releases heavy resources.
+  private func unloadCurrentModel() async {
+    let modelName = currentModelName
     whisperKit = nil
     currentModelName = nil
+
+    guard let modelName else { return }
+    if isParakeet(modelName) { await parakeet.unload() }
+    if isSenseVoice(modelName) { await senseVoice.unload() }
   }
 
   /// Downloads the model to a temporary folder (if it isn't already on disk),

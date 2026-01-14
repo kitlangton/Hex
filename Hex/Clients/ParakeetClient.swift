@@ -107,6 +107,12 @@ actor ParakeetClient {
     return total
   }
 
+  func unload() {
+    asr = nil
+    models = nil
+    currentVariant = nil
+  }
+
   func transcribe(_ url: URL) async throws -> String {
     guard let asr else { throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"]) }
     let t0 = Date()
@@ -192,6 +198,12 @@ actor ParakeetClient {
       userInfo: [NSLocalizedDescriptionKey: "Parakeet support not linked. Add Swift Package: https://github.com/FluidInference/FluidAudio.git and link FluidAudio to Hex."]
     )
   }
+  func unload() {
+    asr = nil
+    models = nil
+    currentVariant = nil
+  }
+
   func transcribe(_ url: URL) async throws -> String { throw NSError(domain: "Parakeet", code: -3, userInfo: [NSLocalizedDescriptionKey: "Parakeet not available"]) }
   func deleteCaches(modelName: String) async throws {}
 }

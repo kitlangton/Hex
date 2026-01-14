@@ -306,7 +306,24 @@ private func sendMediaKey() {
 // MARK: - RecordingClientLive Implementation
 
 actor RecordingClientLive {
+  private final class RecorderFinishDelegate: NSObject, AVAudioRecorderDelegate {
+    weak var owner: RecordingClientLive?
+
+    init(owner: RecordingClientLive) {
+      self.owner = owner
+    }
+
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+      Task { await owner?.handleRecorderDidFinishRecording(success: flag) }
+    }
+  }
+
   private var recorder: AVAudioRecorder?
+  private lazy var finishDelegate: RecorderFinishDelegate = RecorderFinishDelegate(owner: self)
+
+  private var stopContinuation: CheckedContinuation<Bool, Never>?
+  private var didFinishRecordingSinceLastStop: Bool = false
+
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
   private var isRecorderPrimedForNextSession = false
   private var lastPrimedDeviceID: AudioDeviceID?
@@ -319,7 +336,7 @@ actor RecordingClientLive {
     AVLinearPCMBitDepthKey: 32,
     AVLinearPCMIsFloatKey: true,
     AVLinearPCMIsBigEndianKey: false,
-    AVLinearPCMIsNonInterleaved: false,
+    AVLinearPCMIsNonInterleaved: true,
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
@@ -816,7 +833,14 @@ actor RecordingClientLive {
 
   func stopRecording() async -> URL {
     let wasRecording = recorder?.isRecording == true
+    didFinishRecordingSinceLastStop = false
+
     recorder?.stop()
+
+    if wasRecording {
+      _ = await waitForRecorderDidFinishRecording(timeout: .seconds(2))
+    }
+
     stopMeterTask()
     endRecordingSession()
     if wasRecording {
@@ -885,6 +909,33 @@ actor RecordingClientLive {
     }
 
     return exportedURL
+  }
+
+  private func handleRecorderDidFinishRecording(success: Bool) {
+    didFinishRecordingSinceLastStop = true
+    resumeStopContinuationIfNeeded(success: success)
+  }
+
+  private func waitForRecorderDidFinishRecording(timeout: Duration) async -> Bool {
+    if didFinishRecordingSinceLastStop {
+      return true
+    }
+
+    return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+      stopContinuation?.resume(returning: false)
+      stopContinuation = cont
+
+      Task { [weak self] in
+        try? await Task.sleep(for: timeout)
+        await self?.resumeStopContinuationIfNeeded(success: false)
+      }
+    }
+  }
+
+  private func resumeStopContinuationIfNeeded(success: Bool) {
+    guard let cont = stopContinuation else { return }
+    stopContinuation = nil
+    cont.resume(returning: success)
   }
 
   // Actor state update helpers
@@ -979,6 +1030,7 @@ actor RecordingClientLive {
 
     let recorder = try AVAudioRecorder(url: recordingURL, settings: recorderSettings)
     recorder.isMeteringEnabled = true
+    recorder.delegate = finishDelegate
     self.recorder = recorder
     return recorder
   }

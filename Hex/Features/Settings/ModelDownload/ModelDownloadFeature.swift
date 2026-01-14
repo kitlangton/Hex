@@ -41,6 +41,8 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 			return "BEST FOR ENGLISH"
 		} else if internalName == "parakeet-tdt-0.6b-v3-coreml" {
 			return "BEST FOR MULTILINGUAL"
+		} else if internalName == "sensevoice-small-coreml" {
+			return "BEST FOR CHINESE/CANTONESE"
 		}
 		return nil
 	}
@@ -242,6 +244,11 @@ public struct ModelDownloadFeature {
 			// Ensure our curated Parakeet options are visible even if WhisperKit doesn't list them
 			var availablePlus = available
 			for model in ParakeetModel.allCases.reversed() {
+				if !availablePlus.contains(where: { $0.name == model.identifier }) {
+					availablePlus.insert(ModelInfo(name: model.identifier, isDownloaded: false), at: 0)
+				}
+			}
+			for model in SenseVoiceModel.allCases.reversed() {
 				if !availablePlus.contains(where: { $0.name == model.identifier }) {
 					availablePlus.insert(ModelInfo(name: model.identifier, isDownloaded: false), at: 0)
 				}
