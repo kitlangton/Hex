@@ -54,6 +54,16 @@ struct WordRemappingsView: View {
 					.padding(.vertical, 6)
 				}
 
+				GroupBox {
+					VStack(alignment: .leading, spacing: 4) {
+						Toggle("Convert spoken numbers to digits", isOn: $store.hexSettings.convertNumberWordsToDigits)
+							.toggleStyle(.checkbox)
+						Text("Converts words like \"twenty five\" to \"25\"")
+							.settingsCaption()
+					}
+					.padding(.vertical, 2)
+				}
+
 				Picker("Modification Type", selection: $activeSection) {
 					ForEach(ModificationSection.allCases) { section in
 						Text(section.title).tag(section)
@@ -201,6 +211,9 @@ struct WordRemappingsView: View {
 		var output = store.remappingScratchpadText
 		if store.hexSettings.wordRemovalsEnabled {
 			output = WordRemovalApplier.apply(output, removals: store.hexSettings.wordRemovals)
+		}
+		if store.hexSettings.convertNumberWordsToDigits {
+			output = NumberWordConverter.apply(output)
 		}
 		output = WordRemappingApplier.apply(output, remappings: store.hexSettings.wordRemappings)
 		return output
