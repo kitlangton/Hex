@@ -54,16 +54,6 @@ struct WordRemappingsView: View {
 					.padding(.vertical, 6)
 				}
 
-				GroupBox {
-					VStack(alignment: .leading, spacing: 4) {
-						Toggle("Convert spoken numbers to digits", isOn: $store.hexSettings.convertNumberWordsToDigits)
-							.toggleStyle(.checkbox)
-						Text("Converts words like \"twenty five\" to \"25\"")
-							.settingsCaption()
-					}
-					.padding(.vertical, 2)
-				}
-
 				Picker("Modification Type", selection: $activeSection) {
 					ForEach(ModificationSection.allCases) { section in
 						Text(section.title).tag(section)
@@ -127,9 +117,25 @@ struct WordRemappingsView: View {
 	}
 
 	private var remappingsSection: some View {
-		GroupBox {
-			VStack(alignment: .leading, spacing: 10) {
-				remappingsColumnHeaders
+		VStack(alignment: .leading, spacing: 16) {
+			Form {
+				Section {
+					Label {
+						Toggle("Convert spoken numbers to digits", isOn: $store.hexSettings.convertNumberWordsToDigits)
+						Text("Converts words like \"twenty five\" to \"25\"")
+					} icon: {
+						Image(systemName: "textformat.123")
+					}
+				}
+			}
+			.formStyle(.grouped)
+			.scrollDisabled(true)
+			.padding(.horizontal, -20)
+			.padding(.vertical, -10)
+
+			GroupBox {
+				VStack(alignment: .leading, spacing: 10) {
+					remappingsColumnHeaders
 
 				LazyVStack(alignment: .leading, spacing: 6) {
 					ForEach(store.hexSettings.wordRemappings) { remapping in
@@ -158,6 +164,7 @@ struct WordRemappingsView: View {
 				Text("Replace specific words in every transcript. Matches whole words, case-insensitive, in order.")
 					.settingsCaption()
 			}
+		}
 		}
 	}
 
