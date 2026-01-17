@@ -117,9 +117,25 @@ struct WordRemappingsView: View {
 	}
 
 	private var remappingsSection: some View {
-		GroupBox {
-			VStack(alignment: .leading, spacing: 10) {
-				remappingsColumnHeaders
+		VStack(alignment: .leading, spacing: 16) {
+			Form {
+				Section {
+					Label {
+						Toggle("Convert spoken numbers to digits", isOn: $store.hexSettings.convertNumberWordsToDigits)
+						Text("Converts English words like \"twenty five\" to \"25\"")
+					} icon: {
+						Image(systemName: "textformat.123")
+					}
+				}
+			}
+			.formStyle(.grouped)
+			.scrollDisabled(true)
+			.padding(.horizontal, -20)
+			.padding(.vertical, -10)
+
+			GroupBox {
+				VStack(alignment: .leading, spacing: 10) {
+					remappingsColumnHeaders
 
 				LazyVStack(alignment: .leading, spacing: 6) {
 					ForEach(store.hexSettings.wordRemappings) { remapping in
@@ -148,6 +164,7 @@ struct WordRemappingsView: View {
 				Text("Replace specific words in every transcript. Matches whole words, case-insensitive, in order.")
 					.settingsCaption()
 			}
+		}
 		}
 	}
 
@@ -201,6 +218,9 @@ struct WordRemappingsView: View {
 		var output = store.remappingScratchpadText
 		if store.hexSettings.wordRemovalsEnabled {
 			output = WordRemovalApplier.apply(output, removals: store.hexSettings.wordRemovals)
+		}
+		if store.hexSettings.convertNumberWordsToDigits {
+			output = NumberWordConverter.apply(output)
 		}
 		output = WordRemappingApplier.apply(output, remappings: store.hexSettings.wordRemappings)
 		return output
