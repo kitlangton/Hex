@@ -122,7 +122,7 @@ struct WordRemappingsView: View {
 				Section {
 					Label {
 						Toggle("Convert spoken numbers to digits", isOn: $store.hexSettings.convertNumberWordsToDigits)
-						Text("Converts words like \"twenty five\" to \"25\"")
+						Text("Converts English words like \"twenty five\" to \"25\"")
 					} icon: {
 						Image(systemName: "textformat.123")
 					}
