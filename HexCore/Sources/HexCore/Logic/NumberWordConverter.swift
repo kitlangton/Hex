@@ -147,15 +147,21 @@ public enum NumberWordConverter {
 
 			// Skip whitespace between number words
 			if token.allSatisfy({ $0.isWhitespace }) {
-				if lastWasNumber {
-					// Peek ahead to see if next non-whitespace is a number word
+				if lastWasNumber || inDecimal {
+					// Peek ahead to see if next non-whitespace continues the number sequence
 					var nextIndex = i + 1
 					while nextIndex < tokens.count && tokens[nextIndex].allSatisfy({ $0.isWhitespace }) {
 						nextIndex += 1
 					}
 					if nextIndex < tokens.count {
 						let nextLower = tokens[nextIndex].lowercased()
-						if isNumberWord(nextLower) || connectors.contains(nextLower) || nextLower == "point" {
+						let canContinue: Bool
+						if inDecimal {
+							canContinue = ones[nextLower] != nil
+						} else {
+							canContinue = isNumberWord(nextLower) || connectors.contains(nextLower) || nextLower == "point"
+						}
+						if canContinue {
 							tokensConsumed += 1
 							i += 1
 							continue
@@ -248,7 +254,7 @@ public enum NumberWordConverter {
 		total += currentValue
 
 		// Only return consumed tokens if we actually parsed a number
-		if tokensConsumed > 0 && (total > 0 || (tokensConsumed == 1 && tokens[startIndex].lowercased() == "zero")) {
+		if tokensConsumed > 0 && (hasDecimal || total > 0 || (tokensConsumed == 1 && tokens[startIndex].lowercased() == "zero")) {
 			return (tokensConsumed, total, hasDecimal, decimalString)
 		}
 
