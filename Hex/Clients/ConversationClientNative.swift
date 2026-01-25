@@ -264,23 +264,32 @@ actor ConversationClientNative {
 
     /// Prepare the model (download/verify availability)
     func prepareModel(progressCallback: @escaping (Progress) -> Void) async throws {
-        logger.info("Preparing MoshiKit model")
+        logger.info("Preparing MoshiKit model - starting download/load")
 
         let progress = Progress(totalUnitCount: 100)
         progressCallback(progress)
 
         #if canImport(MoshiKit)
-        // Load model
-        moshiKit = try await MoshiKit.load(
-            quantization: 4,
-            progressHandler: { loadProgress, _ in
-                progress.completedUnitCount = Int64(loadProgress * 100)
-                progressCallback(progress)
-            }
-        )
+        do {
+            // Load model with detailed progress logging
+            moshiKit = try await MoshiKit.load(
+                quantization: 4,
+                progressHandler: { loadProgress, status in
+                    let percentage = Int(loadProgress * 100)
+                    logger.debug("MoshiKit progress: \(percentage)% - \(status)")
+                    progress.completedUnitCount = Int64(percentage)
+                    progressCallback(progress)
+                }
+            )
 
-        modelPrepared = true
-        logger.info("MoshiKit model preparation complete")
+            modelPrepared = true
+            progress.completedUnitCount = 100
+            progressCallback(progress)
+            logger.info("MoshiKit model preparation complete")
+        } catch {
+            logger.error("MoshiKit model preparation failed: \(error.localizedDescription)")
+            throw error
+        }
         #else
         throw ConversationError.modelNotFound("MoshiKit not available")
         #endif

@@ -144,33 +144,11 @@ struct ModeSettingsView: View {
 
     @ViewBuilder
     private var modelStatusSection: some View {
-        Label {
-            HStack {
-                Text("PersonaPlex Model")
-                Spacer()
-                modelStatusBadge
-            }
-        } icon: {
-            Image(systemName: "cpu")
-        }
-    }
-
-    @ViewBuilder
-    private var modelStatusBadge: some View {
-        // TODO: Connect to actual model status from ConversationFeature
-        HStack(spacing: 4) {
-            Circle()
-                .fill(Color.yellow)
-                .frame(width: 8, height: 8)
-            Text("Not Available")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(Color.yellow.opacity(0.1))
+        ConversationModelInlineView(
+            store: store.scope(
+                state: \.conversationModelDownload,
+                action: \.conversationModelDownload
+            )
         )
     }
 

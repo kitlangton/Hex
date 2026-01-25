@@ -54,6 +54,9 @@ struct SettingsFeature {
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
 
+    // Conversation Model Download
+    var conversationModelDownload = ConversationModelDownloadFeature.State()
+
     // Conversation Mode
     var isShowingPersonaEditor = false
 
@@ -83,7 +86,10 @@ struct SettingsFeature {
 
     // Model Management
     case modelDownload(ModelDownloadFeature.Action)
-    
+
+    // Conversation Model Download
+    case conversationModelDownload(ConversationModelDownloadFeature.Action)
+
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
 
@@ -115,6 +121,10 @@ struct SettingsFeature {
 
     Scope(state: \.modelDownload, action: \.modelDownload) {
       ModelDownloadFeature()
+    }
+
+    Scope(state: \.conversationModelDownload, action: \.conversationModelDownload) {
+      ConversationModelDownloadFeature()
     }
 
     Reduce { state, action in
@@ -337,6 +347,9 @@ struct SettingsFeature {
         return .none
 
       case .modelDownload:
+        return .none
+
+      case .conversationModelDownload:
         return .none
       
       // Microphone device selection
