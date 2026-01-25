@@ -1,5 +1,5 @@
 {
-  "originHash" : "770818888d0135b0215a7998c44273fc10bada6d4df27cd1cb0d2505be1bec0e",
+  "originHash" : "4921489563da9d3e115c75c44c571d4d3112fde03a48a6130ceb83225f454321",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "728c56639ecb3df441d51d5bc6747329afabcfc9",
         "version" : "1.5.2"
+      }
+    },
+    {
+      "identity" : "mlx-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ml-explore/mlx-swift.git",
+      "state" : {
+        "revision" : "4dccaeda1d83cf8697f235d2786c2d72ad4bb925",
+        "version" : "0.30.3"
       }
     },
     {
@@ -197,6 +206,15 @@
       "state" : {
         "revision" : "bf498690e1f6b4af790260f542e8428a4ba10d78",
         "version" : "2.6.0"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
       }
     },
     {

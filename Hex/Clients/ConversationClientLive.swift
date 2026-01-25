@@ -67,10 +67,12 @@ actor ConversationClientLive {
     // MARK: - PersonaPlex Configuration
 
     /// Path to the PersonaPlex MLX Python module
-    private let personaPlexPath: URL = {
+    private lazy var personaPlexPath: URL = {
         // First, check if PersonaPlex is bundled inside the app
         if let bundledPath = Bundle.main.resourceURL?.appendingPathComponent("personaplex-mlx") {
+            logger.debug("Checking bundled PersonaPlex at: \(bundledPath.path)")
             if FileManager.default.fileExists(atPath: bundledPath.path) {
+                logger.info("Found bundled PersonaPlex at: \(bundledPath.path)")
                 return bundledPath
             }
         }
@@ -82,35 +84,52 @@ actor ConversationClientLive {
             homeDir.appendingPathComponent("Developer/personaplex-mlx"),
             homeDir.appendingPathComponent("personaplex-mlx"),
         ]
-        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
-            ?? candidates[0]
+
+        for candidate in candidates {
+            logger.debug("Checking external PersonaPlex at: \(candidate.path)")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                logger.info("Found external PersonaPlex at: \(candidate.path)")
+                return candidate
+            }
+        }
+
+        logger.warning("PersonaPlex not found, defaulting to: \(candidates[0].path)")
+        return candidates[0]
     }()
 
     /// Path to the bundled Python virtual environment
-    private let bundledVenvPath: URL? = {
+    private lazy var bundledVenvPath: URL? = {
         if let bundledPath = Bundle.main.resourceURL?.appendingPathComponent("personaplex-mlx/venv") {
+            logger.debug("Checking bundled venv at: \(bundledPath.path)")
             if FileManager.default.fileExists(atPath: bundledPath.path) {
+                logger.info("Found bundled venv at: \(bundledPath.path)")
                 return bundledPath
             }
         }
+        logger.debug("Bundled venv not found")
         return nil
     }()
 
     /// Path to the bundled HuggingFace model cache
-    private let bundledModelCachePath: URL? = {
+    private lazy var bundledModelCachePath: URL? = {
         if let bundledPath = Bundle.main.resourceURL?.appendingPathComponent("personaplex-mlx/models") {
+            logger.debug("Checking bundled model cache at: \(bundledPath.path)")
             if FileManager.default.fileExists(atPath: bundledPath.path) {
+                logger.info("Found bundled model cache at: \(bundledPath.path)")
                 return bundledPath
             }
         }
+        logger.debug("Bundled model cache not found")
         return nil
     }()
 
     /// Python executable path
-    private let pythonPath: String = {
+    private lazy var pythonPath: String = {
         // First, check for bundled venv Python
         if let bundledPath = Bundle.main.resourceURL?.appendingPathComponent("personaplex-mlx/venv/bin/python3") {
+            logger.debug("Checking bundled Python at: \(bundledPath.path)")
             if FileManager.default.fileExists(atPath: bundledPath.path) {
+                logger.info("Found bundled Python at: \(bundledPath.path)")
                 return bundledPath.path
             }
         }
@@ -121,8 +140,17 @@ actor ConversationClientLive {
             "/usr/local/bin/python3",
             "/usr/bin/python3",
         ]
-        return candidates.first { FileManager.default.fileExists(atPath: $0) }
-            ?? "/usr/bin/python3"
+
+        for candidate in candidates {
+            logger.debug("Checking system Python at: \(candidate)")
+            if FileManager.default.fileExists(atPath: candidate) {
+                logger.info("Found system Python at: \(candidate)")
+                return candidate
+            }
+        }
+
+        logger.warning("No Python found, defaulting to: /usr/bin/python3")
+        return "/usr/bin/python3"
     }()
 
     // MARK: - Public Methods
@@ -280,11 +308,17 @@ actor ConversationClientLive {
         logger.info("PersonaPlex model preparation complete")
     }
 
-    /// Check if the model is ready
+    /// Check if the model is ready (available on disk and can be used)
+    /// This checks both that the PersonaPlex module exists AND that a Python interpreter is available.
+    /// Note: This does NOT require prepareModel() to have been called first - it checks file presence directly.
     func isModelReady() -> Bool {
-        return modelPrepared &&
-               FileManager.default.fileExists(atPath: personaPlexPath.path) &&
-               FileManager.default.fileExists(atPath: pythonPath)
+        let personaPlexExists = FileManager.default.fileExists(atPath: personaPlexPath.path)
+        let pythonExists = FileManager.default.fileExists(atPath: pythonPath)
+
+        logger.debug("isModelReady check: personaPlexPath=\(self.personaPlexPath.path), exists=\(personaPlexExists)")
+        logger.debug("isModelReady check: pythonPath=\(self.pythonPath), exists=\(pythonExists)")
+
+        return personaPlexExists && pythonExists
     }
 
     /// Cleanup all resources

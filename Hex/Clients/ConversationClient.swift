@@ -52,6 +52,23 @@ struct ConversationClient: Sendable {
 
 extension ConversationClient: DependencyKey {
     static var liveValue: Self {
+        // Use native MoshiKit implementation if available, otherwise fall back to Python subprocess
+        #if canImport(MoshiKit)
+        let native = ConversationClientNative()
+        return Self(
+            startSession: { try await native.startSession($0) },
+            stopSession: { await native.stopSession() },
+            isSessionActive: { native.isSessionActiveSync },
+            transcriptStream: { native.transcriptStream() },
+            stateStream: { native.stateStream() },
+            loadPersona: { try await native.loadPersona($0) },
+            getVoicePresets: { await native.getVoicePresets() },
+            prepareModel: { try await native.prepareModel(progressCallback: $0) },
+            isModelReady: { await native.isModelReady() },
+            cleanup: { await native.cleanup() }
+        )
+        #else
+        // Fall back to Python subprocess implementation
         let live = ConversationClientLive()
         return Self(
             startSession: { try await live.startSession($0) },
@@ -65,6 +82,7 @@ extension ConversationClient: DependencyKey {
             isModelReady: { await live.isModelReady() },
             cleanup: { await live.cleanup() }
         )
+        #endif
     }
 
     static var testValue: Self {

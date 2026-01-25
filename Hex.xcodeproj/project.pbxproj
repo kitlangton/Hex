@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		47512ABF2E14D8C9000E25BA /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 47512ABE2E14D8C9000E25BA /* WhisperKit */; };
 		476316272E5FB31400913CDE /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
+		MOSHIKIT0002E76C9D300885CF7 /* MoshiKit in Frameworks */ = {isa = PBXBuildFile; productRef = MOSHIKIT0001E76C9D300885CF7 /* MoshiKit */; };
 		4765045E2D45900200C7EA60 /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = 4765045D2D45900200C7EA60 /* Pow */; };
 		476BAD3E2D47E7880088C61F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 476BAD3D2D47E7880088C61F /* Sparkle */; };
 		47C08AB62DE9F61B00564AE6 /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 47C08AB52DE9F61B00564AE6 /* Inject */; };
@@ -75,6 +76,7 @@
 			files = (
 				476BAD3E2D47E7880088C61F /* Sparkle in Frameworks */,
 				476316272E5FB31400913CDE /* HexCore in Frameworks */,
+				MOSHIKIT0002E76C9D300885CF7 /* MoshiKit in Frameworks */,
 				47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */,
 				B5045C972D78DED500D0A119 /* MarkdownUI in Frameworks */,
 				47512ABF2E14D8C9000E25BA /* WhisperKit in Frameworks */,
@@ -169,6 +171,7 @@
 				47C08AB52DE9F61B00564AE6 /* Inject */,
 				47512ABE2E14D8C9000E25BA /* WhisperKit */,
 				476316262E5FB31400913CDE /* HexCore */,
+				MOSHIKIT0001E76C9D300885CF7 /* MoshiKit */,
 				47E16A612EC6C9D300885CF7 /* FluidAudio */,
 			);
 			productName = Hex;
@@ -213,6 +216,7 @@
 				47C08AB42DE9F61B00564AE6 /* XCRemoteSwiftPackageReference "Inject" */,
 				47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */,
+				MOSHIKIT0000E76C9D300885CF7 /* XCLocalSwiftPackageReference "MoshiKit" */,
 				47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -570,6 +574,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = HexCore;
 		};
+		MOSHIKIT0000E76C9D300885CF7 /* XCLocalSwiftPackageReference "MoshiKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../MoshiKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -656,6 +664,10 @@
 		476316262E5FB31400913CDE /* HexCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HexCore;
+		};
+		MOSHIKIT0001E76C9D300885CF7 /* MoshiKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MoshiKit;
 		};
 		4765045D2D45900200C7EA60 /* Pow */ = {
 			isa = XCSwiftPackageProductDependency;
