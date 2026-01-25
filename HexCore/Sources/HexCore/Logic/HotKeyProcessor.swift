@@ -519,3 +519,90 @@ extension HotKeyProcessor {
         lastTapAt = nil
     }
 }
+
+// MARK: - Conversation Hotkey Support
+
+/// Actions for conversation mode hotkey processing
+public enum ConversationHotkeyAction: Equatable, Sendable {
+    /// Start a new conversation session
+    case start
+    /// Stop the current conversation session
+    case stop
+}
+
+/// A simpler hotkey processor for conversation mode.
+/// Conversation mode uses toggle semantics (press to start, press again to stop)
+/// rather than press-and-hold semantics.
+public struct ConversationHotkeyProcessor {
+    @Dependency(\.date.now) var now
+
+    // MARK: - Configuration
+
+    /// The hotkey combination to detect (key + modifiers)
+    public var hotkey: HotKey
+
+    /// Whether a conversation is currently active
+    public var isConversationActive: Bool = false
+
+    // MARK: - State
+
+    /// When true, all input is ignored until full keyboard release
+    private var isDirty: Bool = false
+
+    // MARK: - Initialization
+
+    /// Creates a new conversation hotkey processor
+    /// - Parameter hotkey: The key combination to detect
+    public init(hotkey: HotKey) {
+        self.hotkey = hotkey
+    }
+
+    // MARK: - Public API
+
+    /// Processes a keyboard event for conversation mode.
+    /// Conversation uses simple toggle semantics:
+    /// - Press hotkey while idle → start conversation
+    /// - Press hotkey while active → stop conversation
+    /// - ESC while active → stop conversation
+    ///
+    /// - Parameter keyEvent: The keyboard event to process
+    /// - Returns: Action to take, or nil if no action needed
+    public mutating func process(keyEvent: KeyEvent) -> ConversationHotkeyAction? {
+        // ESC always stops active conversation
+        if keyEvent.key == .escape, isConversationActive {
+            isDirty = true
+            return .stop
+        }
+
+        // If dirty, ignore until full release
+        if isDirty {
+            if chordIsFullyReleased(keyEvent) {
+                isDirty = false
+            }
+            return nil
+        }
+
+        // Check if this matches our hotkey
+        if chordMatchesHotkey(keyEvent) {
+            return isConversationActive ? .stop : .start
+        }
+
+        return nil
+    }
+
+    // MARK: - Helpers
+
+    /// Checks if the given keyboard event exactly matches the configured hotkey.
+    private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
+        if hotkey.key != nil {
+            return e.key == hotkey.key && e.modifiers.matchesExactly(hotkey.modifiers)
+        } else {
+            return e.key == nil && e.modifiers.matchesExactly(hotkey.modifiers)
+        }
+    }
+
+    /// Checks if all keys and modifiers have been released.
+    private func chordIsFullyReleased(_ e: KeyEvent) -> Bool {
+        e.key == nil && e.modifiers.isEmpty
+    }
+}

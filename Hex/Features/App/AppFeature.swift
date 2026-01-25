@@ -23,6 +23,7 @@ struct AppFeature {
 	@ObservableState
 	struct State {
 		var transcription: TranscriptionFeature.State = .init()
+		var conversation: ConversationFeature.State = .init()
 		var settings: SettingsFeature.State = .init()
 		var history: HistoryFeature.State = .init()
 		var activeTab: ActiveTab = .settings
@@ -38,6 +39,7 @@ struct AppFeature {
   enum Action: BindableAction {
     case binding(BindingAction<State>)
     case transcription(TranscriptionFeature.Action)
+    case conversation(ConversationFeature.Action)
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
     case setActiveTab(ActiveTab)
@@ -52,11 +54,15 @@ struct AppFeature {
     case requestAccessibility
     case requestInputMonitoring
     case modelStatusEvaluated(Bool)
+
+    // Conversation hotkey
+    case conversationHotkeyTriggered
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
+  @Dependency(\.conversation) var conversation
   @Dependency(\.permissions) var permissions
 
   var body: some ReducerOf<Self> {
@@ -64,6 +70,10 @@ struct AppFeature {
 
     Scope(state: \.transcription, action: \.transcription) {
       TranscriptionFeature()
+    }
+
+    Scope(state: \.conversation, action: \.conversation) {
+      ConversationFeature()
     }
 
     Scope(state: \.settings, action: \.settings) {
@@ -82,6 +92,7 @@ struct AppFeature {
       case .task:
         return .merge(
           startPasteLastTranscriptMonitoring(),
+          startConversationHotkeyMonitoring(),
           ensureSelectedModelReadiness(),
           startPermissionMonitoring()
         )
@@ -110,6 +121,16 @@ struct AppFeature {
 
       case .transcription:
         return .none
+
+      case .conversation:
+        return .none
+
+      case .conversationHotkeyTriggered:
+        // Only handle if in conversation mode
+        guard state.hexSettings.operationMode == .conversation else {
+          return .none
+        }
+        return .send(.conversation(.toggleConversation))
 
       case .settings:
         return .none
@@ -250,6 +271,52 @@ struct AppFeature {
         }
       }
 
+    }
+  }
+
+  private func startConversationHotkeyMonitoring() -> Effect<Action> {
+    .run { send in
+      @Shared(.hexSettings) var hexSettings: HexSettings
+
+      let token = keyEventMonitor.handleKeyEvent { keyEvent in
+        // Only handle if in conversation mode and hotkey is configured
+        guard hexSettings.operationMode == .conversation,
+              let conversationHotkey = hexSettings.conversationHotkey else {
+          return false
+        }
+
+        // Check if this matches the conversation hotkey
+        // For modifier-only hotkeys, check modifiers match exactly and no key is pressed
+        if conversationHotkey.key == nil {
+          guard keyEvent.key == nil,
+                keyEvent.modifiers.matchesExactly(conversationHotkey.modifiers) else {
+            return false
+          }
+        } else {
+          // For key+modifier hotkeys, check both match
+          guard let key = keyEvent.key,
+                key == conversationHotkey.key,
+                keyEvent.modifiers.matchesExactly(conversationHotkey.modifiers) else {
+            return false
+          }
+        }
+
+        // Trigger conversation toggle - use MainActor to avoid escaping send
+        MainActor.assumeIsolated {
+          send(.conversationHotkeyTriggered)
+        }
+        return true // Intercept the key event
+      }
+
+      defer { token.cancel() }
+
+      await withTaskCancellationHandler {
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(60))
+        }
+      } onCancel: {
+        token.cancel()
+      }
     }
   }
 

@@ -38,12 +38,14 @@ struct SettingsFeature {
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
     @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
+    @Shared(.conversationPersonas) var conversationPersonas: [PersonaConfig]
+    @Shared(.selectedPersonaID) var selectedConversationPersonaID: UUID?
 
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
     var currentPasteLastModifiers: Modifiers = .init(modifiers: [])
     var remappingScratchpadText: String = ""
-    
+
     // Available microphones
     var availableInputDevices: [AudioInputDevice] = []
     var defaultInputDeviceName: String?
@@ -51,6 +53,9 @@ struct SettingsFeature {
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
+
+    // Conversation Mode
+    var isShowingPersonaEditor = false
 
   }
 
@@ -91,6 +96,12 @@ struct SettingsFeature {
     case addWordRemapping
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
+
+    // Conversation Mode
+    case setOperationMode(OperationMode)
+    case selectConversationPersona(UUID)
+    case showPersonaEditor
+    case hidePersonaEditor
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -368,6 +379,26 @@ struct SettingsFeature {
         state.$hexSettings.withLock {
           $0.hotkey.modifiers = $0.hotkey.modifiers.setting(kind: kind, to: side)
         }
+        return .none
+
+      // Conversation Mode
+      case let .setOperationMode(mode):
+        state.$hexSettings.withLock { $0.operationMode = mode }
+        settingsLogger.info("Operation mode changed to: \(mode.rawValue)")
+        return .none
+
+      case let .selectConversationPersona(id):
+        state.$selectedConversationPersonaID.withLock { $0 = id }
+        state.$hexSettings.withLock { $0.selectedPersonaID = id }
+        settingsLogger.info("Selected conversation persona: \(id)")
+        return .none
+
+      case .showPersonaEditor:
+        state.isShowingPersonaEditor = true
+        return .none
+
+      case .hidePersonaEditor:
+        state.isShowingPersonaEditor = false
         return .none
 
       }

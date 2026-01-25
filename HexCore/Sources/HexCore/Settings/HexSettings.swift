@@ -6,6 +6,30 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 	case doNothing
 }
 
+/// The current operation mode of Hex
+public enum OperationMode: String, Codable, CaseIterable, Equatable, Sendable {
+	case transcription = "Transcription"
+	case conversation = "Conversation"
+
+	public var description: String {
+		switch self {
+		case .transcription:
+			return "Voice to text (one-way)"
+		case .conversation:
+			return "Full-duplex speech AI"
+		}
+	}
+
+	public var icon: String {
+		switch self {
+		case .transcription:
+			return "text.bubble"
+		case .conversation:
+			return "person.wave.2"
+		}
+	}
+}
+
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
@@ -46,6 +70,11 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
 
+	// Conversation mode settings
+	public var operationMode: OperationMode
+	public var conversationHotkey: HotKey?
+	public var selectedPersonaID: UUID?
+
 	public init(
 		soundEffectsEnabled: Bool = true,
 		soundEffectsVolume: Double = HexSettings.baseSoundEffectsVolume,
@@ -68,7 +97,10 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		operationMode: OperationMode = .transcription,
+		conversationHotkey: HotKey? = nil,
+		selectedPersonaID: UUID? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -92,6 +124,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.operationMode = operationMode
+		self.conversationHotkey = conversationHotkey
+		self.selectedPersonaID = selectedPersonaID
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -136,6 +171,9 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case operationMode
+	case conversationHotkey
+	case selectedPersonaID
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -266,6 +304,23 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
+		).eraseToAny(),
+		SettingsField(.operationMode, keyPath: \.operationMode, default: defaults.operationMode).eraseToAny(),
+		SettingsField(
+			.conversationHotkey,
+			keyPath: \.conversationHotkey,
+			default: defaults.conversationHotkey,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
+		).eraseToAny(),
+		SettingsField(
+			.selectedPersonaID,
+			keyPath: \.selectedPersonaID,
+			default: defaults.selectedPersonaID,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
 		).eraseToAny()
 	]
 }

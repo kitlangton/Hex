@@ -23,6 +23,8 @@ struct SettingsView: View {
 				)
 			}
 
+			ModeSettingsView(store: store)
+
 			ModelSectionView(store: store, shouldFlash: store.shouldFlashModelSection)
 			// Only show language picker for WhisperKit models (not Parakeet)
 			if !store.hexSettings.selectedModel.hasPrefix("parakeet-") {

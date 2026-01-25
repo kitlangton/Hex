@@ -57,6 +57,20 @@ extension SharedReaderKey
 	}
 }
 
+extension SharedReaderKey
+	where Self == InMemoryKey<UUID?>.Default
+{
+	/// Selected persona ID for conversation mode.
+	/// This is kept in sync with HexSettings.selectedPersonaID but uses in-memory storage
+	/// for reactive UI updates.
+	static var selectedPersonaID: Self {
+		Self[
+			.inMemory("selectedPersonaID"),
+			default: nil
+		]
+	}
+}
+
 // MARK: - Storage Migration
 
 extension URL {
