@@ -12,7 +12,11 @@
 
 import ComposableArchitecture
 import Foundation
-@testable import Hex
+#if DEBUG
+@testable import Hex2_Debug
+#else
+@testable import Hex2
+#endif
 import HexCore
 import Testing
 
