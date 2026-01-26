@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CONVTEST12EC7000000000001 /* ConversationModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVTEST02EC7000000000001 /* ConversationModelDownloadTests.swift */; };
 		47512ABF2E14D8C9000E25BA /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 47512ABE2E14D8C9000E25BA /* WhisperKit */; };
 		476316272E5FB31400913CDE /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
 		MOSHIKIT0002E76C9D300885CF7 /* MoshiKit in Frameworks */ = {isa = PBXBuildFile; productRef = MOSHIKIT0001E76C9D300885CF7 /* MoshiKit */; };
@@ -33,6 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		CONVTEST02EC7000000000001 /* ConversationModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationModelDownloadTests.swift; sourceTree = "<group>"; };
 		473544502D445936001FBCB5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		473544542D445959001FBCB5 /* Testing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Testing.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework; sourceTree = DEVELOPER_DIR; };
 		478637A52D48725900319BFA /* HexTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HexTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -46,6 +48,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Tests/ConversationModelDownloadTests.swift,
 			);
 			target = 47E05DED2D444EC600D26DA6 /* Hex */;
 		};
@@ -101,12 +104,22 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		CONVTEST32EC7000000000001 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				CONVTEST02EC7000000000001 /* ConversationModelDownloadTests.swift */,
+			);
+			name = Tests;
+			path = Hex/Tests;
+			sourceTree = "<group>";
+		};
 		47E05DE52D444EC600D26DA6 = {
 			isa = PBXGroup;
 			children = (
 				B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */,
 				B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */,
 				47E05DF02D444EC600D26DA6 /* Hex */,
+				CONVTEST32EC7000000000001 /* Tests */,
 				4735444F2D445936001FBCB5 /* Frameworks */,
 				47E05DEF2D444EC600D26DA6 /* Products */,
 			);
@@ -253,6 +266,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CONVTEST12EC7000000000001 /* ConversationModelDownloadTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
