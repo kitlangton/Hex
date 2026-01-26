@@ -10,6 +10,89 @@ import HexCore
 // Re-export OperationMode from HexCore for convenience
 public typealias OperationMode = HexCore.OperationMode
 
+// MARK: - Conversation Model Type
+
+/// Available conversation model types
+public enum ConversationModelType: String, Codable, CaseIterable, Equatable, Sendable, Identifiable {
+    case moshi
+    case personaPlex
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .moshi:
+            return "Moshi"
+        case .personaPlex:
+            return "PersonaPlex"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .moshi:
+            return "Full-duplex voice AI powered by Kyutai"
+        case .personaPlex:
+            return "Multi-voice AI with 18 voice presets"
+        }
+    }
+
+    /// HuggingFace model identifiers
+    public var modelIdentifiers: [String] {
+        switch self {
+        case .moshi:
+            return ["kyutai/moshiko-mlx-bf16", "kyutai/mimi"]
+        case .personaPlex:
+            return ["eastlondoner/personaplex-mlx"]
+        }
+    }
+
+    /// Primary identifier for display purposes
+    public var primaryIdentifier: String {
+        modelIdentifiers.first ?? ""
+    }
+
+    /// Estimated total download size
+    public var estimatedSize: String {
+        switch self {
+        case .moshi:
+            return "~15.8 GB"
+        case .personaPlex:
+            return "~17.1 GB"
+        }
+    }
+
+    /// Icon for the model
+    public var icon: String {
+        switch self {
+        case .moshi:
+            return "waveform.circle.fill"
+        case .personaPlex:
+            return "person.3.fill"
+        }
+    }
+
+    /// Color for the model
+    public var color: String {
+        switch self {
+        case .moshi:
+            return "purple"
+        case .personaPlex:
+            return "blue"
+        }
+    }
+
+    /// Whether this model supports voice presets
+    public var supportsVoicePresets: Bool {
+        switch self {
+        case .moshi:
+            return false
+        case .personaPlex:
+            return true
+        }
+    }
+}
+
 // Backward compatibility alias
 public typealias ConversationSessionState = ConversationState
 

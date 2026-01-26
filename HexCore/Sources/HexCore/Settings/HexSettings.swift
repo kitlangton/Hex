@@ -74,6 +74,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var operationMode: OperationMode
 	public var conversationHotkey: HotKey?
 	public var selectedPersonaID: UUID?
+	public var selectedConversationModel: String
 
 	public init(
 		soundEffectsEnabled: Bool = true,
@@ -100,7 +101,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		wordRemappings: [WordRemapping] = [],
 		operationMode: OperationMode = .transcription,
 		conversationHotkey: HotKey? = nil,
-		selectedPersonaID: UUID? = nil
+		selectedPersonaID: UUID? = nil,
+		selectedConversationModel: String = "moshi"
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -127,6 +129,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.operationMode = operationMode
 		self.conversationHotkey = conversationHotkey
 		self.selectedPersonaID = selectedPersonaID
+		self.selectedConversationModel = selectedConversationModel
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -174,6 +177,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case operationMode
 	case conversationHotkey
 	case selectedPersonaID
+	case selectedConversationModel
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -321,6 +325,7 @@ private enum HexSettingsSchema {
 			encode: { container, key, value in
 				try container.encodeIfPresent(value, forKey: key)
 			}
-		).eraseToAny()
+		).eraseToAny(),
+		SettingsField(.selectedConversationModel, keyPath: \.selectedConversationModel, default: defaults.selectedConversationModel).eraseToAny()
 	]
 }
