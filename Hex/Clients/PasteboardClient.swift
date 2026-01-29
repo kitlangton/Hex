@@ -5,6 +5,7 @@
 //  Created by Kit Langton on 1/24/25.
 //
 
+import Carbon
 import ComposableArchitecture
 import Dependencies
 import DependenciesMacros
@@ -318,10 +319,30 @@ struct PasteboardClientLive {
         return true
     }
 
+    /// Returns the appropriate V key code for Cmd+V based on the current keyboard layout.
+    /// Most layouts use Sauce's layout-aware key code, but hybrid layouts like "Dvorak — QWERTY ⌘"
+    /// switch to QWERTY positions when Command is held, so we use the QWERTY V key code for those.
     @MainActor
     private func vKeyCode() -> CGKeyCode {
-        if Thread.isMainThread { return Sauce.shared.keyCode(for: .v) }
-        return DispatchQueue.main.sync { Sauce.shared.keyCode(for: .v) }
+        if usesQWERTYShortcuts() {
+            return 9  // kVK_ANSI_V (QWERTY V position)
+        }
+        return Sauce.shared.keyCode(for: .v)
+    }
+
+    /// Checks if the current keyboard layout uses QWERTY positions for Command shortcuts.
+    /// This is true for hybrid layouts like "Dvorak — QWERTY ⌘" (#162).
+    private func usesQWERTYShortcuts() -> Bool {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let idPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else {
+            return false
+        }
+        let inputSourceID = Unmanaged<CFString>.fromOpaque(idPtr).takeUnretainedValue() as String
+        // Hybrid layouts that switch to QWERTY when Command is held (#162)
+        let qwertyShortcutLayouts = [
+            "com.apple.keylayout.DVORAK-QWERTYCMD"
+        ]
+        return qwertyShortcutLayouts.contains(inputSourceID)
     }
 
     @MainActor
