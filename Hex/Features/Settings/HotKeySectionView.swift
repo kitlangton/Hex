@@ -40,13 +40,15 @@ struct HotKeySectionView: View {
                 }
             }
 
-            // Double-tap toggle (for key+modifier combinations)
-            if hotKey.key != nil {
-                Label {
-                    Toggle("Use double-tap only", isOn: $store.hexSettings.useDoubleTapOnly)
-                } icon: {
-                    Image(systemName: "hand.tap")
+            // Recording mode picker
+            Label {
+                Picker("Recording mode", selection: $store.hexSettings.recordingMode) {
+                    Text("Single Tap").tag(RecordingMode.singleTap)
+                    Text("Double Tap").tag(RecordingMode.doubleTap)
                 }
+                .pickerStyle(.segmented)
+            } icon: {
+                Image(systemName: "hand.tap")
             }
 
             // Minimum key time (for modifier-only shortcuts)

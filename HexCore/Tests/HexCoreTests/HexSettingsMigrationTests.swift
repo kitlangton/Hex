@@ -16,7 +16,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.preventSystemSleep, true)
 		XCTAssertEqual(decoded.minimumKeyTime, 0.25)
 		XCTAssertEqual(decoded.copyToClipboard, true)
-		XCTAssertEqual(decoded.useDoubleTapOnly, true)
+		XCTAssertEqual(decoded.recordingMode, .doubleTap)
 		XCTAssertEqual(decoded.outputLanguage, "en")
 		XCTAssertEqual(decoded.selectedMicrophoneID, "builtin:mic")
 		XCTAssertEqual(decoded.saveTranscriptionHistory, false)
