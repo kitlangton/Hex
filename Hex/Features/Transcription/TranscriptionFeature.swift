@@ -70,6 +70,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.textCleanup) var textCleanup
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -439,11 +440,24 @@ private extension TranscriptionFeature {
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
+    let textCleanupEnabled = state.hexSettings.textCleanupEnabled && !state.isRemappingScratchpadFocused
 
-    return .run { send in
+    return .run { [textCleanup] send in
       do {
+        var finalText = modifiedResult
+
+        if textCleanupEnabled {
+          do {
+            let cleaned = try await textCleanup.cleanUp(modifiedResult)
+            transcriptionFeatureLogger.info("Text cleanup: '\(modifiedResult, privacy: .private)' -> '\(cleaned, privacy: .private)'")
+            finalText = cleaned
+          } catch {
+            transcriptionFeatureLogger.error("Text cleanup failed, using original: \(error.localizedDescription)")
+          }
+        }
+
         try await finalizeRecordingAndStoreTranscript(
-          result: modifiedResult,
+          result: finalText,
           duration: duration,
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,

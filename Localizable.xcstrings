@@ -67,9 +67,6 @@
     "Add Removal" : {
 
     },
-    "Advanced" : {
-
-    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -85,6 +82,9 @@
 
     },
     "Audio Behavior while Recording" : {
+
+    },
+    "Automatically fix punctuation, capitalization, and remove filler words from transcripts." : {
 
     },
     "Become a Sponsor" : {
@@ -282,6 +282,9 @@
     "Enable in Settings" : {
 
     },
+    "Enable Text Cleanup" : {
+
+    },
     "Enable Word Removals" : {
 
     },
@@ -307,12 +310,6 @@
           }
         }
       }
-    },
-    "Export Logs" : {
-
-    },
-    "Exporting Logs…" : {
-
     },
     "General" : {
       "comment" : "General section in Settings Header.",
@@ -581,12 +578,6 @@
     "Save transcriptions and audio recordings for later access" : {
 
     },
-    "Saved to %@" : {
-
-    },
-    "Saves the last 30 minutes of Hex diagnostics so you can share them with support." : {
-
-    },
     "Say something…" : {
 
     },
@@ -697,6 +688,9 @@
       }
     },
     "Support the developer" : {
+
+    },
+    "Text Cleanup" : {
 
     },
     "Transcript Modifications" : {

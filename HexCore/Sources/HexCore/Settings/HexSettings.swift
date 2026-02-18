@@ -44,6 +44,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var hasCompletedStorageMigration: Bool
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
+	public var textCleanupEnabled: Bool
 	public var wordRemappings: [WordRemapping]
 
 	public init(
@@ -68,6 +69,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
+		textCleanupEnabled: Bool = true,
 		wordRemappings: [WordRemapping] = []
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
@@ -91,6 +93,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.hasCompletedStorageMigration = hasCompletedStorageMigration
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
+		self.textCleanupEnabled = textCleanupEnabled
 		self.wordRemappings = wordRemappings
 	}
 
@@ -135,6 +138,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case hasCompletedStorageMigration
 	case wordRemovalsEnabled
 	case wordRemovals
+	case textCleanupEnabled
 	case wordRemappings
 }
 
@@ -262,6 +266,7 @@ private enum HexSettingsSchema {
 			keyPath: \.wordRemovals,
 			default: defaults.wordRemovals
 		).eraseToAny(),
+		SettingsField(.textCleanupEnabled, keyPath: \.textCleanupEnabled, default: defaults.textCleanupEnabled).eraseToAny(),
 		SettingsField(
 			.wordRemappings,
 			keyPath: \.wordRemappings,

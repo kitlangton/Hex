@@ -21,6 +21,19 @@ struct WordRemappingsView: View {
 				}
 
 				GroupBox {
+					Toggle("Enable Text Cleanup", isOn: $store.hexSettings.textCleanupEnabled)
+						.toggleStyle(.checkbox)
+						.padding(.vertical, 4)
+				} label: {
+					VStack(alignment: .leading, spacing: 4) {
+						Text("Text Cleanup")
+							.font(.headline)
+						Text("Automatically fix punctuation, capitalization, and remove filler words from transcripts.")
+							.settingsCaption()
+					}
+				}
+
+				GroupBox {
 					VStack(alignment: .leading, spacing: 10) {
 						HStack(spacing: 12) {
 							VStack(alignment: .leading, spacing: 4) {

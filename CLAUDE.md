@@ -214,3 +214,7 @@ Each release produces:
 - **Notarization fails**: Check Apple ID credentials and app-specific password
 - **S3 upload fails**: Verify AWS credentials and bucket permissions
 - **Build fails**: Ensure Xcode 16+ and valid code signing certificates
+
+## Session Summaries
+
+Previous AI coding session summaries with decisions, roadblocks, and context are stored in `session-summaries/` at the project root (`/Users/hitarth/dev/hex-cleanup-script/session-summaries/`). Files follow the naming convention `YYYY-MM-DD-N.md` (date + incremental number). Consult these when resuming work on features that span multiple sessions.
