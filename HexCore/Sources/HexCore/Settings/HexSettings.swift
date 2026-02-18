@@ -6,6 +6,28 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 	case doNothing
 }
 
+/// Which key (if any) to simulate after pasting transcribed text.
+public enum AutoSubmitKey: String, Codable, CaseIterable, Equatable, Sendable {
+	/// Do not send any key after pasting.
+	case off
+	/// Send Return.
+	case enter
+	/// Send ⌘Return.
+	case cmdEnter
+	/// Send ⇧Return.
+	case shiftEnter
+
+	/// The `KeyboardCommand` to simulate, or `nil` when disabled.
+	public var keyboardCommand: KeyboardCommand? {
+		switch self {
+		case .off: return nil
+		case .enter: return .enter
+		case .cmdEnter: return .cmdEnter
+		case .shiftEnter: return .shiftEnter
+		}
+	}
+}
+
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
@@ -45,6 +67,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+	public var autoSubmitKey: AutoSubmitKey
 
 	public init(
 		soundEffectsEnabled: Bool = true,
@@ -68,7 +91,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		autoSubmitKey: AutoSubmitKey = .off
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -92,6 +116,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.autoSubmitKey = autoSubmitKey
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -136,6 +161,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case autoSubmitKey
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -266,6 +292,7 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
-		).eraseToAny()
+		).eraseToAny(),
+		SettingsField(.autoSubmitKey, keyPath: \.autoSubmitKey, default: defaults.autoSubmitKey).eraseToAny()
 	]
 }

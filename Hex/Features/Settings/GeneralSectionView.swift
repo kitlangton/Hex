@@ -40,6 +40,23 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
+				HStack(alignment: .center) {
+					Text("Auto Submit")
+				Spacer()
+					Picker("", selection: $store.hexSettings.autoSubmitKey) {
+						Text("Off").tag(AutoSubmitKey.off)
+						Text("Enter").tag(AutoSubmitKey.enter)
+						Text("⌘ Enter").tag(AutoSubmitKey.cmdEnter)
+						Text("⇧ Enter").tag(AutoSubmitKey.shiftEnter)
+					}
+					.pickerStyle(.menu)
+				}
+				Text("Automatically send a keystroke after pasting transcribed text")
+			} icon: {
+				Image(systemName: "return")
+			}
+
+			Label {
 				Toggle(
 					"Prevent System Sleep while Recording",
 					isOn: Binding(

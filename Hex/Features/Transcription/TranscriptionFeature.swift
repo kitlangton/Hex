@@ -512,6 +512,14 @@ private extension TranscriptionFeature {
 
     await pasteboard.paste(result)
     soundEffect.play(.pasteTranscript)
+
+    // Auto-submit after pasting transcribed text (#119)
+    if let command = hexSettings.autoSubmitKey.keyboardCommand {
+      try await Task.sleep(for: .milliseconds(50))
+      guard !Task.isCancelled else { return }
+      transcriptionFeatureLogger.info("Auto-submitting with \(command.displayName)")
+      await pasteboard.sendKeyboardCommand(command)
+    }
   }
 }
 
