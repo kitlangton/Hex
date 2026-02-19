@@ -197,4 +197,18 @@ struct RegexCleanupPassTests {
 		let result = RegexCleanupPass.apply(input)
 		#expect(result == "That is a good point.")
 	}
+
+	@Test
+	func removesCommaWrappedFiller() {
+		let input = "we should, you know, just deploy it"
+		let result = RegexCleanupPass.apply(input)
+		#expect(result == "We should just deploy it.")
+	}
+
+	@Test
+	func removesCommaWrappedFillerRight() {
+		let input = "the code is, basically, done"
+		let result = RegexCleanupPass.apply(input)
+		#expect(result == "The code is done.")
+	}
 }

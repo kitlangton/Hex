@@ -1,0 +1,90 @@
+{
+  "go": {
+    "VB": "go",
+    "VBD": "went",
+    "VBG": "going",
+    "VBN": "gone",
+    "VBP": "go",
+    "VBZ": "goes"
+  },
+  "went": {
+    "VB": "go",
+    "VBD": "went",
+    "VBG": "going",
+    "VBN": "gone",
+    "VBP": "go",
+    "VBZ": "goes"
+  },
+  "goes": {
+    "VB": "go",
+    "VBD": "went",
+    "VBG": "going",
+    "VBN": "gone",
+    "VBP": "go",
+    "VBZ": "goes"
+  },
+  "be": {
+    "VB": "be",
+    "VBD": "was",
+    "VBG": "being",
+    "VBN": "been",
+    "VBP": "am",
+    "VBZ": "is"
+  },
+  "was": {
+    "VB": "be",
+    "VBD": "was",
+    "VBG": "being",
+    "VBN": "been",
+    "VBP": "am",
+    "VBZ": "is"
+  },
+  "is": {
+    "VB": "be",
+    "VBD": "was",
+    "VBG": "being",
+    "VBN": "been",
+    "VBP": "am",
+    "VBZ": "is"
+  },
+  "have": {
+    "VB": "have",
+    "VBD": "had",
+    "VBG": "having",
+    "VBN": "had",
+    "VBP": "have",
+    "VBZ": "has"
+  },
+  "has": {
+    "VB": "have",
+    "VBD": "had",
+    "VBG": "having",
+    "VBN": "had",
+    "VBP": "have",
+    "VBZ": "has"
+  },
+  "do": {
+    "VB": "do",
+    "VBD": "did",
+    "VBG": "doing",
+    "VBN": "done",
+    "VBP": "do",
+    "VBZ": "does"
+  },
+  "take": {
+    "VB": "take",
+    "VBD": "took",
+    "VBG": "taking",
+    "VBN": "taken",
+    "VBP": "take",
+    "VBZ": "takes"
+  },
+  "took": {
+    "VB": "take",
+    "VBD": "took",
+    "VBG": "taking",
+    "VBN": "taken",
+    "VBP": "take",
+    "VBZ": "takes"
+  }
+}

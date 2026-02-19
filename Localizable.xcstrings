@@ -17,6 +17,9 @@
         }
       }
     },
+    "%lld%%" : {
+
+    },
     "•" : {
       "shouldTranslate" : false
     },
@@ -249,6 +252,9 @@
         }
       }
     },
+    "Download Model" : {
+
+    },
     "Download Selected Model" : {
       "comment" : "In Transcription Model section in settings.",
       "extractionState" : "stale",
@@ -277,6 +283,9 @@
       }
     },
     "Downloading… %lld%%" : {
+
+    },
+    "Enable Grammar Correction" : {
 
     },
     "Enable in Settings" : {
@@ -311,6 +320,9 @@
         }
       }
     },
+    "Fix grammar, spelling, and agreement errors using a local AI model (~125 MB download)." : {
+
+    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -321,6 +333,9 @@
           }
         }
       }
+    },
+    "Grammar Correction" : {
+
     },
     "Grant" : {
 

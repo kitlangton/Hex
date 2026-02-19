@@ -45,6 +45,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var textCleanupEnabled: Bool
+	public var grammarCorrectionEnabled: Bool
 	public var wordRemappings: [WordRemapping]
 
 	public init(
@@ -70,6 +71,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
 		textCleanupEnabled: Bool = true,
+		grammarCorrectionEnabled: Bool = false,
 		wordRemappings: [WordRemapping] = []
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
@@ -94,6 +96,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.textCleanupEnabled = textCleanupEnabled
+		self.grammarCorrectionEnabled = grammarCorrectionEnabled
 		self.wordRemappings = wordRemappings
 	}
 
@@ -139,6 +142,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case textCleanupEnabled
+	case grammarCorrectionEnabled
 	case wordRemappings
 }
 
@@ -267,6 +271,7 @@ private enum HexSettingsSchema {
 			default: defaults.wordRemovals
 		).eraseToAny(),
 		SettingsField(.textCleanupEnabled, keyPath: \.textCleanupEnabled, default: defaults.textCleanupEnabled).eraseToAny(),
+		SettingsField(.grammarCorrectionEnabled, keyPath: \.grammarCorrectionEnabled, default: defaults.grammarCorrectionEnabled).eraseToAny(),
 		SettingsField(
 			.wordRemappings,
 			keyPath: \.wordRemappings,

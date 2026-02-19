@@ -441,6 +441,7 @@ private extension TranscriptionFeature {
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
     let textCleanupEnabled = state.hexSettings.textCleanupEnabled && !state.isRemappingScratchpadFocused
+    let grammarCorrectionEnabled = state.hexSettings.grammarCorrectionEnabled
 
     return .run { [textCleanup] send in
       do {
@@ -448,7 +449,7 @@ private extension TranscriptionFeature {
 
         if textCleanupEnabled {
           do {
-            let cleaned = try await textCleanup.cleanUp(modifiedResult)
+            let cleaned = try await textCleanup.cleanUp(modifiedResult, grammarCorrectionEnabled)
             transcriptionFeatureLogger.info("Text cleanup: '\(modifiedResult, privacy: .private)' -> '\(cleaned, privacy: .private)'")
             finalText = cleaned
           } catch {

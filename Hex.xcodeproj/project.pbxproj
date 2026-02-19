@@ -17,6 +17,7 @@
 		47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E092D44525B00D26DA6 /* Dependencies */; };
 		47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E0B2D44525B00D26DA6 /* DependenciesMacros */; };
 		47E16A622EC6C9D300885CF7 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 47E16A612EC6C9D300885CF7 /* FluidAudio */; };
+		47GE0C012EE4A1B200A1B2C3 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = 47GE0C032EE4A1B200A1B2C3 /* onnxruntime */; };
 		B5045C972D78DED500D0A119 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = B5045C962D78DED500D0A119 /* MarkdownUI */; };
 		B53356002D7B8D4900E5F542 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
@@ -84,6 +85,7 @@
 				4765045E2D45900200C7EA60 /* Pow in Frameworks */,
 				47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */,
 				47E05E022D444EE900D26DA6 /* ComposableArchitecture in Frameworks */,
+				47GE0C012EE4A1B200A1B2C3 /* onnxruntime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,6 +172,7 @@
 				47512ABE2E14D8C9000E25BA /* WhisperKit */,
 				476316262E5FB31400913CDE /* HexCore */,
 				47E16A612EC6C9D300885CF7 /* FluidAudio */,
+				47GE0C032EE4A1B200A1B2C3 /* onnxruntime */,
 			);
 			productName = Hex;
 			productReference = 47E05DEE2D444EC600D26DA6 /* Hex Debug.app */;
@@ -214,6 +217,7 @@
 				47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */,
 				47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				47GE0C002EE4A1B200A1B2C3 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 47E05DEF2D444EC600D26DA6 /* Products */;
@@ -637,6 +641,14 @@
 				kind = branch;
 			};
 		};
+		47GE0C002EE4A1B200A1B2C3 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.20.0;
+			};
+		};
 		B5045C952D78DED500D0A119 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
@@ -696,6 +708,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		47GE0C032EE4A1B200A1B2C3 /* onnxruntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47GE0C002EE4A1B200A1B2C3 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
+			productName = onnxruntime;
 		};
 		B5045C962D78DED500D0A119 /* MarkdownUI */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -52,6 +52,11 @@ struct SettingsFeature {
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
 
+    // Grammar Correction (GECToR) Model
+    var isGrammarModelDownloaded = false
+    var isDownloadingGrammarModel = false
+    var grammarModelDownloadProgress: Double = 0
+
   }
 
   enum Action: BindableAction {
@@ -91,6 +96,15 @@ struct SettingsFeature {
     case addWordRemapping
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
+
+    // Grammar Correction (GECToR) Model
+    case checkGrammarModelStatus
+    case grammarModelStatusChecked(Bool)
+    case downloadGrammarModel
+    case grammarModelDownloadProgress(Double)
+    case grammarModelDownloadCompleted
+    case grammarModelDownloadFailed(String)
+    case deleteGrammarModel
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -98,6 +112,7 @@ struct SettingsFeature {
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
   @Dependency(\.permissions) var permissions
+  @Dependency(\.textCleanup) var textCleanup
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -126,7 +141,9 @@ struct SettingsFeature {
         }
 
         // Listen for key events and load microphones (existing + new)
-        return .run { send in
+        return .merge(
+          .send(.checkGrammarModelStatus),
+          .run { send in
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
           
@@ -185,6 +202,7 @@ struct SettingsFeature {
           
           deviceRefreshTask.cancel()
         }
+        )
 
       case .startSettingHotKey:
         state.$isSettingHotKey.withLock { $0 = true }
@@ -369,6 +387,62 @@ struct SettingsFeature {
           $0.hotkey.modifiers = $0.hotkey.modifiers.setting(kind: kind, to: side)
         }
         return .none
+
+      // MARK: - Grammar Correction (GECToR) Model
+
+      case .checkGrammarModelStatus:
+        return .run { [textCleanup] send in
+          let downloaded = await textCleanup.isModelDownloaded()
+          await send(.grammarModelStatusChecked(downloaded))
+        }
+
+      case let .grammarModelStatusChecked(downloaded):
+        state.isGrammarModelDownloaded = downloaded
+        if !downloaded {
+          state.$hexSettings.withLock { $0.grammarCorrectionEnabled = false }
+        }
+        return .none
+
+      case .downloadGrammarModel:
+        state.isDownloadingGrammarModel = true
+        state.grammarModelDownloadProgress = 0
+        return .run { [textCleanup] send in
+          do {
+            try await textCleanup.loadModel { progress in
+              let fraction = progress.fractionCompleted
+              Task { @MainActor in
+                await send(.grammarModelDownloadProgress(fraction))
+              }
+            }
+            await send(.grammarModelDownloadCompleted)
+          } catch {
+            await send(.grammarModelDownloadFailed(error.localizedDescription))
+          }
+        }
+
+      case let .grammarModelDownloadProgress(progress):
+        state.grammarModelDownloadProgress = progress
+        return .none
+
+      case .grammarModelDownloadCompleted:
+        state.isDownloadingGrammarModel = false
+        state.isGrammarModelDownloaded = true
+        state.grammarModelDownloadProgress = 0
+        state.$hexSettings.withLock { $0.grammarCorrectionEnabled = true }
+        return .none
+
+      case let .grammarModelDownloadFailed(error):
+        state.isDownloadingGrammarModel = false
+        state.grammarModelDownloadProgress = 0
+        settingsLogger.error("Grammar model download failed: \(error)")
+        return .none
+
+      case .deleteGrammarModel:
+        state.$hexSettings.withLock { $0.grammarCorrectionEnabled = false }
+        state.isGrammarModelDownloaded = false
+        return .run { [textCleanup] _ in
+          try? await textCleanup.deleteModel()
+        }
 
       }
     }

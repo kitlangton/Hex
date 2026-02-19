@@ -1,0 +1,404 @@
+[
+  {
+    "input": "hello",
+    "token_ids": [
+      0,
+      42891,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "hello",
+      "</s>"
+    ]
+  },
+  {
+    "input": "Hello",
+    "token_ids": [
+      0,
+      31414,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "Hello",
+      "</s>"
+    ]
+  },
+  {
+    "input": "world",
+    "token_ids": [
+      0,
+      8331,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "world",
+      "</s>"
+    ]
+  },
+  {
+    "input": "hello world",
+    "token_ids": [
+      0,
+      42891,
+      232,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "hello",
+      "Ġworld",
+      "</s>"
+    ]
+  },
+  {
+    "input": "The quick brown fox",
+    "token_ids": [
+      0,
+      133,
+      2119,
+      6219,
+      23602,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "The",
+      "Ġquick",
+      "Ġbrown",
+      "Ġfox",
+      "</s>"
+    ]
+  },
+  {
+    "input": "Hello, world!",
+    "token_ids": [
+      0,
+      31414,
+      6,
+      232,
+      328,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "Hello",
+      ",",
+      "Ġworld",
+      "!",
+      "</s>"
+    ]
+  },
+  {
+    "input": "It's a test.",
+    "token_ids": [
+      0,
+      243,
+      18,
+      10,
+      1296,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "It",
+      "'s",
+      "Ġa",
+      "Ġtest",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "He go to the store yesterday.",
+    "token_ids": [
+      0,
+      894,
+      213,
+      7,
+      5,
+      1400,
+      2350,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "He",
+      "Ġgo",
+      "Ġto",
+      "Ġthe",
+      "Ġstore",
+      "Ġyesterday",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "She have been working hard.",
+    "token_ids": [
+      0,
+      2515,
+      33,
+      57,
+      447,
+      543,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "She",
+      "Ġhave",
+      "Ġbeen",
+      "Ġworking",
+      "Ġhard",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "The cats is sleeping on the couch.",
+    "token_ids": [
+      0,
+      133,
+      10017,
+      16,
+      8416,
+      15,
+      5,
+      16433,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "The",
+      "Ġcats",
+      "Ġis",
+      "Ġsleeping",
+      "Ġon",
+      "Ġthe",
+      "Ġcouch",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "I has a meeting tomorrow morning.",
+    "token_ids": [
+      0,
+      100,
+      34,
+      10,
+      529,
+      3859,
+      662,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "I",
+      "Ġhas",
+      "Ġa",
+      "Ġmeeting",
+      "Ġtomorrow",
+      "Ġmorning",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "They was happy about the results.",
+    "token_ids": [
+      0,
+      1213,
+      21,
+      1372,
+      59,
+      5,
+      775,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "They",
+      "Ġwas",
+      "Ġhappy",
+      "Ġabout",
+      "Ġthe",
+      "Ġresults",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "a",
+    "token_ids": [
+      0,
+      102,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "a",
+      "</s>"
+    ]
+  },
+  {
+    "input": "I",
+    "token_ids": [
+      0,
+      100,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "I",
+      "</s>"
+    ]
+  },
+  {
+    "input": "don't",
+    "token_ids": [
+      0,
+      7254,
+      75,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "don",
+      "'t",
+      "</s>"
+    ]
+  },
+  {
+    "input": "can't",
+    "token_ids": [
+      0,
+      7424,
+      75,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "can",
+      "'t",
+      "</s>"
+    ]
+  },
+  {
+    "input": "it's",
+    "token_ids": [
+      0,
+      405,
+      18,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "it",
+      "'s",
+      "</s>"
+    ]
+  },
+  {
+    "input": "unbelievable",
+    "token_ids": [
+      0,
+      879,
+      8494,
+      18421,
+      868,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "un",
+      "bel",
+      "iev",
+      "able",
+      "</s>"
+    ]
+  },
+  {
+    "input": "preprocessing",
+    "token_ids": [
+      0,
+      5234,
+      39221,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "pre",
+      "processing",
+      "</s>"
+    ]
+  },
+  {
+    "input": "counterintuitive",
+    "token_ids": [
+      0,
+      24774,
+      38459,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "counter",
+      "intuitive",
+      "</s>"
+    ]
+  },
+  {
+    "input": "I have 3 cats.",
+    "token_ids": [
+      0,
+      100,
+      33,
+      155,
+      10017,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "I",
+      "Ġhave",
+      "Ġ3",
+      "Ġcats",
+      ".",
+      "</s>"
+    ]
+  },
+  {
+    "input": "The year 2024 was great.",
+    "token_ids": [
+      0,
+      133,
+      76,
+      15294,
+      21,
+      372,
+      4,
+      2
+    ],
+    "tokens": [
+      "<s>",
+      "The",
+      "Ġyear",
+      "Ġ2024",
+      "Ġwas",
+      "Ġgreat",
+      ".",
+      "</s>"
+    ]
+  }
+]

@@ -42,6 +42,17 @@ public enum RegexCleanupPass {
   private static func removeFillers(_ text: String) -> String {
     var output = text
 
+    // First pass: remove comma-wrapped fillers (", you know," → " ")
+    // These are parenthetical fillers where both surrounding commas should go.
+    for filler in unconditionalFillers {
+      let escaped = NSRegularExpression.escapedPattern(for: filler)
+      output = output.replacingOccurrences(
+        of: ",\\s*\\b\(escaped)\\b\\s*,",
+        with: "",
+        options: [.regularExpression, .caseInsensitive]
+      )
+    }
+
     // Remove unconditional fillers (whole-word, case-insensitive)
     for filler in unconditionalFillers {
       let pattern = "\\b\(NSRegularExpression.escapedPattern(for: filler))\\b"

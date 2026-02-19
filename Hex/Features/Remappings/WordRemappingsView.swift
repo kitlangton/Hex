@@ -21,9 +21,62 @@ struct WordRemappingsView: View {
 				}
 
 				GroupBox {
-					Toggle("Enable Text Cleanup", isOn: $store.hexSettings.textCleanupEnabled)
-						.toggleStyle(.checkbox)
-						.padding(.vertical, 4)
+					VStack(alignment: .leading, spacing: 10) {
+						Toggle("Enable Text Cleanup", isOn: $store.hexSettings.textCleanupEnabled)
+							.toggleStyle(.checkbox)
+
+						Divider()
+
+						VStack(alignment: .leading, spacing: 6) {
+							Text("Grammar Correction")
+								.font(.subheadline.weight(.medium))
+							Text("Fix grammar, spelling, and agreement errors using a local AI model (~125 MB download).")
+								.settingsCaption()
+
+							HStack(spacing: 8) {
+								Toggle("Enable Grammar Correction", isOn: $store.hexSettings.grammarCorrectionEnabled)
+									.toggleStyle(.checkbox)
+									.disabled(!store.isGrammarModelDownloaded)
+
+								Spacer()
+
+								if store.isDownloadingGrammarModel {
+									ProgressView(value: store.grammarModelDownloadProgress)
+										.progressViewStyle(.linear)
+										.frame(width: 100)
+									Text("\(Int(store.grammarModelDownloadProgress * 100))%")
+										.font(.caption)
+										.foregroundStyle(.secondary)
+										.monospacedDigit()
+								} else if store.isGrammarModelDownloaded {
+									HStack(spacing: 4) {
+										Image(systemName: "checkmark.circle.fill")
+											.foregroundStyle(.green)
+											.font(.caption)
+										Text("Downloaded")
+											.font(.caption)
+											.foregroundStyle(.secondary)
+									}
+
+									Button(role: .destructive) {
+										store.send(.deleteGrammarModel)
+									} label: {
+										Image(systemName: "trash")
+											.font(.caption)
+									}
+									.buttonStyle(.borderless)
+								} else {
+									Button {
+										store.send(.downloadGrammarModel)
+									} label: {
+										Label("Download Model", systemImage: "arrow.down.circle")
+											.font(.caption)
+									}
+								}
+							}
+						}
+					}
+					.padding(.vertical, 4)
 				} label: {
 					VStack(alignment: .leading, spacing: 4) {
 						Text("Text Cleanup")
