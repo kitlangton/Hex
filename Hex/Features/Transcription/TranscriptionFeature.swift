@@ -173,7 +173,9 @@ private extension TranscriptionFeature {
 
         // Always keep hotKeyProcessor in sync with current user hotkey preference
         hotKeyProcessor.hotkey = hexSettings.hotkey
-        hotKeyProcessor.useDoubleTapOnly = hexSettings.useDoubleTapOnly
+        let useDoubleTapOnly = hexSettings.doubleTapLockEnabled && hexSettings.useDoubleTapOnly
+        hotKeyProcessor.doubleTapLockEnabled = hexSettings.doubleTapLockEnabled
+        hotKeyProcessor.useDoubleTapOnly = useDoubleTapOnly
         hotKeyProcessor.minimumKeyTime = hexSettings.minimumKeyTime
 
         switch inputEvent {
@@ -197,7 +199,7 @@ private extension TranscriptionFeature {
             }
             // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
             // But if useDoubleTapOnly is true, always intercept the key
-            return hexSettings.useDoubleTapOnly || keyEvent.key != nil
+            return useDoubleTapOnly || keyEvent.key != nil
 
           case .stopRecording:
             Task { await send(.hotKeyReleased) }

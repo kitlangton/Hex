@@ -40,12 +40,19 @@ struct HotKeySectionView: View {
                 }
             }
 
-            // Double-tap toggle (for key+modifier combinations)
+            Label {
+                Toggle("Enable double-tap lock", isOn: $store.hexSettings.doubleTapLockEnabled)
+            } icon: {
+                Image(systemName: "hand.tap")
+            }
+
+            // Double-tap only mode applies to key+modifier combinations.
             if hotKey.key != nil {
                 Label {
                     Toggle("Use double-tap only", isOn: $store.hexSettings.useDoubleTapOnly)
+                        .disabled(!store.hexSettings.doubleTapLockEnabled)
                 } icon: {
-                    Image(systemName: "hand.tap")
+                    Image(systemName: "hand.tap.fill")
                 }
             }
 
