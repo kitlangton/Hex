@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.10
+
+### Patch Changes
+
+- c018c40: Add setting to disable double-tap lock for hands-free recording
+- 7af7cd9: Update dependencies: TCA 1.23, Sparkle 2.8, swift-dependencies 1.11
+
 ## 0.6.9
 
 ### Patch Changes
