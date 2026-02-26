@@ -17,6 +17,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.minimumKeyTime, 0.25)
 		XCTAssertEqual(decoded.copyToClipboard, true)
 		XCTAssertEqual(decoded.useDoubleTapOnly, true)
+		XCTAssertEqual(decoded.doubleTapLockEnabled, true)
 		XCTAssertEqual(decoded.outputLanguage, "en")
 		XCTAssertEqual(decoded.selectedMicrophoneID, "builtin:mic")
 		XCTAssertEqual(decoded.saveTranscriptionHistory, false)
@@ -29,6 +30,36 @@ final class HexSettingsMigrationTests: XCTestCase {
 		let settings = HexSettings()
 		let data = try JSONEncoder().encode(settings)
 		let decoded = try JSONDecoder().decode(HexSettings.self, from: data)
+		XCTAssertEqual(decoded, settings)
+	}
+
+	func testInitNormalizesDoubleTapOnlyWhenLockDisabled() {
+		let settings = HexSettings(useDoubleTapOnly: true, doubleTapLockEnabled: false)
+
+		XCTAssertFalse(settings.useDoubleTapOnly)
+		XCTAssertFalse(settings.doubleTapLockEnabled)
+	}
+
+	func testDecodeNormalizesDoubleTapOnlyWhenLockDisabled() throws {
+		let payload = "{\"useDoubleTapOnly\":true,\"doubleTapLockEnabled\":false}"
+		guard let data = payload.data(using: .utf8) else {
+			XCTFail("Failed to encode JSON payload")
+			return
+		}
+
+		let decoded = try JSONDecoder().decode(HexSettings.self, from: data)
+
+		XCTAssertFalse(decoded.useDoubleTapOnly)
+		XCTAssertFalse(decoded.doubleTapLockEnabled)
+	}
+
+	func testEncodeDecodeRoundTripPreservesNormalizedDoubleTapValues() throws {
+		let settings = HexSettings(useDoubleTapOnly: true, doubleTapLockEnabled: false)
+		let data = try JSONEncoder().encode(settings)
+		let decoded = try JSONDecoder().decode(HexSettings.self, from: data)
+
+		XCTAssertFalse(settings.useDoubleTapOnly)
+		XCTAssertFalse(decoded.useDoubleTapOnly)
 		XCTAssertEqual(decoded, settings)
 	}
 

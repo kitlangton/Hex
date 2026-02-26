@@ -109,6 +109,12 @@ struct SettingsFeature {
     Reduce { state, action in
       switch action {
       case .binding:
+        if !state.hexSettings.doubleTapLockEnabled, state.hexSettings.useDoubleTapOnly {
+          state.$hexSettings.withLock {
+            $0.useDoubleTapOnly = false
+          }
+        }
+
         return .run { _ in
           await MainActor.run {
             NotificationCenter.default.post(name: .updateAppMode, object: nil)

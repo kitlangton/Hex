@@ -35,6 +35,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var minimumKeyTime: Double
 	public var copyToClipboard: Bool
 	public var useDoubleTapOnly: Bool
+	public var doubleTapLockEnabled: Bool
 	public var outputLanguage: String?
 	public var selectedMicrophoneID: String?
 	public var saveTranscriptionHistory: Bool
@@ -45,6 +46,12 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+
+	private mutating func normalizeDoubleTapSettings() {
+		if !doubleTapLockEnabled {
+			useDoubleTapOnly = false
+		}
+	}
 
 	public init(
 		soundEffectsEnabled: Bool = true,
@@ -59,6 +66,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
 		copyToClipboard: Bool = false,
 		useDoubleTapOnly: Bool = false,
+		doubleTapLockEnabled: Bool = true,
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
 		saveTranscriptionHistory: Bool = true,
@@ -82,6 +90,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.minimumKeyTime = minimumKeyTime
 		self.copyToClipboard = copyToClipboard
 		self.useDoubleTapOnly = useDoubleTapOnly
+		self.doubleTapLockEnabled = doubleTapLockEnabled
 		self.outputLanguage = outputLanguage
 		self.selectedMicrophoneID = selectedMicrophoneID
 		self.saveTranscriptionHistory = saveTranscriptionHistory
@@ -92,6 +101,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		normalizeDoubleTapSettings()
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -100,6 +110,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		for field in HexSettingsSchema.fields {
 			try field.decode(into: &self, from: container)
 		}
+		normalizeDoubleTapSettings()
 	}
 
 	public func encode(to encoder: Encoder) throws {
@@ -126,6 +137,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case minimumKeyTime
 	case copyToClipboard
 	case useDoubleTapOnly
+	case doubleTapLockEnabled
 	case outputLanguage
 	case selectedMicrophoneID
 	case saveTranscriptionHistory
@@ -221,6 +233,7 @@ private enum HexSettingsSchema {
 		SettingsField(.minimumKeyTime, keyPath: \.minimumKeyTime, default: defaults.minimumKeyTime).eraseToAny(),
 		SettingsField(.copyToClipboard, keyPath: \.copyToClipboard, default: defaults.copyToClipboard).eraseToAny(),
 		SettingsField(.useDoubleTapOnly, keyPath: \.useDoubleTapOnly, default: defaults.useDoubleTapOnly).eraseToAny(),
+		SettingsField(.doubleTapLockEnabled, keyPath: \.doubleTapLockEnabled, default: defaults.doubleTapLockEnabled).eraseToAny(),
 		SettingsField(
 			.outputLanguage,
 			keyPath: \.outputLanguage,

@@ -288,6 +288,41 @@ struct HotKeyProcessorTests {
         )
     }
 
+    @Test
+    func doubleTapLock_disabled_staysPressAndHold_standard() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            doubleTapLockEnabled: false,
+            steps: [
+                // First tap
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // First release
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+                // Release all modifiers
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Press modifier again
+                ScenarioStep(time: 0.15, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // Second tap within threshold
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Second release should stop normally (no lock)
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false, expectedState: .idle),
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_ignoredWhenDoubleTapLockDisabled() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            doubleTapLockEnabled: false,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+
     // MARK: - Edge Cases
 
     // Tests that after pressing a key with option, releasing the key but keeping option pressed
@@ -603,6 +638,8 @@ struct ScenarioStep {
 
 func runScenario(
     hotkey: HotKey,
+    useDoubleTapOnly: Bool = false,
+    doubleTapLockEnabled: Bool = true,
     steps: [ScenarioStep]
 ) {
     // Sort steps by time, just in case they're not in ascending order
@@ -615,7 +652,11 @@ func runScenario(
     var processor = withDependencies {
         $0.date.now = Date(timeIntervalSince1970: currentTime)
     } operation: {
-        HotKeyProcessor(hotkey: hotkey)
+        HotKeyProcessor(
+            hotkey: hotkey,
+            useDoubleTapOnly: useDoubleTapOnly,
+            doubleTapLockEnabled: doubleTapLockEnabled
+        )
     }
 
     // We'll step through each event
