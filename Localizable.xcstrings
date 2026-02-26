@@ -67,9 +67,6 @@
     "Add Removal" : {
 
     },
-    "Advanced" : {
-
-    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -279,6 +276,9 @@
     "Downloading… %lld%%" : {
 
     },
+    "Enable double-tap lock" : {
+
+    },
     "Enable in Settings" : {
 
     },
@@ -307,12 +307,6 @@
           }
         }
       }
-    },
-    "Export Logs" : {
-
-    },
-    "Exporting Logs…" : {
-
     },
     "General" : {
       "comment" : "General section in Settings Header.",
@@ -579,12 +573,6 @@
 
     },
     "Save transcriptions and audio recordings for later access" : {
-
-    },
-    "Saved to %@" : {
-
-    },
-    "Saves the last 30 minutes of Hex diagnostics so you can share them with support." : {
 
     },
     "Say something…" : {
