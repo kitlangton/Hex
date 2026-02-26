@@ -7,11 +7,11 @@ let package = Package(
     products: [
         .library(name: "HexCore", targets: ["HexCore"]),
     ],
-	    dependencies: [
-	        .package(url: "https://github.com/Clipy/Sauce", branch: "master"),
-	        .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.0.0"),
-	        .package(url: "https://github.com/apple/swift-log", from: "1.6.4"),
-	    ],
+    dependencies: [
+        .package(url: "https://github.com/Clipy/Sauce", branch: "master"),
+        .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.11.0"),
+        .package(url: "https://github.com/apple/swift-log", from: "1.9.1"),
+    ],
     targets: [
 	    .target(
 	        name: "HexCore",
