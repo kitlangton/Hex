@@ -9,10 +9,6 @@ struct ChangelogView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Changelog")
-                    .font(.title)
-                    .padding(.bottom, 10)
-
                 if let changelogPath = Bundle.main.path(forResource: "changelog", ofType: "md"),
                     let changelogContent = try? String(
                         contentsOfFile: changelogPath, encoding: .utf8)
@@ -32,6 +28,14 @@ struct ChangelogView: View {
                 .padding(.top, 20)
             }
             .padding()
+        }
+        .navigationTitle("Changelog")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") {
+                    dismiss()
+                }
+            }
         }
         .enableInjection()
     }
