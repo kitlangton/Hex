@@ -73,6 +73,9 @@ actor SoundEffectsClientLive {
   private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
   private var isEngineRunning = false
+  private var activePlays = 0
+  private var activePlayTokens = Set<UUID>()
+  private var tokensByEffect: [SoundEffect: Set<UUID>] = [:]
 
   func play(_ soundEffect: SoundEffect) {
 	guard hexSettings.soundEffectsEnabled else { return }
@@ -84,16 +87,34 @@ actor SoundEffectsClientLive {
 	let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
 	player.volume = Float(clampedVolume)
 	player.stop()
-	player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+  let token = UUID()
+  activePlayTokens.insert(token)
+  tokensByEffect[soundEffect, default: []].insert(token)
+  activePlays += 1
+	player.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+    Task { await self?.handlePlaybackEnded(token: token) }
+  }
 	player.play()
   }
 
   func stop(_ soundEffect: SoundEffect) {
     playerNodes[soundEffect]?.stop()
+    if let tokens = tokensByEffect.removeValue(forKey: soundEffect) {
+      for token in tokens {
+        if activePlayTokens.remove(token) != nil {
+          activePlays = max(activePlays - 1, 0)
+        }
+      }
+    }
+    stopEngineIfIdle()
   }
 
   func stopAll() {
     playerNodes.values.forEach { $0.stop() }
+    activePlayTokens.removeAll()
+    tokensByEffect.removeAll()
+    activePlays = 0
+    stopEngineIfIdle()
   }
 
   func preloadSounds() async {
@@ -102,7 +123,6 @@ actor SoundEffectsClientLive {
     for soundEffect in SoundEffect.allCases {
       loadSound(soundEffect)
     }
-    prepareEngineIfNeeded()
 
     isSetup = true
   }
@@ -139,15 +159,32 @@ actor SoundEffectsClientLive {
   private func prepareEngineIfNeeded() {
     if !isEngineRunning || !engine.isRunning {
       engine.prepare()
+      // CRITICAL FIX: Enable auto-shutdown to release CoreAudio resources when idle
+      // Setting this to false can cause permanent CoreAudio connections → CPU leak
       if #available(macOS 13.0, *) {
-        engine.isAutoShutdownEnabled = false
+        engine.isAutoShutdownEnabled = true  // Changed from false
       }
       do {
         try engine.start()
         isEngineRunning = true
+        logger.debug("AVAudioEngine started with auto-shutdown enabled")
       } catch {
         logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
       }
     }
+  }
+
+  private func handlePlaybackEnded(token: UUID) {
+    guard activePlayTokens.remove(token) != nil else { return }
+    activePlays = max(activePlays - 1, 0)
+    stopEngineIfIdle()
+  }
+
+  private func stopEngineIfIdle() {
+    guard activePlays == 0 else { return }
+    guard isEngineRunning || engine.isRunning else { return }
+    engine.stop()
+    isEngineRunning = false
+    logger.debug("AVAudioEngine stopped after playback to release CoreAudio")
   }
 }
