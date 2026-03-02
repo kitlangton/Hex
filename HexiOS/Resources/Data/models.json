@@ -1,0 +1,42 @@
+[
+  {
+    "displayName": "Parakeet TDT v2",
+    "internalName": "parakeet-tdt-0.6b-v2-coreml",
+    "size": "English",
+    "accuracyStars": 5,
+    "speedStars": 5,
+    "storageSize": "650MB"
+  },
+  {
+    "displayName": "Parakeet TDT v3",
+    "internalName": "parakeet-tdt-0.6b-v3-coreml",
+    "size": "Multilingual",
+    "accuracyStars": 5,
+    "speedStars": 5,
+    "storageSize": "650MB"
+  },
+  {
+    "displayName": "Whisper Small (Tiny)",
+    "internalName": "openai_whisper-tiny",
+    "size": "Multilingual",
+    "accuracyStars": 2,
+    "speedStars": 4,
+    "storageSize": "73MB"
+  },
+  {
+    "displayName": "Whisper Medium (Base)",
+    "internalName": "openai_whisper-base",
+    "size": "Multilingual",
+    "accuracyStars": 3,
+    "speedStars": 3,
+    "storageSize": "140MB"
+  },
+  {
+    "displayName": "Whisper Large v3",
+    "internalName": "openai_whisper-large-v3-v20240930",
+    "size": "Multilingual",
+    "accuracyStars": 4,
+    "speedStars": 2,
+    "storageSize": "1.5GB"
+  }
+]

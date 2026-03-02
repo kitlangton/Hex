@@ -1,3 +1,4 @@
+#if canImport(Sauce)
 import Foundation
 
 /// Determines whether a recording should be kept or discarded based on duration and hotkey type.
@@ -75,3 +76,4 @@ public struct RecordingDecisionEngine {
         return (durationIsLongEnough || includesPrintableKey) ? .proceedToTranscription : .discardShortRecording
     }
 }
+#endif

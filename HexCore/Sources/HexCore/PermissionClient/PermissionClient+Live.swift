@@ -1,3 +1,4 @@
+#if os(macOS)
 @preconcurrency import AppKit
 import AVFoundation
 import CoreGraphics
@@ -189,3 +190,93 @@ actor PermissionClientLive {
     }
   }
 }
+
+#elseif os(iOS)
+import AVFoundation
+import Dependencies
+import Foundation
+import UIKit
+
+private let logger = HexLog.permissions
+
+extension PermissionClient: DependencyKey {
+  public static var liveValue: Self {
+    let live = PermissionClientLiveIOS()
+    return Self(
+      microphoneStatus: { await live.microphoneStatus() },
+      accessibilityStatus: { .granted },       // Not applicable on iOS
+      inputMonitoringStatus: { .granted },      // Not applicable on iOS
+      requestMicrophone: { await live.requestMicrophone() },
+      requestAccessibility: { },                // No-op on iOS
+      requestInputMonitoring: { true },         // Always "granted" on iOS
+      openMicrophoneSettings: { await live.openMicrophoneSettings() },
+      openAccessibilitySettings: { },
+      openInputMonitoringSettings: { },
+      observeAppActivation: { live.observeAppActivation() }
+    )
+  }
+}
+
+actor PermissionClientLiveIOS {
+  private let (activationStream, activationContinuation) = AsyncStream<AppActivation>.makeStream()
+  private nonisolated(unsafe) var observations: [Any] = []
+
+  init() {
+    logger.debug("Initializing PermissionClient (iOS), setting up app activation observers")
+
+    let didBecomeActiveObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.didBecomeActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      logger.debug("App became active")
+      Task { self?.activationContinuation.yield(.didBecomeActive) }
+    }
+
+    let willResignActiveObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.willResignActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      logger.debug("App will resign active")
+      Task { self?.activationContinuation.yield(.willResignActive) }
+    }
+
+    observations = [didBecomeActiveObserver, willResignActiveObserver]
+  }
+
+  deinit {
+    observations.forEach { NotificationCenter.default.removeObserver($0) }
+  }
+
+  func microphoneStatus() async -> PermissionStatus {
+    let status = AVCaptureDevice.authorizationStatus(for: .audio)
+    switch status {
+    case .authorized: return .granted
+    case .denied, .restricted: return .denied
+    case .notDetermined: return .notDetermined
+    @unknown default: return .denied
+    }
+  }
+
+  func requestMicrophone() async -> Bool {
+    logger.info("Requesting microphone permission...")
+    let granted = await AVAudioApplication.requestRecordPermission()
+    logger.info("Microphone permission granted: \(granted)")
+    return granted
+  }
+
+  func openMicrophoneSettings() async {
+    logger.info("Opening app settings...")
+    await MainActor.run {
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        UIApplication.shared.open(url)
+      }
+    }
+  }
+
+  nonisolated func observeAppActivation() -> AsyncStream<AppActivation> {
+    activationStream
+  }
+}
+#endif

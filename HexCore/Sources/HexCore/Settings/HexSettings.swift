@@ -8,7 +8,13 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
+	#if canImport(Sauce)
+	public static let defaultHotkey = HotKey(key: nil, modifiers: [.option])
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
+	#else
+	public static let defaultHotkey = HotKey(keyName: nil, modifiers: [.option])
+	public static let defaultPasteLastTranscriptHotkey = HotKey(keyName: "v", modifiers: [.option, .shift])
+	#endif
 	public static let baseSoundEffectsVolume: Double = HexCoreConstants.baseSoundEffectsVolume
 	public static let defaultWordRemovals: [WordRemoval] = [
 		.init(pattern: "uh+"),
@@ -17,11 +23,19 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		.init(pattern: "hm+")
 	]
 
+	#if canImport(Sauce)
 	public static var defaultPasteLastTranscriptHotkeyDescription: String {
 		let modifiers = defaultPasteLastTranscriptHotkey.modifiers.sorted.map { $0.stringValue }.joined()
 		let key = defaultPasteLastTranscriptHotkey.key?.toString ?? ""
 		return modifiers + key
 	}
+	#else
+	public static var defaultPasteLastTranscriptHotkeyDescription: String {
+		let modifiers = defaultPasteLastTranscriptHotkey.modifiers.sorted.map { $0.stringValue }.joined()
+		let key = defaultPasteLastTranscriptHotkey.keyName ?? ""
+		return modifiers + key
+	}
+	#endif
 
 	public var soundEffectsEnabled: Bool
 	public var soundEffectsVolume: Double
@@ -56,7 +70,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public init(
 		soundEffectsEnabled: Bool = true,
 		soundEffectsVolume: Double = HexSettings.baseSoundEffectsVolume,
-		hotkey: HotKey = .init(key: nil, modifiers: [.option]),
+		hotkey: HotKey = HexSettings.defaultHotkey,
 		openOnLogin: Bool = false,
 		showDockIcon: Bool = true,
 		selectedModel: String = ParakeetModel.multilingualV3.identifier,

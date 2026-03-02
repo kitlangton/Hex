@@ -5,6 +5,7 @@
 //  Created by Kit Langton on 1/28/25.
 //
 
+#if canImport(Sauce)
 import Sauce
 
 public enum InputEvent {
@@ -15,9 +16,10 @@ public enum InputEvent {
 public struct KeyEvent {
     public let key: Key?
     public let modifiers: Modifiers
-    
+
     public init(key: Key?, modifiers: Modifiers) {
         self.key = key
         self.modifiers = modifiers
     }
 }
+#endif

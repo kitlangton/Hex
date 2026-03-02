@@ -17,6 +17,12 @@
 		47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E092D44525B00D26DA6 /* Dependencies */; };
 		47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E0B2D44525B00D26DA6 /* DependenciesMacros */; };
 		47E16A622EC6C9D300885CF7 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 47E16A612EC6C9D300885CF7 /* FluidAudio */; };
+		AA0000012E6B000000000011 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000012E6B00000000000B /* ComposableArchitecture */; };
+		AA0000012E6B000000000012 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000012E6B00000000000C /* WhisperKit */; };
+		AA0000012E6B000000000013 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000012E6B00000000000D /* HexCore */; };
+		AA0000012E6B000000000014 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000012E6B00000000000E /* Dependencies */; };
+		AA0000012E6B000000000015 /* DependenciesMacros in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000012E6B00000000000F /* DependenciesMacros */; };
+		AA0000012E6B000000000016 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000012E6B000000000010 /* FluidAudio */; };
 		B5045C972D78DED500D0A119 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = B5045C962D78DED500D0A119 /* MarkdownUI */; };
 		B53356002D7B8D4900E5F542 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
@@ -36,6 +42,7 @@
 		473544542D445959001FBCB5 /* Testing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Testing.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework; sourceTree = DEVELOPER_DIR; };
 		478637A52D48725900319BFA /* HexTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HexTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		47E05DEE2D444EC600D26DA6 /* Hex Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hex Debug.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000012E6B000000000002 /* HexiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HexiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; name = AppIcon.icon; path = Hex/AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -48,6 +55,13 @@
 			);
 			target = 47E05DED2D444EC600D26DA6 /* Hex */;
 		};
+		AA0000012E6B00000000000A /* Exceptions for "HexiOS" folder in "HexiOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AA0000012E6B000000000001 /* HexiOS */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -57,6 +71,14 @@
 				476BAD402D47E8500088C61F /* Exceptions for "Hex" folder in "Hex" target */,
 			);
 			path = Hex;
+			sourceTree = "<group>";
+		};
+		AA0000012E6B000000000009 /* HexiOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA0000012E6B00000000000A /* Exceptions for "HexiOS" folder in "HexiOS" target */,
+			);
+			path = HexiOS;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -87,6 +109,19 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000012E6B000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000012E6B000000000013 /* HexCore in Frameworks */,
+				AA0000012E6B000000000011 /* ComposableArchitecture in Frameworks */,
+				AA0000012E6B000000000012 /* WhisperKit in Frameworks */,
+				AA0000012E6B000000000016 /* FluidAudio in Frameworks */,
+				AA0000012E6B000000000014 /* Dependencies in Frameworks */,
+				AA0000012E6B000000000015 /* DependenciesMacros in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -105,6 +140,7 @@
 				B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */,
 				B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */,
 				47E05DF02D444EC600D26DA6 /* Hex */,
+				AA0000012E6B000000000009 /* HexiOS */,
 				4735444F2D445936001FBCB5 /* Frameworks */,
 				47E05DEF2D444EC600D26DA6 /* Products */,
 			);
@@ -115,6 +151,7 @@
 			children = (
 				47E05DEE2D444EC600D26DA6 /* Hex Debug.app */,
 				478637A52D48725900319BFA /* HexTests.xctest */,
+				AA0000012E6B000000000002 /* HexiOS.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -175,6 +212,34 @@
 			productReference = 47E05DEE2D444EC600D26DA6 /* Hex Debug.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0000012E6B000000000001 /* HexiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000012E6B000000000006 /* Build configuration list for PBXNativeTarget "HexiOS" */;
+			buildPhases = (
+				AA0000012E6B000000000003 /* Sources */,
+				AA0000012E6B000000000004 /* Frameworks */,
+				AA0000012E6B000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000012E6B000000000009 /* HexiOS */,
+			);
+			name = HexiOS;
+			packageProductDependencies = (
+				AA0000012E6B00000000000B /* ComposableArchitecture */,
+				AA0000012E6B00000000000C /* WhisperKit */,
+				AA0000012E6B00000000000D /* HexCore */,
+				AA0000012E6B00000000000E /* Dependencies */,
+				AA0000012E6B00000000000F /* DependenciesMacros */,
+				AA0000012E6B000000000010 /* FluidAudio */,
+			);
+			productName = HexiOS;
+			productReference = AA0000012E6B000000000002 /* HexiOS.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -222,6 +287,7 @@
 			targets = (
 				47E05DED2D444EC600D26DA6 /* Hex */,
 				478637A42D48725900319BFA /* HexTests */,
+				AA0000012E6B000000000001 /* HexiOS */,
 			);
 		};
 /* End PBXProject section */
@@ -242,6 +308,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000012E6B000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -253,6 +326,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		47E05DEA2D444EC600D26DA6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000012E6B000000000003 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -431,8 +511,8 @@
 		47E05DFE2D444EC700D26DA6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = Hex/Hex.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -441,7 +521,7 @@
 				CURRENT_PROJECT_VERSION = 79;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Hex/Preview Content\"";
-				DEVELOPMENT_TEAM = QC99C9JE59;
+				DEVELOPMENT_TEAM = ZWJVCL53ES;
 				EMIT_FRONTEND_COMMAND_LINES = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -486,8 +566,8 @@
 		47E05DFF2D444EC700D26DA6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = Hex/Hex.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -496,7 +576,7 @@
 				CURRENT_PROJECT_VERSION = 79;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Hex/Preview Content\"";
-				DEVELOPMENT_TEAM = QC99C9JE59;
+				DEVELOPMENT_TEAM = ZWJVCL53ES;
 				EMIT_FRONTEND_COMMAND_LINES = NO;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -533,6 +613,74 @@
 			};
 			name = Release;
 		};
+		AA0000012E6B000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HexiOS/HexiOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZWJVCL53ES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexiOS/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hex uses the microphone to transcribe your speech to text.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitlangton.Hex.iOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000012E6B000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HexiOS/HexiOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZWJVCL53ES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexiOS/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hex uses the microphone to transcribe your speech to text.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitlangton.Hex.iOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -559,6 +707,15 @@
 			buildConfigurations = (
 				47E05DFE2D444EC700D26DA6 /* Debug */,
 				47E05DFF2D444EC700D26DA6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000012E6B000000000006 /* Build configuration list for PBXNativeTarget "HexiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000012E6B000000000007 /* Debug */,
+				AA0000012E6B000000000008 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -693,6 +850,35 @@
 			productName = DependenciesMacros;
 		};
 		47E16A612EC6C9D300885CF7 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+		AA0000012E6B00000000000B /* ComposableArchitecture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E05E002D444EE900D26DA6 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
+			productName = ComposableArchitecture;
+		};
+		AA0000012E6B00000000000C /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+		AA0000012E6B00000000000D /* HexCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HexCore;
+		};
+		AA0000012E6B00000000000E /* Dependencies */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E05E082D44525B00D26DA6 /* XCRemoteSwiftPackageReference "swift-dependencies" */;
+			productName = Dependencies;
+		};
+		AA0000012E6B00000000000F /* DependenciesMacros */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E05E082D44525B00D26DA6 /* XCRemoteSwiftPackageReference "swift-dependencies" */;
+			productName = DependenciesMacros;
+		};
+		AA0000012E6B000000000010 /* FluidAudio */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;

@@ -4,8 +4,10 @@
 //
 //  Created by Kit Langton on 1/26/25.
 //
+#if canImport(Sauce)
 import Cocoa
 import Sauce
+#endif
 
 public struct Modifier: Identifiable, Codable, Equatable, Hashable, Comparable, Sendable {
   public enum Kind: String, Codable, CaseIterable, Comparable, Sendable {
@@ -152,14 +154,14 @@ public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Sendable
   var modifiers: Set<Modifier>
 
   public var sorted: [Modifier] {
-    // If this is a hyperkey combination (all four modifiers), 
+    // If this is a hyperkey combination (all four modifiers),
     // return an empty array as we'll display a special symbol
     if isHyperkey {
       return []
     }
     return modifiers.sorted()
   }
-  
+
   public var isHyperkey: Bool {
     return contains(kind: .command) &&
       contains(kind: .option) &&
@@ -248,6 +250,7 @@ public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Sendable
     Modifiers(modifiers: modifiers.filter { $0.kind != kind })
   }
 
+  #if os(macOS)
   public static func from(cocoa: NSEvent.ModifierFlags) -> Self {
     var modifiers: Set<Modifier> = []
     if cocoa.contains(.option) {
@@ -298,8 +301,10 @@ public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Sendable
 
     return .init(modifiers: modifiers)
   }
+  #endif
 }
 
+#if os(macOS)
 private enum DeviceModifierMask {
   static let leftControl: UInt64 = 0x00000001
   static let leftShift: UInt64 = 0x00000002
@@ -310,7 +315,9 @@ private enum DeviceModifierMask {
   static let rightOption: UInt64 = 0x00000040
   static let rightControl: UInt64 = 0x00002000
 }
+#endif
 
+#if canImport(Sauce)
 public struct HotKey: Codable, Equatable, Sendable {
   public var key: Key?
   public var modifiers: Modifiers
@@ -372,3 +379,34 @@ extension Key {
     }
   }
 }
+#else
+// iOS stub: HotKey without Sauce's Key type
+public struct HotKey: Codable, Equatable, Sendable {
+  /// On iOS the key field is stored as an optional String for Codable compatibility.
+  public var keyName: String?
+  public var modifiers: Modifiers
+
+  public init(keyName: String? = nil, modifiers: Modifiers) {
+    self.keyName = keyName
+    self.modifiers = modifiers
+  }
+
+  // Decode from the macOS format (key stored as Sauce.Key raw value)
+  private enum CodingKeys: String, CodingKey {
+    case key
+    case modifiers
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.keyName = try container.decodeIfPresent(String.self, forKey: .key)
+    self.modifiers = try container.decode(Modifiers.self, forKey: .modifiers)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encodeIfPresent(keyName, forKey: .key)
+    try container.encode(modifiers, forKey: .modifiers)
+  }
+}
+#endif

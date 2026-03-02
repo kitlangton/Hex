@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "HexCore",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(name: "HexCore", targets: ["HexCore"]),
     ],
@@ -16,14 +16,14 @@ let package = Package(
 	    .target(
 	        name: "HexCore",
 	        dependencies: [
-	            "Sauce",
+	            .product(name: "Sauce", package: "Sauce", condition: .when(platforms: [.macOS])),
 	            .product(name: "Dependencies", package: "swift-dependencies"),
 	            .product(name: "DependenciesMacros", package: "swift-dependencies"),
 	            .product(name: "Logging", package: "swift-log"),
 	        ],
 	        path: "Sources/HexCore",
 	        linkerSettings: [
-	            .linkedFramework("IOKit")
+	            .linkedFramework("IOKit", .when(platforms: [.macOS]))
 	        ]
 	    ),
         .testTarget(

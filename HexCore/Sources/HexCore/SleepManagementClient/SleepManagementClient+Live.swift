@@ -1,3 +1,4 @@
+#if os(macOS)
 import Dependencies
 import IOKit.pwr_mgt
 
@@ -48,3 +49,25 @@ actor SleepManagementClientLive {
     }
   }
 }
+
+#elseif os(iOS)
+import Dependencies
+import UIKit
+
+extension SleepManagementClient: DependencyKey {
+  public static var liveValue: Self {
+    Self(
+      preventSleep: { _ in
+        await MainActor.run {
+          UIApplication.shared.isIdleTimerDisabled = true
+        }
+      },
+      allowSleep: {
+        await MainActor.run {
+          UIApplication.shared.isIdleTimerDisabled = false
+        }
+      }
+    )
+  }
+}
+#endif

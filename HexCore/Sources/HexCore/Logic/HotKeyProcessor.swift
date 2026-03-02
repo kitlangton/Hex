@@ -4,6 +4,7 @@
 //
 //  Created by Kit Langton on 1/28/25.
 //
+#if canImport(Sauce)
 import Dependencies
 import Foundation
 import SwiftUI
@@ -535,3 +536,4 @@ extension HotKeyProcessor {
         lastTapAt = nil
     }
 }
+#endif
