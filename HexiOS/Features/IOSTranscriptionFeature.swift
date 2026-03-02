@@ -13,6 +13,7 @@ struct IOSTranscriptionFeature {
   struct State: Equatable {
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
+    @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
 
     var isRecording = false
     var isTranscribing = false
@@ -99,6 +100,8 @@ struct IOSTranscriptionFeature {
         let wordRemovalsEnabled = state.hexSettings.wordRemovalsEnabled
         let saveHistory = state.hexSettings.saveTranscriptionHistory
         let startTime = state.recordingStartTime
+        let transcriptionHistory = state.$transcriptionHistory
+        let maxHistoryEntries = state.hexSettings.maxHistoryEntries
 
         return .merge(
           .cancel(id: CancelID.metering),
@@ -128,7 +131,23 @@ struct IOSTranscriptionFeature {
 
               // Save to history
               if saveHistory {
-                _ = try? await transcriptPersistence.save(text, audioURL, duration, nil, nil)
+                if let transcript = try? await transcriptPersistence.save(text, audioURL, duration, nil, nil) {
+                  transcriptionHistory.withLock { history in
+                    history.history.insert(transcript, at: 0)
+
+                    if let maxEntries = maxHistoryEntries, maxEntries > 0 {
+                      while history.history.count > maxEntries {
+                        if let removed = history.history.popLast() {
+                          Task {
+                            try? await transcriptPersistence.deleteAudio(removed)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } else {
+                try? FileManager.default.removeItem(at: audioURL)
               }
 
               await send(.transcriptionResult(text, audioURL))
