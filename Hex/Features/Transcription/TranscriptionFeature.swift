@@ -545,7 +545,8 @@ private extension TranscriptionFeature {
     let parentDir = destinationURL.deletingLastPathComponent()
     try fm.createDirectory(at: parentDir, withIntermediateDirectories: true)
 
-    let line = text + "\n"
+    let timestamp = Date().ISO8601Format()
+    let line = "[\(timestamp)] \(text)\n"
     let data = Data(line.utf8)
     if fm.fileExists(atPath: destinationURL.path) {
       let handle = try FileHandle(forWritingTo: destinationURL)
