@@ -14,6 +14,7 @@ import SwiftUI
 import WhisperKit
 
 private let transcriptionFeatureLogger = HexLog.transcription
+private let transcriptionOutputLogger = HexLog.output
 
 @Reducer
 struct TranscriptionFeature {
@@ -512,8 +513,50 @@ private extension TranscriptionFeature {
       try? FileManager.default.removeItem(at: audioURL)
     }
 
-    await pasteboard.paste(result)
-    soundEffect.play(.pasteTranscript)
+    switch hexSettings.transcriptionOutputMode {
+    case .pasteIntoFocusedApp:
+      await pasteboard.paste(result)
+      soundEffect.play(.pasteTranscript)
+
+    case .appendToFile:
+      let destination = try appendTranscriptToOutputFile(
+        result,
+        configuredPath: hexSettings.transcriptionOutputFilePath
+      )
+      transcriptionOutputLogger.notice("Wrote transcript to file \(destination.path, privacy: .private)")
+      soundEffect.play(.pasteTranscript)
+    }
+  }
+
+  func appendTranscriptToOutputFile(
+    _ text: String,
+    configuredPath: String?
+  ) throws -> URL {
+    let fm = FileManager.default
+    let destinationURL: URL
+
+    if let configuredPath, !configuredPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      destinationURL = URL(fileURLWithPath: configuredPath)
+    } else {
+      let supportDir = try URL.hexApplicationSupport
+      destinationURL = supportDir.appending(component: "transcriptions.txt")
+    }
+
+    let parentDir = destinationURL.deletingLastPathComponent()
+    try fm.createDirectory(at: parentDir, withIntermediateDirectories: true)
+
+    let line = text + "\n"
+    let data = Data(line.utf8)
+    if fm.fileExists(atPath: destinationURL.path) {
+      let handle = try FileHandle(forWritingTo: destinationURL)
+      defer { try? handle.close() }
+      try handle.seekToEnd()
+      try handle.write(contentsOf: data)
+    } else {
+      try data.write(to: destinationURL, options: .atomic)
+    }
+
+    return destinationURL
   }
 }
 

@@ -67,6 +67,9 @@
     "Add Removal" : {
 
     },
+    "Append to file" : {
+
+    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -142,6 +145,12 @@
           }
         }
       }
+    },
+    "Choose File…" : {
+
+    },
+    "Choose whether transcriptions are pasted into the active app or written to a text file." : {
+
     },
     "Clear shortcut" : {
 
@@ -384,6 +393,9 @@
 
     },
     "Input Monitoring is required so Hex can listen for your hotkey." : {
+
+    },
+    "Insert in focused app" : {
 
     },
     "Match" : {
@@ -704,6 +716,9 @@
         }
       }
     },
+    "Transcription Output" : {
+
+    },
     "Transforms" : {
 
     },
@@ -734,6 +749,9 @@
           }
         }
       }
+    },
+    "Use Default" : {
+
     },
     "Use double-tap only" : {
 
