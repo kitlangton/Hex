@@ -6,6 +6,11 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 	case doNothing
 }
 
+public enum TranscriptionOutputMode: String, Codable, CaseIterable, Equatable, Sendable {
+	case pasteIntoFocusedApp
+	case appendToFile
+}
+
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
@@ -29,6 +34,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var openOnLogin: Bool
 	public var showDockIcon: Bool
 	public var selectedModel: String
+	public var transcriptionOutputMode: TranscriptionOutputMode
+	public var transcriptionOutputFilePath: String?
 	public var useClipboardPaste: Bool
 	public var preventSystemSleep: Bool
 	public var recordingAudioBehavior: RecordingAudioBehavior
@@ -60,6 +67,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		openOnLogin: Bool = false,
 		showDockIcon: Bool = true,
 		selectedModel: String = ParakeetModel.multilingualV3.identifier,
+		transcriptionOutputMode: TranscriptionOutputMode = .pasteIntoFocusedApp,
+		transcriptionOutputFilePath: String? = nil,
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
@@ -84,6 +93,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.openOnLogin = openOnLogin
 		self.showDockIcon = showDockIcon
 		self.selectedModel = selectedModel
+		self.transcriptionOutputMode = transcriptionOutputMode
+		self.transcriptionOutputFilePath = transcriptionOutputFilePath
 		self.useClipboardPaste = useClipboardPaste
 		self.preventSystemSleep = preventSystemSleep
 		self.recordingAudioBehavior = recordingAudioBehavior
@@ -130,6 +141,8 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case openOnLogin
 	case showDockIcon
 	case selectedModel
+	case transcriptionOutputMode
+	case transcriptionOutputFilePath
 	case useClipboardPaste
 	case preventSystemSleep
 	case recordingAudioBehavior
@@ -214,6 +227,15 @@ private enum HexSettingsSchema {
 		SettingsField(.openOnLogin, keyPath: \.openOnLogin, default: defaults.openOnLogin).eraseToAny(),
 		SettingsField(.showDockIcon, keyPath: \.showDockIcon, default: defaults.showDockIcon).eraseToAny(),
 		SettingsField(.selectedModel, keyPath: \.selectedModel, default: defaults.selectedModel).eraseToAny(),
+		SettingsField(.transcriptionOutputMode, keyPath: \.transcriptionOutputMode, default: defaults.transcriptionOutputMode).eraseToAny(),
+		SettingsField(
+			.transcriptionOutputFilePath,
+			keyPath: \.transcriptionOutputFilePath,
+			default: defaults.transcriptionOutputFilePath,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
+		).eraseToAny(),
 		SettingsField(.useClipboardPaste, keyPath: \.useClipboardPaste, default: defaults.useClipboardPaste).eraseToAny(),
 		SettingsField(.preventSystemSleep, keyPath: \.preventSystemSleep, default: defaults.preventSystemSleep).eraseToAny(),
 		SettingsField(
