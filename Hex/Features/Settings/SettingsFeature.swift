@@ -66,6 +66,7 @@ struct SettingsFeature {
     case toggleOpenOnLogin(Bool)
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
+    case toggleSuperFastMode(Bool)
 
     // Permission delegation (forwarded to AppFeature)
     case requestMicrophone
@@ -302,6 +303,12 @@ struct SettingsFeature {
       case let .setRecordingAudioBehavior(behavior):
         state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
         return .none
+
+      case let .toggleSuperFastMode(enabled):
+        state.$hexSettings.withLock { $0.superFastModeEnabled = enabled }
+        return .run { _ in
+          await recording.warmUpRecorder()
+        }
 
       // Permission requests
       case .requestMicrophone:

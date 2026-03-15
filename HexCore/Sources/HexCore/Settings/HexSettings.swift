@@ -34,6 +34,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var recordingAudioBehavior: RecordingAudioBehavior
 	public var minimumKeyTime: Double
 	public var copyToClipboard: Bool
+	public var superFastModeEnabled: Bool
 	public var useDoubleTapOnly: Bool
 	public var doubleTapLockEnabled: Bool
 	public var outputLanguage: String?
@@ -65,6 +66,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
 		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
 		copyToClipboard: Bool = false,
+		superFastModeEnabled: Bool = false,
 		useDoubleTapOnly: Bool = false,
 		doubleTapLockEnabled: Bool = true,
 		outputLanguage: String? = nil,
@@ -89,6 +91,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.recordingAudioBehavior = recordingAudioBehavior
 		self.minimumKeyTime = minimumKeyTime
 		self.copyToClipboard = copyToClipboard
+		self.superFastModeEnabled = superFastModeEnabled
 		self.useDoubleTapOnly = useDoubleTapOnly
 		self.doubleTapLockEnabled = doubleTapLockEnabled
 		self.outputLanguage = outputLanguage
@@ -136,6 +139,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case pauseMediaOnRecord // Legacy
 	case minimumKeyTime
 	case copyToClipboard
+	case superFastModeEnabled
 	case useDoubleTapOnly
 	case doubleTapLockEnabled
 	case outputLanguage
@@ -232,6 +236,7 @@ private enum HexSettingsSchema {
 		).eraseToAny(),
 		SettingsField(.minimumKeyTime, keyPath: \.minimumKeyTime, default: defaults.minimumKeyTime).eraseToAny(),
 		SettingsField(.copyToClipboard, keyPath: \.copyToClipboard, default: defaults.copyToClipboard).eraseToAny(),
+		SettingsField(.superFastModeEnabled, keyPath: \.superFastModeEnabled, default: defaults.superFastModeEnabled).eraseToAny(),
 		SettingsField(.useDoubleTapOnly, keyPath: \.useDoubleTapOnly, default: defaults.useDoubleTapOnly).eraseToAny(),
 		SettingsField(.doubleTapLockEnabled, keyPath: \.doubleTapLockEnabled, default: defaults.doubleTapLockEnabled).eraseToAny(),
 		SettingsField(

@@ -323,6 +323,8 @@ actor RecordingClientLive {
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
+  private lazy var superFastCapture = SuperFastCaptureController(meterContinuation: meterContinuation)
+  private var superFastCaptureDeviceID: AudioDeviceID?
 
   @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -566,6 +568,73 @@ actor RecordingClientLive {
     return deviceID
   }
 
+  private func resolvePreferredInputDevice() -> AudioDeviceID? {
+    if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
+       let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
+      let devices = getAllAudioDevices()
+      if devices.contains(selectedDeviceID), deviceHasInput(deviceID: selectedDeviceID) {
+        return selectedDeviceID
+      }
+
+      recordingLogger.notice("Selected device \(selectedDeviceID) missing; using system default")
+      return nil
+    }
+
+    return nil
+  }
+
+  @discardableResult
+  private func applyPreferredInputDevice() -> AudioDeviceID? {
+    let targetDeviceID = resolvePreferredInputDevice()
+    let currentDefaultDevice = getDefaultInputDevice()
+
+    if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
+      recordingLogger.notice("Default input changed from \(primedDevice) to \(currentDefaultDevice ?? 0); invalidating primed state")
+      invalidatePrimedState()
+    }
+
+    if let targetDeviceID {
+      if targetDeviceID != currentDefaultDevice {
+        recordingLogger.notice("Switching input device from \(currentDefaultDevice ?? 0) to \(targetDeviceID)")
+        setInputDevice(deviceID: targetDeviceID)
+        invalidatePrimedState()
+      } else {
+        recordingLogger.debug("Device \(targetDeviceID) already set as default, skipping setInputDevice()")
+      }
+    } else {
+      recordingLogger.debug("Using system default microphone")
+    }
+
+    return getDefaultInputDevice()
+  }
+
+  private func makeSuperFastRecordingURL() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("hex-super-fast-\(UUID().uuidString).wav")
+  }
+
+  private func ensureSuperFastCaptureReady(for deviceID: AudioDeviceID?) throws {
+    if superFastCaptureDeviceID != deviceID {
+      stopSuperFastCapture()
+    }
+
+    try superFastCapture.startIfNeeded()
+    superFastCaptureDeviceID = deviceID
+  }
+
+  private func stopSuperFastCapture() {
+    superFastCapture.stop()
+    superFastCaptureDeviceID = nil
+  }
+
+  private func releaseRecorder() {
+    stopMeterTask()
+    if recorder?.isRecording == true {
+      recorder?.stop()
+    }
+    recorder = nil
+    invalidatePrimedState()
+  }
+
   // MARK: - Input Device Mute Detection & Fix
 
   /// Checks if the input device is muted at the Core Audio device level
@@ -762,41 +831,19 @@ actor RecordingClientLive {
       break
     }
 
-    // Determine target input device (custom selection or system default)
-    let targetDeviceID: AudioDeviceID? = {
-      if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
-         let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
-        // Verify the selected device is still available
-        let devices = getAllAudioDevices()
-        if devices.contains(selectedDeviceID) && deviceHasInput(deviceID: selectedDeviceID) {
-          return selectedDeviceID
-        } else {
-          recordingLogger.notice("Selected device \(selectedDeviceID) missing; using system default")
-          return nil
-        }
-      }
-      return nil  // Use system default
-    }()
+    let activeInputDevice = applyPreferredInputDevice()
 
-    // Get current default input device
-    let currentDefaultDevice = getDefaultInputDevice()
-    if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
-      recordingLogger.notice("Default input changed from \(primedDevice) to \(currentDefaultDevice ?? 0); invalidating primed state")
-      invalidatePrimedState()
-    }
-
-    // Only change device if target differs from current default
-    if let target = targetDeviceID {
-      if target != currentDefaultDevice {
-        recordingLogger.notice("Switching input device from \(currentDefaultDevice ?? 0) to \(target)")
-        setInputDevice(deviceID: target)
-        // Invalidate primed state since device changed - recorder was prepared for old device
-        invalidatePrimedState()
-      } else {
-        recordingLogger.debug("Device \(target) already set as default, skipping setInputDevice()")
+    if hexSettings.superFastModeEnabled {
+      do {
+        try ensureSuperFastCaptureReady(for: activeInputDevice)
+        let recordingURL = makeSuperFastRecordingURL()
+        try superFastCapture.beginRecording(to: recordingURL)
+        recordingLogger.notice("Super fast recording started")
+        return
+      } catch {
+        recordingLogger.error("Failed to start super fast capture: \(error.localizedDescription); falling back to AVAudioRecorder")
+        stopSuperFastCapture()
       }
-    } else {
-      recordingLogger.debug("Using system default microphone")
     }
 
     do {
@@ -815,6 +862,19 @@ actor RecordingClientLive {
   }
 
   func stopRecording() async -> URL {
+    if let superFastURL = superFastCapture.finishRecording() {
+      stopMeterTask()
+      endRecordingSession()
+      recordingLogger.notice("Super fast recording stopped")
+
+      if !hexSettings.superFastModeEnabled {
+        stopSuperFastCapture()
+      }
+
+      await resumeMediaIfNeeded()
+      return superFastURL
+    }
+
     let wasRecording = recorder?.isRecording == true
     recorder?.stop()
     stopMeterTask()
@@ -844,6 +904,16 @@ actor RecordingClientLive {
       }
     }
 
+    if !hexSettings.superFastModeEnabled {
+      stopSuperFastCapture()
+    }
+
+    await resumeMediaIfNeeded()
+
+    return exportedURL
+  }
+
+  private func resumeMediaIfNeeded() async {
     // Resume audio in background - don't block stop from completing
     let playersToResume = pausedPlayers
     let shouldResumeMedia = didPauseMedia
@@ -883,8 +953,6 @@ actor RecordingClientLive {
         self.clearMediaState()
       }
     }
-
-    return exportedURL
   }
 
   // Actor state update helpers
@@ -1039,6 +1107,20 @@ actor RecordingClientLive {
   }
 
   func warmUpRecorder() async {
+    let activeInputDevice = applyPreferredInputDevice()
+
+    if hexSettings.superFastModeEnabled {
+      releaseRecorder()
+      do {
+        try ensureSuperFastCaptureReady(for: activeInputDevice)
+      } catch {
+        recordingLogger.error("Failed to arm super fast capture: \(error.localizedDescription)")
+      }
+      return
+    }
+
+    stopSuperFastCapture()
+
     do {
       try primeRecorderForNextSession()
     } catch {
@@ -1049,14 +1131,8 @@ actor RecordingClientLive {
   /// Release recorder resources. Call on app termination.
   func cleanup() {
     endRecordingSession()
-    if let recorder = recorder {
-      if recorder.isRecording {
-        recorder.stop()
-      }
-      self.recorder = nil
-    }
-    isRecorderPrimedForNextSession = false
-    lastPrimedDeviceID = nil
+    stopSuperFastCapture()
+    releaseRecorder()
     recordingLogger.notice("RecordingClient cleaned up")
   }
 }

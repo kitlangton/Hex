@@ -52,6 +52,19 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
+				Toggle(
+					"Super Fast Mode",
+					isOn: Binding(
+						get: { store.hexSettings.superFastModeEnabled },
+						set: { store.send(.toggleSuperFastMode($0)) }
+					)
+				)
+				Text("Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed.")
+			} icon: {
+				Image(systemName: "bolt.circle")
+			}
+
+			Label {
 				HStack(alignment: .center) {
 					Text("Audio Behavior while Recording")
 				Spacer()

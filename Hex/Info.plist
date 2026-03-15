@@ -10,6 +10,8 @@
 	<string>0.6.10</string>
 	<key>CFBundleVersion</key>
 	<string>79</string>
+	<key>AudioHardwarePowerHint</key>
+	<string>None</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>Hex needs accessibility access to monitor keyboard events for hotkey detection.</string>
 	<key>NSAppTransportSecurity</key>
