@@ -55,8 +55,8 @@ private final class FloatRingBuffer {
 
 private struct SuperFastCaptureConstants {
   static let sampleRate: Double = 16_000
-  static let ringBufferDuration: TimeInterval = 2.0
-  static let preRollDuration: TimeInterval = 0.75
+  static let ringBufferDuration: TimeInterval = 1.0
+  static let preRollDuration: TimeInterval = 0.45
   static let tapBufferSize: AVAudioFrameCount = 2_048
 }
 
@@ -186,6 +186,7 @@ final class SuperFastCaptureController {
     processingQueue.sync {
       let url = activeRecording?.url
       activeRecording = nil
+      ringBuffer.clear()
       return url
     }
   }
