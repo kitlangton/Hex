@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+### Patch Changes
+
+- ed69836: Suppress startup windows when Hex launches as a hidden login item (#146)
+
 ## 0.7.0
 
 ### Minor Changes
