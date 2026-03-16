@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+### Minor Changes
+
+- c5d5162: Add Super Fast mode to keep the mic warm and prepend a short in-memory buffer
+
 ## 0.6.10
 
 ### Patch Changes
