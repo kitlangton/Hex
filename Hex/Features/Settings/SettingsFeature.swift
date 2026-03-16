@@ -69,6 +69,7 @@ struct SettingsFeature {
     case clearPasteLastTranscriptHotkey
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
+    case toggleShowDockIcon(Bool)
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
     case toggleSuperFastMode(Bool)
@@ -206,17 +207,14 @@ struct SettingsFeature {
     Reduce { state, action in
       switch action {
       case .binding:
-        if !state.hexSettings.doubleTapLockEnabled, state.hexSettings.useDoubleTapOnly {
+        let didNormalizeDoubleTapOnly = !state.hexSettings.doubleTapLockEnabled && state.hexSettings.useDoubleTapOnly
+        if didNormalizeDoubleTapOnly {
           state.$hexSettings.withLock {
             $0.useDoubleTapOnly = false
           }
         }
 
-        return .run { _ in
-          await MainActor.run {
-            NotificationCenter.default.post(name: .updateAppMode, object: nil)
-          }
-        }
+        return .none
 
       case .task:
         if let url = Bundle.main.url(forResource: "languages", withExtension: "json"),
@@ -344,6 +342,14 @@ struct SettingsFeature {
             try? SMAppService.mainApp.register()
           } else {
             try? SMAppService.mainApp.unregister()
+          }
+        }
+
+      case let .toggleShowDockIcon(enabled):
+        state.$hexSettings.withLock { $0.showDockIcon = enabled }
+        return .run { _ in
+          await MainActor.run {
+            NotificationCenter.default.post(name: .updateAppMode, object: nil)
           }
         }
 

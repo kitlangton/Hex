@@ -20,7 +20,13 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
-				Toggle("Show Dock Icon", isOn: $store.hexSettings.showDockIcon)
+				Toggle(
+					"Show Dock Icon",
+					isOn: Binding(
+						get: { store.hexSettings.showDockIcon },
+						set: { store.send(.toggleShowDockIcon($0)) }
+					)
+				)
 			} icon: {
 				Image(systemName: "dock.rectangle")
 			}

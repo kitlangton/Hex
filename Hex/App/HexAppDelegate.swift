@@ -9,6 +9,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	var invisibleWindow: InvisibleWindow?
 	var settingsWindow: NSWindow?
 	var statusItem: NSStatusItem!
+	private var launchedAtLogin = false
 
 	@Dependency(\.soundEffects) var soundEffect
 	@Dependency(\.recording) var recording
@@ -26,7 +27,9 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		Task {
 			await soundEffect.preloadSounds()
 		}
+		launchedAtLogin = wasLaunchedAtLogin()
 		appLogger.info("Application did finish launching")
+		appLogger.notice("launchedAtLogin = \(self.launchedAtLogin)")
 
 		// Set activation policy first
 		updateAppMode()
@@ -44,8 +47,27 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 		// Then present main views
 		presentMainView()
+
+		guard shouldOpenForegroundUIOnLaunch else {
+			appLogger.notice("Suppressing foreground windows for login launch")
+			return
+		}
+
 		presentSettingsView()
 		NSApp.activate(ignoringOtherApps: true)
+	}
+
+	private var shouldOpenForegroundUIOnLaunch: Bool {
+		!(launchedAtLogin && !hexSettings.showDockIcon)
+	}
+
+	private func wasLaunchedAtLogin() -> Bool {
+		guard let event = NSAppleEventManager.shared().currentAppleEvent else {
+			return false
+		}
+
+		return event.eventID == AEEventID(kAEOpenApplication)
+			&& event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == AEEventClass(keyAELaunchedAsLogInItem)
 	}
 
 	private func startLifecycleTasksIfNeeded() {
