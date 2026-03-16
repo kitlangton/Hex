@@ -64,6 +64,9 @@ final class SuperFastCaptureController {
   private struct ActiveRecording {
     let url: URL
     let file: AVAudioFile
+    let requestedAt: Date
+    let prependedDuration: TimeInterval
+    var didLogFirstBuffer: Bool
   }
 
   private let logger = HexLog.recording
@@ -95,12 +98,17 @@ final class SuperFastCaptureController {
     engine?.isRunning == true
   }
 
-  func startIfNeeded() throws {
+  var isRecording: Bool {
+    processingQueue.sync { activeRecording != nil }
+  }
+
+  func startIfNeeded(reason: String = "unknown") throws {
     if engine?.isRunning == true {
+      logger.debug("Super fast capture already armed reason=\(reason)")
       return
     }
 
-    stop()
+    stop(reason: "restart-before-arm")
 
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
@@ -124,11 +132,14 @@ final class SuperFastCaptureController {
     try engine.start()
     self.engine = engine
     logger.notice(
-      "Super fast capture armed sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz preRoll=\(String(format: "%.2f", SuperFastCaptureConstants.preRollDuration))s"
+      "Super fast capture armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s preRoll=\(String(format: "%.2f", SuperFastCaptureConstants.preRollDuration))s"
     )
   }
 
-  func stop() {
+  func stop(reason: String = "unknown") {
+    if engine != nil {
+      logger.notice("Super fast capture stopped reason=\(reason)")
+    }
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
     }
@@ -142,8 +153,8 @@ final class SuperFastCaptureController {
     }
   }
 
-  func beginRecording(to url: URL) throws {
-    try startIfNeeded()
+  func beginRecording(to url: URL, requestedAt: Date = Date()) throws {
+    try startIfNeeded(reason: "begin-recording")
 
     var startError: Error?
     processingQueue.sync {
@@ -167,11 +178,21 @@ final class SuperFastCaptureController {
           SuperFastCaptureConstants.preRollDuration * SuperFastCaptureConstants.sampleRate
         )
         let preRollSamples = ringBuffer.recentSamples(count: preRollFrameCount)
+        let prependedDuration = Double(preRollSamples.count) / SuperFastCaptureConstants.sampleRate
         if !preRollSamples.isEmpty {
           try write(samples: preRollSamples, to: file)
         }
 
-        activeRecording = ActiveRecording(url: url, file: file)
+        logger.notice(
+          "Super fast recording file opened prepended=\(String(format: "%.3f", prependedDuration))s"
+        )
+        activeRecording = ActiveRecording(
+          url: url,
+          file: file,
+          requestedAt: requestedAt,
+          prependedDuration: prependedDuration,
+          didLogFirstBuffer: false
+        )
       } catch {
         startError = error
       }
@@ -213,7 +234,16 @@ final class SuperFastCaptureController {
       meterContinuation.yield(meter(for: samples, count: sampleCount))
     }
 
-    guard let recording = activeRecording else { return }
+    guard var recording = activeRecording else { return }
+    if !recording.didLogFirstBuffer {
+      let timeToFirstBuffer = Date().timeIntervalSince(recording.requestedAt)
+      logger.notice(
+        "Super fast first buffer latency=\(String(format: "%.3f", timeToFirstBuffer))s prepended=\(String(format: "%.3f", recording.prependedDuration))s frames=\(sampleCount)"
+      )
+      recording.didLogFirstBuffer = true
+      activeRecording = recording
+    }
+
     do {
       try recording.file.write(from: converted)
     } catch {
