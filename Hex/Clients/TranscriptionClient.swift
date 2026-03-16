@@ -77,18 +77,7 @@ actor TranscriptionClientLive {
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
     do {
-      let appSupportURL = try FileManager.default.url(
-        for: .applicationSupportDirectory,
-        in: .userDomainMask,
-        appropriateFor: nil,
-        create: true
-      )
-      // Typically: .../Application Support/com.kitlangton.Hex
-      let ourAppFolder = appSupportURL.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-      // Inside there, store everything in /models
-      let baseURL = ourAppFolder.appendingPathComponent("models", isDirectory: true)
-      try FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
-      return baseURL
+      return try URL.hexModelsDirectory
     } catch {
       fatalError("Could not create Application Support folder: \(error)")
     }

@@ -11,12 +11,12 @@ struct CuratedList: View {
 			return Array(store.curatedModels)
 		} else {
 			// Show only Parakeet by default
-			return store.curatedModels.filter { $0.internalName.hasPrefix("parakeet-") }
+			return store.curatedModels.filter { $0.isParakeet }
 		}
 	}
 
 	private var hiddenModels: [CuratedModelInfo] {
-		store.curatedModels.filter { !$0.internalName.hasPrefix("parakeet-") }
+		store.curatedModels.filter { !$0.isParakeet }
 	}
 
 	var body: some View {
@@ -42,4 +42,3 @@ struct CuratedList: View {
 		.enableInjection()
 	}
 }
-

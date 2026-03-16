@@ -18,18 +18,7 @@ extension TranscriptPersistenceClient: DependencyKey {
         return TranscriptPersistenceClient(
             save: { result, audioURL, duration, sourceAppBundleID, sourceAppName in
                 let fm = FileManager.default
-                // We need the base URL. Since we can't easily access AppHexSettings.hexApplicationSupport from here without circular dependency,
-                // we will replicate the logic or use a standard location.
-                // Ideally, this should be injected or configured.
-                
-                let supportDir = try fm.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                )
-                let ourAppFolder = supportDir.appendingPathComponent("com.kitlangton.Hex", isDirectory: true)
-                let recordingsFolder = ourAppFolder.appendingPathComponent("Recordings", isDirectory: true)
+                let recordingsFolder = try URL.hexApplicationSupport.appendingPathComponent("Recordings", isDirectory: true)
                 try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
                 
                 let filename = "\(Date().timeIntervalSince1970).wav"
@@ -46,7 +35,7 @@ extension TranscriptPersistenceClient: DependencyKey {
                 )
             },
             deleteAudio: { transcript in
-                try FileManager.default.removeItem(at: transcript.audioPath)
+                FileManager.default.removeItemIfExists(at: transcript.audioPath)
             }
         )
     }()

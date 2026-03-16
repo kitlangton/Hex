@@ -37,12 +37,22 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 	public var id: String { internalName }
 
 	public var badge: String? {
-		if internalName == "parakeet-tdt-0.6b-v2-coreml" {
+		switch parakeetModel {
+		case .englishV2:
 			return "BEST FOR ENGLISH"
-		} else if internalName == "parakeet-tdt-0.6b-v3-coreml" {
+		case .multilingualV3:
 			return "BEST FOR MULTILINGUAL"
+		case nil:
+			return nil
 		}
-		return nil
+	}
+
+	var parakeetModel: ParakeetModel? {
+		ParakeetModel(rawValue: internalName)
+	}
+
+	var isParakeet: Bool {
+		parakeetModel != nil
 	}
 
 	public init(
@@ -79,7 +89,7 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 
 // Convenience helper for loading the bundled models.json once.
 private enum CuratedModelLoader {
-	static func load() -> [CuratedModelInfo] {
+	private static let bundledModels: [CuratedModelInfo] = {
 		guard let url = Bundle.main.url(forResource: "models", withExtension: "json") ??
 			Bundle.main.url(forResource: "models", withExtension: "json", subdirectory: "Data")
 		else {
@@ -87,7 +97,11 @@ private enum CuratedModelLoader {
 			return []
 		}
 		do { return try JSONDecoder().decode([CuratedModelInfo].self, from: Data(contentsOf: url)) }
-		catch { assertionFailure("Failed to decode models.json – \(error)"); return [] }
+		catch { assertionFailure("Failed to decode models.json - \(error)"); return [] }
+	}()
+
+	static func load() -> [CuratedModelInfo] {
+		bundledModels
 	}
 }
 
@@ -112,6 +126,7 @@ public struct ModelDownloadFeature {
 
 		// UI state
 		public var showAllModels = false
+		public var isLoadingModels = false
 		public var isDownloading = false
 		public var downloadProgress: Double = 0
 		public var downloadError: String?
@@ -153,7 +168,6 @@ public struct ModelDownloadFeature {
 	// MARK: Dependencies
 
 	@Dependency(\.transcription) var transcription
-	@Dependency(\.continuousClock) var clock
 
 	public init() {}
 
@@ -217,10 +231,15 @@ public struct ModelDownloadFeature {
 		// MARK: – Fetch Models
 
 		case .fetchModels:
+			guard !state.isLoadingModels else { return .none }
+			state.isLoadingModels = true
 			return .run { send in
 				do {
-					let recommended = try await transcription.getRecommendedModels().default
-					let names = try await transcription.getAvailableModels()
+					async let recommendedSupportTask = transcription.getRecommendedModels()
+					async let availableNamesTask = transcription.getAvailableModels()
+					let recommendedSupport = try await recommendedSupportTask
+					let names = try await availableNamesTask
+					let recommended = recommendedSupport.default
 					let infos = try await withThrowingTaskGroup(of: ModelInfo.self) { group -> [ModelInfo] in
 						for name in names {
 							group.addTask {
@@ -239,6 +258,7 @@ public struct ModelDownloadFeature {
 			}
 
 		case let .modelsLoaded(recommended, available):
+			state.isLoadingModels = false
 			// Ensure our curated Parakeet options are visible even if WhisperKit doesn't list them
 			var availablePlus = available
 			for model in ParakeetModel.allCases.reversed() {
@@ -397,18 +417,7 @@ public struct ModelDownloadFeature {
 
 	private func openModelLocationEffect() -> Effect<Action> {
 		.run { _ in
-			let fm = FileManager.default
-			let base = try fm.url(
-				for: .applicationSupportDirectory,
-				in: .userDomainMask,
-				appropriateFor: nil,
-				create: true
-			)
-			.appendingPathComponent("com.kitlangton.Hex/models", isDirectory: true)
-
-			if !fm.fileExists(atPath: base.path) {
-				try fm.createDirectory(at: base, withIntermediateDirectories: true)
-			}
+			let base = try URL.hexModelsDirectory
 			NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: base.path)
 		}
 	}

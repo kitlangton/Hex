@@ -50,11 +50,7 @@ extension SharedReaderKey
 extension URL {
 	static var transcriptionHistoryURL: URL {
 		get {
-			let newURL = (try? URL.hexApplicationSupport.appending(component: "transcription_history.json"))
-				?? URL.documentsDirectory.appending(component: "transcription_history.json")
-			let legacyURL = URL.legacyDocumentsDirectory.appending(component: "transcription_history.json")
-			FileManager.default.migrateIfNeeded(from: legacyURL, to: newURL)
-			return newURL
+			URL.hexMigratedFileURL(named: "transcription_history.json")
 		}
 	}
 }
@@ -116,6 +112,15 @@ struct HistoryFeature {
 	}
 
 	@Dependency(\.pasteboard) var pasteboard
+	@Dependency(\.transcriptPersistence) var transcriptPersistence
+
+	private func deleteAudioEffect(for transcripts: [Transcript]) -> Effect<Action> {
+		.run { [transcriptPersistence] _ in
+			for transcript in transcripts {
+				try? await transcriptPersistence.deleteAudio(transcript)
+			}
+		}
+	}
 
 	var body: some ReducerOf<Self> {
 		Reduce { state, action in
@@ -185,9 +190,7 @@ struct HistoryFeature {
 					history.history.remove(at: index)
 				}
 
-				return .run { _ in
-					try? FileManager.default.removeItem(at: transcript.audioPath)
-				}
+				return deleteAudioEffect(for: [transcript])
 
 			case .deleteAllTranscripts:
 				return .send(.confirmDeleteAll)
@@ -200,11 +203,7 @@ struct HistoryFeature {
 					history.history.removeAll()
 				}
 
-				return .run { _ in
-					for transcript in transcripts {
-						try? FileManager.default.removeItem(at: transcript.audioPath)
-					}
-				}
+				return deleteAudioEffect(for: transcripts)
 				
 			case .navigateToSettings:
 				// This will be handled by the parent reducer

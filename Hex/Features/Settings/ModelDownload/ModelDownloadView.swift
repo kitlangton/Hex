@@ -53,9 +53,6 @@ public struct ModelDownloadView: View {
 				store.send(.fetchModels)
 			}
 		}
-		.onAppear {
-			store.send(.fetchModels)
-		}
 		.enableInjection()
 	}
 }

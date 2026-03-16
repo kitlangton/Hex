@@ -58,13 +58,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	/// Application Support folder, keeping everything in one place.
     private func configureLocalCaches() {
         do {
-            let support = try FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-            let cache = support.appendingPathComponent("com.kitlangton.Hex/cache", isDirectory: true)
+            let cache = try URL.hexApplicationSupport.appendingPathComponent("cache", isDirectory: true)
             try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
             setenv("XDG_CACHE_HOME", cache.path, 1)
             cacheLogger.info("XDG_CACHE_HOME set to \(cache.path)")
