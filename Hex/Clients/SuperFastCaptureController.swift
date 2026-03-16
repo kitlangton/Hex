@@ -47,7 +47,6 @@ private final class FloatRingBuffer {
     lock.lock()
     defer { lock.unlock() }
 
-    buffer = Array(repeating: 0, count: buffer.count)
     writeIndex = 0
     validSampleCount = 0
   }
@@ -56,8 +55,26 @@ private final class FloatRingBuffer {
 private struct SuperFastCaptureConstants {
   static let sampleRate: Double = 16_000
   static let ringBufferDuration: TimeInterval = 1.0
-  static let preRollDuration: TimeInterval = 0.45
+  static let defaultPreRollDuration: TimeInterval = 0.45
   static let tapBufferSize: AVAudioFrameCount = 2_048
+}
+
+enum CaptureRecordingMode: String {
+  case standard = "standard"
+  case superFast = "super-fast"
+
+  var preRollDuration: TimeInterval {
+    switch self {
+    case .standard:
+      0
+    case .superFast:
+      SuperFastCaptureConstants.defaultPreRollDuration
+    }
+  }
+
+  var keepsWarmBuffer: Bool {
+    self == .superFast
+  }
 }
 
 final class SuperFastCaptureController {
@@ -85,6 +102,7 @@ final class SuperFastCaptureController {
   private var engine: AVAudioEngine?
   private var converter: AVAudioConverter?
   private var activeRecording: ActiveRecording?
+  private var keepWarmBuffer = false
 
   init(meterContinuation: AsyncStream<Meter>.Continuation) {
     self.meterContinuation = meterContinuation
@@ -102,9 +120,19 @@ final class SuperFastCaptureController {
     processingQueue.sync { activeRecording != nil }
   }
 
-  func startIfNeeded(reason: String = "unknown") throws {
+  func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
+    let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
+    self.keepWarmBuffer = keepWarmBuffer
+    if didDisableWarmBuffer {
+      processingQueue.sync {
+        if activeRecording == nil {
+          ringBuffer.clear()
+        }
+      }
+    }
+
     if engine?.isRunning == true {
-      logger.debug("Super fast capture already armed reason=\(reason)")
+      logger.debug("Capture engine already armed reason=\(reason)")
       return
     }
 
@@ -117,7 +145,7 @@ final class SuperFastCaptureController {
       throw NSError(
         domain: "SuperFastCapture",
         code: -1,
-        userInfo: [NSLocalizedDescriptionKey: "Unable to create the super fast audio converter."]
+        userInfo: [NSLocalizedDescriptionKey: "Unable to create the capture engine audio converter."]
       )
     }
 
@@ -132,13 +160,13 @@ final class SuperFastCaptureController {
     try engine.start()
     self.engine = engine
     logger.notice(
-      "Super fast capture armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s preRoll=\(String(format: "%.2f", SuperFastCaptureConstants.preRollDuration))s"
+      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
     )
   }
 
   func stop(reason: String = "unknown") {
     if engine != nil {
-      logger.notice("Super fast capture stopped reason=\(reason)")
+      logger.notice("Capture engine stopped reason=\(reason)")
     }
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
@@ -153,8 +181,8 @@ final class SuperFastCaptureController {
     }
   }
 
-  func beginRecording(to url: URL, requestedAt: Date = Date()) throws {
-    try startIfNeeded(reason: "begin-recording")
+  func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {
+    try startIfNeeded(reason: "begin-recording", keepWarmBuffer: mode.keepsWarmBuffer)
 
     var startError: Error?
     processingQueue.sync {
@@ -174,9 +202,8 @@ final class SuperFastCaptureController {
           interleaved: false
         )
 
-        let preRollFrameCount = Int(
-          SuperFastCaptureConstants.preRollDuration * SuperFastCaptureConstants.sampleRate
-        )
+        let preRollDuration = mode.preRollDuration
+        let preRollFrameCount = Int(preRollDuration * SuperFastCaptureConstants.sampleRate)
         let preRollSamples = ringBuffer.recentSamples(count: preRollFrameCount)
         let prependedDuration = Double(preRollSamples.count) / SuperFastCaptureConstants.sampleRate
         if !preRollSamples.isEmpty {
@@ -184,7 +211,7 @@ final class SuperFastCaptureController {
         }
 
         logger.notice(
-          "Super fast recording file opened prepended=\(String(format: "%.3f", prependedDuration))s"
+          "Capture engine recording file opened prepended=\(String(format: "%.3f", prependedDuration))s requestedPreRoll=\(String(format: "%.3f", preRollDuration))s"
         )
         activeRecording = ActiveRecording(
           url: url,
@@ -203,11 +230,13 @@ final class SuperFastCaptureController {
     }
   }
 
-  func finishRecording() -> URL? {
+  func finishRecording(clearBuffer: Bool = true) -> URL? {
     processingQueue.sync {
       let url = activeRecording?.url
       activeRecording = nil
-      ringBuffer.clear()
+      if clearBuffer {
+        ringBuffer.clear()
+      }
       return url
     }
   }
@@ -228,7 +257,9 @@ final class SuperFastCaptureController {
     }
 
     let sampleCount = Int(converted.frameLength)
-    ringBuffer.append(UnsafeBufferPointer(start: samples, count: sampleCount))
+    if keepWarmBuffer, activeRecording == nil {
+      ringBuffer.append(UnsafeBufferPointer(start: samples, count: sampleCount))
+    }
 
     if activeRecording != nil {
       meterContinuation.yield(meter(for: samples, count: sampleCount))
@@ -238,7 +269,7 @@ final class SuperFastCaptureController {
     if !recording.didLogFirstBuffer {
       let timeToFirstBuffer = Date().timeIntervalSince(recording.requestedAt)
       logger.notice(
-        "Super fast first buffer latency=\(String(format: "%.3f", timeToFirstBuffer))s prepended=\(String(format: "%.3f", recording.prependedDuration))s frames=\(sampleCount)"
+        "Capture engine first buffer latency=\(String(format: "%.3f", timeToFirstBuffer))s prepended=\(String(format: "%.3f", recording.prependedDuration))s frames=\(sampleCount)"
       )
       recording.didLogFirstBuffer = true
       activeRecording = recording
@@ -247,7 +278,7 @@ final class SuperFastCaptureController {
     do {
       try recording.file.write(from: converted)
     } catch {
-      logger.error("Failed to write super fast audio: \(error.localizedDescription)")
+      logger.error("Failed to write capture engine audio: \(error.localizedDescription)")
       activeRecording = nil
     }
   }
@@ -278,7 +309,7 @@ final class SuperFastCaptureController {
     }
 
     if let error {
-      logger.error("Failed to convert super fast audio: \(error.localizedDescription)")
+      logger.error("Failed to convert capture engine audio: \(error.localizedDescription)")
       return nil
     }
 

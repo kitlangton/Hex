@@ -31,7 +31,7 @@ struct SettingsView: View {
 
 			HotKeySectionView(store: store)
           
-			if microphonePermission == .granted && !store.availableInputDevices.isEmpty {
+			if microphonePermission == .granted {
 				MicrophoneSelectionSectionView(store: store)
 			}
 

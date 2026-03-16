@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import ComposableArchitecture
+import CoreAudio
 import Dependencies
 import HexCore
 import IdentifiedCollections
@@ -9,6 +10,7 @@ import ServiceManagement
 import SwiftUI
 
 private let settingsLogger = HexLog.settings
+private typealias SettingsAudioPropertyListenerBlock = @convention(block) (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
 
 private enum HotKeyCaptureTarget {
   case recording
@@ -228,24 +230,37 @@ struct SettingsFeature {
 
         // Listen for key events and load microphones (existing + new)
         return .run { send in
+          func audioPropertyAddress(
+            _ selector: AudioObjectPropertySelector,
+            scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
+            element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain
+          ) -> AudioObjectPropertyAddress {
+            AudioObjectPropertyAddress(
+              mSelector: selector,
+              mScope: scope,
+              mElement: element
+            )
+          }
+
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
-          
+
           // Set up periodic refresh of available devices (every 120 seconds)
           // Using a longer interval to reduce resource usage
           let deviceRefreshTask = Task { @MainActor in
             for await _ in clock.timer(interval: .seconds(120)) {
               // Only refresh when the app is active to save resources
               if NSApplication.shared.isActive {
-                send(.loadAvailableInputDevices)
+                await send(.loadAvailableInputDevices)
               }
             }
           }
-          
+
           // Listen for device connection/disconnection notifications
           // Using a simpler debounced approach with a single task
           var deviceUpdateTask: Task<Void, Never>?
-          
+          var audioHardwareObservers: [(AudioObjectPropertySelector, SettingsAudioPropertyListenerBlock)] = []
+
           // Helper function to debounce device updates
           func debounceDeviceUpdate() {
             deviceUpdateTask?.cancel()
@@ -256,7 +271,26 @@ struct SettingsFeature {
               }
             }
           }
-          
+
+          func installAudioHardwareObserver(_ selector: AudioObjectPropertySelector) {
+            let listener: SettingsAudioPropertyListenerBlock = { _, _ in
+              debounceDeviceUpdate()
+            }
+            var address = audioPropertyAddress(selector)
+            let status = AudioObjectAddPropertyListenerBlock(
+              AudioObjectID(kAudioObjectSystemObject),
+              &address,
+              DispatchQueue.main,
+              listener
+            )
+
+            if status == noErr {
+              audioHardwareObservers.append((selector, listener))
+            } else {
+              settingsLogger.error("Failed to observe audio hardware selector \(selector): \(status)")
+            }
+          }
+
           let deviceConnectionObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name(rawValue: "AVCaptureDeviceWasConnected"),
             object: nil,
@@ -272,12 +306,46 @@ struct SettingsFeature {
           ) { _ in
             debounceDeviceUpdate()
           }
-          
+
+          let appDidBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+          ) { _ in
+            debounceDeviceUpdate()
+          }
+
+          let wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+          ) { _ in
+            debounceDeviceUpdate()
+          }
+
+          installAudioHardwareObserver(kAudioHardwarePropertyDefaultInputDevice)
+          installAudioHardwareObserver(kAudioHardwarePropertyDevices)
+
           // Be sure to clean up resources when the task is finished
           defer {
             deviceUpdateTask?.cancel()
             NotificationCenter.default.removeObserver(deviceConnectionObserver)
             NotificationCenter.default.removeObserver(deviceDisconnectionObserver)
+            NotificationCenter.default.removeObserver(appDidBecomeActiveObserver)
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+
+            for (selector, listener) in audioHardwareObservers {
+              var address = audioPropertyAddress(selector)
+              let status = AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                DispatchQueue.main,
+                listener
+              )
+              if status != noErr {
+                settingsLogger.error("Failed to remove audio hardware observer for selector \(selector): \(status)")
+              }
+            }
           }
 
           for try await keyEvent in await keyEventMonitor.listenForKeyPress() {

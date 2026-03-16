@@ -316,12 +316,23 @@ actor RecordingClientLive {
     let listener: CoreAudioPropertyListenerBlock
   }
 
+  private enum RecordingBackend: String {
+    case captureEngine = "capture-engine"
+    case recorderFallback = "recorder-fallback"
+  }
+
+  private struct ActiveRecordingSession {
+    let startedAt: Date
+    let mode: CaptureRecordingMode
+    let backend: RecordingBackend
+  }
+
   private var recorder: AVAudioRecorder?
   private let recordingURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
   private var isRecorderPrimedForNextSession = false
   private var lastPrimedDeviceID: AudioDeviceID?
   private var recordingSessionID: UUID?
-  private var currentRecordingStartedAt: Date?
+  private var activeRecordingSession: ActiveRecordingSession?
   private var lastRecordingEndedAt: Date?
   private var deferredCaptureRestartReason: String?
   private var environmentChangeDebounceTask: Task<Void, Never>?
@@ -337,8 +348,8 @@ actor RecordingClientLive {
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
-  private lazy var superFastCapture = SuperFastCaptureController(meterContinuation: meterContinuation)
-  private var superFastCaptureDeviceID: AudioDeviceID?
+  private lazy var captureController = SuperFastCaptureController(meterContinuation: meterContinuation)
+  private var captureControllerDeviceID: AudioDeviceID?
   private var notificationObservers: [NSObjectProtocol] = []
   private var audioHardwareObservers: [AudioHardwareObserver] = []
   private var isObservingSystemChanges = false
@@ -550,11 +561,11 @@ actor RecordingClientLive {
     let currentInputDevice = getDefaultInputDevice()
     let currentOutputDevice = getDefaultOutputDevice()
     let isRecorderRecording = recorder?.isRecording == true
-    let isSuperFastRecording = superFastCapture.isRecording
-    let isRecordingActive = isRecorderRecording || isSuperFastRecording
+    let isEngineRecording = captureController.isRecording
+    let isRecordingActive = isRecorderRecording || isEngineRecording
 
     recordingLogger.notice(
-      "Capture environment changed reason=\(reason) activeRecording=\(isRecordingActive) input=\(self.describeDevice(currentInputDevice)) output=\(self.describeDevice(currentOutputDevice)) superFastArmed=\(self.superFastCapture.isRunning) primed=\(self.isRecorderPrimedForNextSession)"
+      "Capture environment changed reason=\(reason) activeRecording=\(isRecordingActive) input=\(self.describeDevice(currentInputDevice)) output=\(self.describeDevice(currentOutputDevice)) captureEngineArmed=\(self.captureController.isRunning) primed=\(self.isRecorderPrimedForNextSession)"
     )
 
     if isRecordingActive {
@@ -570,18 +581,18 @@ actor RecordingClientLive {
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "environment-change-\(reason)")
       do {
-        try ensureSuperFastCaptureReady(
+        try ensureCaptureControllerReady(
           for: activeInputDevice,
           reason: reason,
           forceRestart: forceRestart
         )
       } catch {
-        recordingLogger.error("Failed to restart super fast capture after \(reason): \(error.localizedDescription)")
+        recordingLogger.error("Failed to restart capture engine after \(reason): \(error.localizedDescription)")
       }
       return
     }
 
-    stopSuperFastCapture(reason: reason)
+    stopCaptureController(reason: reason)
     let shouldReprimeRecorder = recorder != nil || isRecorderPrimedForNextSession
     releaseRecorder(reason: "environment-change-\(reason)")
 
@@ -795,12 +806,16 @@ actor RecordingClientLive {
     return "unknown [\(deviceID)]"
   }
 
-  private func logRecordingStartRequest(mode: String, inputDeviceID: AudioDeviceID?) {
+  private func logRecordingStartRequest(mode: CaptureRecordingMode, inputDeviceID: AudioDeviceID?) {
     let idleDuration = lastRecordingEndedAt.map { Date().timeIntervalSince($0) }
     let outputDeviceID = getDefaultOutputDevice()
     recordingLogger.notice(
-      "Recording requested mode=\(mode) idle=\(self.formatDuration(idleDuration)) input=\(self.describeDevice(inputDeviceID)) output=\(self.describeDevice(outputDeviceID)) primed=\(self.isRecorderPrimedForNextSession)"
+      "Recording requested mode=\(mode.rawValue) idle=\(self.formatDuration(idleDuration)) input=\(self.describeDevice(inputDeviceID)) output=\(self.describeDevice(outputDeviceID)) fallbackPrimed=\(self.isRecorderPrimedForNextSession)"
     )
+  }
+
+  private func currentCaptureMode() -> CaptureRecordingMode {
+    hexSettings.superFastModeEnabled ? .superFast : .standard
   }
 
   @discardableResult
@@ -828,29 +843,32 @@ actor RecordingClientLive {
     return getDefaultInputDevice()
   }
 
-  private func makeSuperFastRecordingURL() -> URL {
-    FileManager.default.temporaryDirectory.appendingPathComponent("hex-super-fast-\(UUID().uuidString).wav")
+  private func makeCaptureRecordingURL() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("hex-capture-\(UUID().uuidString).wav")
   }
 
-  private func ensureSuperFastCaptureReady(
+  private func ensureCaptureControllerReady(
     for deviceID: AudioDeviceID?,
     reason: String,
     forceRestart: Bool = false
   ) throws {
-    if forceRestart || superFastCaptureDeviceID != deviceID {
+    if forceRestart || captureControllerDeviceID != deviceID {
       recordingLogger.notice(
-        "Restarting super fast capture reason=\(reason) previousInput=\(self.describeDevice(self.superFastCaptureDeviceID)) newInput=\(self.describeDevice(deviceID)) force=\(forceRestart)"
+        "Restarting capture engine reason=\(reason) previousInput=\(self.describeDevice(self.captureControllerDeviceID)) newInput=\(self.describeDevice(deviceID)) force=\(forceRestart)"
       )
-      stopSuperFastCapture(reason: forceRestart ? "restart-\(reason)" : "input-device-changed")
+      stopCaptureController(reason: forceRestart ? "restart-\(reason)" : "input-device-changed")
     }
 
-    try superFastCapture.startIfNeeded(reason: reason)
-    superFastCaptureDeviceID = deviceID
+    try captureController.startIfNeeded(
+      reason: reason,
+      keepWarmBuffer: currentCaptureMode().keepsWarmBuffer
+    )
+    captureControllerDeviceID = deviceID
   }
 
-  private func stopSuperFastCapture(reason: String) {
-    superFastCapture.stop(reason: reason)
-    superFastCaptureDeviceID = nil
+  private func stopCaptureController(reason: String) {
+    captureController.stop(reason: reason)
+    captureControllerDeviceID = nil
   }
 
   private func releaseRecorder(reason: String) {
@@ -1064,24 +1082,27 @@ actor RecordingClientLive {
     }
 
     let activeInputDevice = applyPreferredInputDevice()
-    let mode = hexSettings.superFastModeEnabled ? "super-fast" : "standard"
+    let mode = currentCaptureMode()
     logRecordingStartRequest(mode: mode, inputDeviceID: activeInputDevice)
     let startRequestAt = Date()
 
-    if hexSettings.superFastModeEnabled {
-      do {
-        try ensureSuperFastCaptureReady(for: activeInputDevice, reason: "startRecording")
-        let recordingURL = makeSuperFastRecordingURL()
-        try superFastCapture.beginRecording(to: recordingURL, requestedAt: startRequestAt)
-        currentRecordingStartedAt = Date()
-        recordingLogger.notice(
-          "Super fast recording started startup=\(self.formatDuration(self.currentRecordingStartedAt?.timeIntervalSince(startRequestAt)))"
-        )
-        return
-      } catch {
-        recordingLogger.error("Failed to start super fast capture: \(error.localizedDescription); falling back to AVAudioRecorder")
-        stopSuperFastCapture(reason: "super-fast-start-failed")
-      }
+    do {
+      try ensureCaptureControllerReady(for: activeInputDevice, reason: "startRecording")
+      let recordingURL = makeCaptureRecordingURL()
+      try captureController.beginRecording(to: recordingURL, requestedAt: startRequestAt, mode: mode)
+      let startedAt = Date()
+      activeRecordingSession = ActiveRecordingSession(
+        startedAt: startedAt,
+        mode: mode,
+        backend: .captureEngine
+      )
+      recordingLogger.notice(
+        "Recording started mode=\(mode.rawValue) backend=\(RecordingBackend.captureEngine.rawValue) startup=\(self.formatDuration(startedAt.timeIntervalSince(startRequestAt)))"
+      )
+      return
+    } catch {
+      recordingLogger.error("Failed to start capture engine for mode=\(mode.rawValue): \(error.localizedDescription); falling back to AVAudioRecorder")
+      stopCaptureController(reason: "capture-engine-start-failed")
     }
 
     do {
@@ -1092,48 +1113,67 @@ actor RecordingClientLive {
         endRecordingSession()
         return
       }
-      currentRecordingStartedAt = Date()
+      let startedAt = Date()
+      activeRecordingSession = ActiveRecordingSession(
+        startedAt: startedAt,
+        mode: mode,
+        backend: .recorderFallback
+      )
       startMeterTask()
       recordingLogger.notice(
-        "Recording started recordCall=\(self.formatDuration(Date().timeIntervalSince(recordCallStartedAt))) totalStart=\(self.formatDuration(self.currentRecordingStartedAt?.timeIntervalSince(startRequestAt)))"
+        "Recording started mode=\(mode.rawValue) backend=\(RecordingBackend.recorderFallback.rawValue) recordCall=\(self.formatDuration(Date().timeIntervalSince(recordCallStartedAt))) totalStart=\(self.formatDuration(startedAt.timeIntervalSince(startRequestAt)))"
       )
     } catch {
       recordingLogger.error("Failed to start recording: \(error.localizedDescription)")
+      clearActiveRecordingMetadata()
       endRecordingSession()
     }
   }
 
   func stopRecording() async -> URL {
-    if let superFastURL = superFastCapture.finishRecording() {
+    let activeSession = activeRecordingSession
+
+    if let captureURL = captureController.finishRecording(clearBuffer: currentCaptureMode() == .superFast) {
       let stoppedAt = Date()
-      let recordingDuration = currentRecordingStartedAt.map { stoppedAt.timeIntervalSince($0) }
+      let session = activeSession ?? ActiveRecordingSession(
+        startedAt: stoppedAt,
+        mode: currentCaptureMode(),
+        backend: .captureEngine
+      )
+      let recordingDuration = stoppedAt.timeIntervalSince(session.startedAt)
       stopMeterTask()
       endRecordingSession()
-      currentRecordingStartedAt = nil
+      clearActiveRecordingMetadata()
       lastRecordingEndedAt = stoppedAt
       recordingLogger.notice(
-        "Super fast recording stopped duration=\(self.formatDuration(recordingDuration))"
+        "Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))"
       )
 
       if !hexSettings.superFastModeEnabled {
-        stopSuperFastCapture(reason: "mode-disabled-after-stop")
+        stopCaptureController(reason: "mode-disabled-after-stop")
+        releaseRecorder(reason: "capture-engine-stop")
       }
 
       await flushDeferredCaptureRestartIfNeeded()
       await resumeMediaIfNeeded()
-      return superFastURL
+      return captureURL
     }
 
     let stoppedAt = Date()
-    let recordingDuration = currentRecordingStartedAt.map { stoppedAt.timeIntervalSince($0) }
+    let session = activeSession ?? ActiveRecordingSession(
+      startedAt: stoppedAt,
+      mode: currentCaptureMode(),
+      backend: .recorderFallback
+    )
+    let recordingDuration = stoppedAt.timeIntervalSince(session.startedAt)
     let wasRecording = recorder?.isRecording == true
     recorder?.stop()
     stopMeterTask()
     endRecordingSession()
-    currentRecordingStartedAt = nil
+    clearActiveRecordingMetadata()
     lastRecordingEndedAt = stoppedAt
     if wasRecording {
-      recordingLogger.notice("Recording stopped duration=\(self.formatDuration(recordingDuration))")
+      recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
     } else {
       recordingLogger.notice("stopRecording() called while recorder was idle")
     }
@@ -1150,15 +1190,17 @@ actor RecordingClientLive {
 
     if didCopyRecording {
       do {
-        try primeRecorderForNextSession()
+        if session.backend == .recorderFallback {
+          try primeRecorderForNextSession()
+        }
       } catch {
         isRecorderPrimedForNextSession = false
-        recordingLogger.error("Failed to prime recorder: \(error.localizedDescription)")
+        recordingLogger.error("Failed to prime recorder fallback: \(error.localizedDescription)")
       }
     }
 
     if !hexSettings.superFastModeEnabled {
-      stopSuperFastCapture(reason: "standard-stop")
+      stopCaptureController(reason: "standard-stop")
     }
 
     await flushDeferredCaptureRestartIfNeeded()
@@ -1218,6 +1260,10 @@ actor RecordingClientLive {
     recordingSessionID = nil
     mediaControlTask?.cancel()
     mediaControlTask = nil
+  }
+
+  private func clearActiveRecordingMetadata() {
+    activeRecordingSession = nil
   }
 
   private func invalidatePrimedState() {
@@ -1366,27 +1412,23 @@ actor RecordingClientLive {
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "warm-up-super-fast")
       do {
-        try ensureSuperFastCaptureReady(for: activeInputDevice, reason: "warmUpRecorder")
+        try ensureCaptureControllerReady(for: activeInputDevice, reason: "warmUpRecorder")
       } catch {
-        recordingLogger.error("Failed to arm super fast capture: \(error.localizedDescription)")
+        recordingLogger.error("Failed to arm capture engine for super fast mode: \(error.localizedDescription)")
       }
       return
     }
 
-    stopSuperFastCapture(reason: "warm-up-standard")
-
-    do {
-      try primeRecorderForNextSession()
-    } catch {
-      recordingLogger.error("Failed to warm up recorder: \(error.localizedDescription)")
-    }
+    stopCaptureController(reason: "warm-up-standard")
+    releaseRecorder(reason: "warm-up-standard")
+    recordingLogger.debug("Standard mode uses on-demand capture engine startup; skipping idle recorder priming")
   }
 
   /// Release recorder resources. Call on app termination.
   func cleanup() {
     endRecordingSession()
     stopObservingSystemChanges()
-    stopSuperFastCapture(reason: "cleanup")
+    stopCaptureController(reason: "cleanup")
     releaseRecorder(reason: "cleanup")
     recordingLogger.notice("RecordingClient cleaned up")
   }
