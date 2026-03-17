@@ -203,7 +203,7 @@ private extension TranscriptionFeature {
 
           case .stopRecording:
             Task { await send(.hotKeyReleased) }
-            return false // or `true` if you want to intercept
+            return true // Intercept to prevent Option key from printing special characters
 
           case .cancel:
             Task { await send(.cancel) }
@@ -217,7 +217,7 @@ private extension TranscriptionFeature {
             // If we detect repeated same chord, maybe intercept.
             if let pressedKey = keyEvent.key,
                pressedKey == hotKeyProcessor.hotkey.key,
-               keyEvent.modifiers == hotKeyProcessor.hotkey.modifiers
+               keyEvent.modifiers.matchesExactly(hotKeyProcessor.hotkey.modifiers)
             {
               return true
             }
