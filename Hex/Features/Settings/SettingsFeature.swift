@@ -24,6 +24,10 @@ extension SharedReaderKey
   static var isRemappingScratchpadFocused: Self {
     Self[.inMemory("isRemappingScratchpadFocused"), default: false]
   }
+
+  static var isConfirmingCancel: Self {
+    Self[.inMemory("isConfirmingCancel"), default: false]
+  }
 }
 
 // MARK: - Settings Feature

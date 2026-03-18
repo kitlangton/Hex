@@ -22,6 +22,7 @@ struct TranscriptionFeature {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
+    @Shared(.isConfirmingCancel) var isConfirmingCancel: Bool = false
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
@@ -46,8 +47,10 @@ struct TranscriptionFeature {
     case stopRecording
 
     // Cancel/discard flow
-    case cancel   // Explicit cancellation with sound
-    case discard  // Silent discard (too short/accidental)
+    case cancel              // Explicit cancellation with sound (first ESC shows confirmation)
+    case confirmCancel       // User confirmed destruction (second ESC or "Destroy" button)
+    case dismissCancelConfirm // User chose "Continue Recording"
+    case discard             // Silent discard (too short/accidental)
 
     // Transcription result flow
     case transcriptionResult(String, URL)
@@ -116,9 +119,11 @@ struct TranscriptionFeature {
       // MARK: - Transcription Results
 
       case let .transcriptionResult(result, audioURL):
+        state.$isConfirmingCancel.withLock { $0 = false }
         return handleTranscriptionResult(&state, result: result, audioURL: audioURL)
 
       case let .transcriptionError(error, audioURL):
+        state.$isConfirmingCancel.withLock { $0 = false }
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
 
       case .modelMissing:
@@ -131,9 +136,29 @@ struct TranscriptionFeature {
         guard state.isRecording || state.isTranscribing else {
           return .none
         }
-        return handleCancel(&state)
+        // If already showing confirmation, treat as second ESC → actually destroy
+        if state.isConfirmingCancel {
+          return handleConfirmedCancel(&state)
+        }
+        // First ESC: show confirmation dialog, play warning sound
+        state.$isConfirmingCancel.withLock { $0 = true }
+        return .run { [soundEffect] _ in
+          soundEffect.play(.cancelWarning)
+        }
+
+      case .confirmCancel:
+        guard state.isRecording || state.isTranscribing else {
+          state.$isConfirmingCancel.withLock { $0 = false }
+          return .none
+        }
+        return handleConfirmedCancel(&state)
+
+      case .dismissCancelConfirm:
+        state.$isConfirmingCancel.withLock { $0 = false }
+        return .none
 
       case .discard:
+        state.$isConfirmingCancel.withLock { $0 = false }
         // Silent discard for quick/accidental recordings
         guard state.isRecording else {
           return .none
@@ -162,6 +187,7 @@ private extension TranscriptionFeature {
     .run { send in
       var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+      @Shared(.isConfirmingCancel) var isConfirmingCancel: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
@@ -186,6 +212,14 @@ private extension TranscriptionFeature {
           {
             Task { await send(.cancel) }
             return false
+          }
+
+          // If "C" is pressed with no modifiers while confirming cancel, continue recording.
+          if keyEvent.key == .c, keyEvent.modifiers.isEmpty,
+             isConfirmingCancel
+          {
+            Task { await send(.dismissCancelConfirm) }
+            return true
           }
 
           // Process the key event
@@ -278,6 +312,10 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
+    // If already recording (e.g., after ESC + Continue), treat as stop
+    if state.isRecording {
+      return .send(.stopRecording)
+    }
     guard state.modelBootstrapState.isModelReady else {
       return .merge(
         .send(.modelMissing),
@@ -520,7 +558,8 @@ private extension TranscriptionFeature {
 // MARK: - Cancel/Discard Handlers
 
 private extension TranscriptionFeature {
-  func handleCancel(_ state: inout State) -> Effect<Action> {
+  func handleConfirmedCancel(_ state: inout State) -> Effect<Action> {
+    state.$isConfirmingCancel.withLock { $0 = false }
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
@@ -571,10 +610,24 @@ struct TranscriptionView: View {
   }
 
   var body: some View {
-    TranscriptionIndicatorView(
-      status: status,
-      meter: store.meter
-    )
+    VStack(spacing: 12) {
+      TranscriptionIndicatorView(
+        status: status,
+        meter: store.meter
+      )
+
+      if store.isConfirmingCancel {
+        CancelConfirmationView(
+          onDestroy: { store.send(.confirmCancel) },
+          onContinue: { store.send(.dismissCancelConfirm) }
+        )
+        .transition(.asymmetric(
+          insertion: .scale(scale: 0.8).combined(with: .opacity),
+          removal: .scale(scale: 0.9).combined(with: .opacity)
+        ))
+      }
+    }
+    .animation(.bouncy(duration: 0.25), value: store.isConfirmingCancel)
     .task {
       await store.send(.task).finish()
     }
