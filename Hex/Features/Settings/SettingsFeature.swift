@@ -13,6 +13,7 @@ private let settingsLogger = HexLog.settings
 private enum HotKeyCaptureTarget {
   case recording
   case pasteLastTranscript
+  case cycleTone
 }
 
 extension SharedReaderKey
@@ -29,6 +30,10 @@ extension SharedReaderKey
   static var isRemappingScratchpadFocused: Self {
     Self[.inMemory("isRemappingScratchpadFocused"), default: false]
   }
+
+  static var isSettingCycleToneHotkey: Self {
+    Self[.inMemory("isSettingCycleToneHotkey"), default: false]
+  }
 }
 
 // MARK: - Settings Feature
@@ -41,12 +46,14 @@ struct SettingsFeature {
     @Shared(.isSettingHotKey) var isSettingHotKey: Bool = false
     @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool = false
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
+    @Shared(.isSettingCycleToneHotkey) var isSettingCycleToneHotkey: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
     @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
 
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
     var currentPasteLastModifiers: Modifiers = .init(modifiers: [])
+    var currentCycleToneModifiers: Modifiers = .init(modifiers: [])
     var remappingScratchpadText: String = ""
     
     // Available microphones
@@ -67,11 +74,14 @@ struct SettingsFeature {
     case startSettingHotKey
     case startSettingPasteLastTranscriptHotkey
     case clearPasteLastTranscriptHotkey
+    case startSettingCycleToneHotkey
+    case clearCycleToneHotkey
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
     case toggleShowDockIcon(Bool)
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
+    case setGeminiAPIKey(String?)
     case toggleSuperFastMode(Bool)
 
     // Permission delegation (forwarded to AppFeature)
@@ -123,6 +133,9 @@ struct SettingsFeature {
     case .pasteLastTranscript:
       state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = true }
       state.currentPasteLastModifiers = .init(modifiers: [])
+    case .cycleTone:
+      state.$isSettingCycleToneHotkey.withLock { $0 = true }
+      state.currentCycleToneModifiers = .init(modifiers: [])
     }
   }
 
@@ -134,6 +147,9 @@ struct SettingsFeature {
     case .pasteLastTranscript:
       state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
       state.currentPasteLastModifiers = .init(modifiers: [])
+    case .cycleTone:
+      state.$isSettingCycleToneHotkey.withLock { $0 = false }
+      state.currentCycleToneModifiers = .init(modifiers: [])
     }
   }
 
@@ -143,6 +159,8 @@ struct SettingsFeature {
       state.currentModifiers
     case .pasteLastTranscript:
       state.currentPasteLastModifiers
+    case .cycleTone:
+      state.currentCycleToneModifiers
     }
   }
 
@@ -152,6 +170,8 @@ struct SettingsFeature {
       state.currentModifiers = modifiers
     case .pasteLastTranscript:
       state.currentPasteLastModifiers = modifiers
+    case .cycleTone:
+      state.currentCycleToneModifiers = modifiers
     }
   }
 
@@ -167,6 +187,11 @@ struct SettingsFeature {
       state.$hexSettings.withLock {
         $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
       }
+    case .cycleTone:
+      guard let key else { return }
+      state.$hexSettings.withLock {
+        $0.cycleToneHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
+      }
     }
   }
 
@@ -179,7 +204,7 @@ struct SettingsFeature {
     let updatedModifiers = keyEvent.modifiers.union(captureModifiers(for: target, state: state))
     updateCaptureModifiers(updatedModifiers, for: target, state: &state)
 
-    if target == .pasteLastTranscript, keyEvent.key != nil, updatedModifiers.isEmpty {
+    if (target == .pasteLastTranscript || target == .cycleTone), keyEvent.key != nil, updatedModifiers.isEmpty {
       return .none
     }
 
@@ -322,12 +347,24 @@ struct SettingsFeature {
       case .startSettingPasteLastTranscriptHotkey:
         beginCapture(.pasteLastTranscript, state: &state)
         return .none
-        
+
       case .clearPasteLastTranscriptHotkey:
         state.$hexSettings.withLock { $0.pasteLastTranscriptHotkey = nil }
         return .none
 
+      case .startSettingCycleToneHotkey:
+        beginCapture(.cycleTone, state: &state)
+        return .none
+
+      case .clearCycleToneHotkey:
+        state.$hexSettings.withLock { $0.cycleToneHotkey = nil }
+        return .none
+
       case let .keyEvent(keyEvent):
+        if state.isSettingCycleToneHotkey {
+          return handleCapture(keyEvent, for: .cycleTone, state: &state)
+        }
+
         if state.isSettingPasteLastTranscriptHotkey {
           return handleCapture(keyEvent, for: .pasteLastTranscript, state: &state)
         }
@@ -359,6 +396,10 @@ struct SettingsFeature {
 
       case let .setRecordingAudioBehavior(behavior):
         state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
+        return .none
+
+      case let .setGeminiAPIKey(key):
+        state.$hexSettings.withLock { $0.geminiAPIKey = key }
         return .none
 
       case let .toggleSuperFastMode(enabled):

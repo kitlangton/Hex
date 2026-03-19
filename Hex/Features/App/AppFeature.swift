@@ -10,6 +10,7 @@ import ComposableArchitecture
 import Dependencies
 import HexCore
 import SwiftUI
+import UserNotifications
 
 @Reducer
 struct AppFeature {
@@ -43,6 +44,7 @@ struct AppFeature {
     case setActiveTab(ActiveTab)
     case task
     case pasteLastTranscript
+    case cycleTone
 
     // Permission actions
     case checkPermissions
@@ -82,6 +84,7 @@ struct AppFeature {
       case .task:
         return .merge(
           startPasteLastTranscriptMonitoring(),
+          startToneCycleMonitoring(),
           ensureSelectedModelReadiness(),
           startPermissionMonitoring()
         )
@@ -93,6 +96,19 @@ struct AppFeature {
         }
         return .run { _ in
           await pasteboard.paste(lastTranscript)
+        }
+
+      case .cycleTone:
+        let currentTone = state.settings.hexSettings.refinementTone
+        let mode = state.settings.hexSettings.refinementMode
+        let validTones: [RefinementTone] = mode == .summarized
+          ? [.natural, .professional, .concise]
+          : RefinementTone.allCases
+        let currentIndex = validTones.firstIndex(of: currentTone) ?? 0
+        let nextTone = validTones[(currentIndex + 1) % validTones.count]
+        state.settings.$hexSettings.withLock { $0.refinementTone = nextTone }
+        return .run { _ in
+          await Self.showToneNotification(nextTone)
         }
         
       case .transcription(.modelMissing):
@@ -173,6 +189,29 @@ struct AppFeature {
     }
   }
   
+  @MainActor
+  private static func showToneNotification(_ tone: RefinementTone) {
+    let label: String = switch tone {
+    case .natural: "Natural"
+    case .professional: "Professional"
+    case .casual: "Casual"
+    case .concise: "Concise"
+    case .friendly: "Friendly"
+    }
+
+    let content = UNMutableNotificationContent()
+    content.title = "Hex Tone"
+    content.body = label
+    content.sound = nil
+
+    let request = UNNotificationRequest(
+      identifier: "hex-tone-cycle",
+      content: content,
+      trigger: nil
+    )
+    UNUserNotificationCenter.current().add(request)
+  }
+
   private func startPasteLastTranscriptMonitoring() -> Effect<Action> {
     .run { send in
       @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
@@ -197,6 +236,40 @@ struct AppFeature {
           send(.pasteLastTranscript)
         }
         return true // Intercept the key event
+      }
+
+      defer { token.cancel() }
+
+      await withTaskCancellationHandler {
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(60))
+        }
+      } onCancel: {
+        token.cancel()
+      }
+    }
+  }
+
+  /// Monitors the user-configured hotkey for cycling refinement tones.
+  private func startToneCycleMonitoring() -> Effect<Action> {
+    .run { send in
+      @Shared(.isSettingCycleToneHotkey) var isSettingCycleToneHotkey: Bool
+      @Shared(.hexSettings) var hexSettings: HexSettings
+
+      let token = keyEventMonitor.handleKeyEvent { keyEvent in
+        if isSettingCycleToneHotkey { return false }
+
+        guard let toneHotkey = hexSettings.cycleToneHotkey,
+              let key = keyEvent.key,
+              key == toneHotkey.key,
+              keyEvent.modifiers.matchesExactly(toneHotkey.modifiers) else {
+          return false
+        }
+
+        MainActor.assumeIsolated {
+          send(.cycleTone)
+        }
+        return true
       }
 
       defer { token.cancel() }

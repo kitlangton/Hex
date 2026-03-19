@@ -21,6 +21,7 @@ struct TranscriptionFeature {
   struct State {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
+    var isRefining: Bool = false
     var isPrewarming: Bool = false
     var error: String?
     var recordingStartTime: Date?
@@ -51,6 +52,7 @@ struct TranscriptionFeature {
 
     // Transcription result flow
     case transcriptionResult(String, URL)
+    case transcriptionCompleted
     case transcriptionError(Error, URL?)
 
     // Model availability
@@ -70,6 +72,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.refinement) var refinement
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -118,6 +121,12 @@ struct TranscriptionFeature {
       case let .transcriptionResult(result, audioURL):
         return handleTranscriptionResult(&state, result: result, audioURL: audioURL)
 
+      case .transcriptionCompleted:
+        state.isRefining = false
+        state.isTranscribing = false
+        state.isPrewarming = false
+        return .none
+
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
 
@@ -128,7 +137,7 @@ struct TranscriptionFeature {
 
       case .cancel:
         // Only cancel if we're in the middle of recording, transcribing, or post-processing
-        guard state.isRecording || state.isTranscribing else {
+        guard state.isRecording || state.isTranscribing || state.isRefining else {
           return .none
         }
         return handleCancel(&state)
@@ -438,20 +447,64 @@ private extension TranscriptionFeature {
       return .none
     }
 
+    let refinementMode = state.hexSettings.refinementMode
+    let refinementTone = state.hexSettings.refinementTone
+    let refinementProvider = state.hexSettings.refinementProvider
+    let geminiAPIKey = state.hexSettings.geminiAPIKey
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
 
-    return .run { send in
+    if refinementMode != .raw {
+      state.isRefining = true
+    }
+
+    let supportsUndo = !TerminalAppDetector.isTerminal(sourceAppBundleID)
+
+    return .run { [refinement, pasteboard] send in
       do {
-        try await finalizeRecordingAndStoreTranscript(
-          result: modifiedResult,
+        let finalText: String
+        if refinementMode != .raw {
+          // Paste placeholder at cursor while refining (skip for terminal apps)
+          let placeholder = refinementMode == .refined ? "Refining\u{2026}" : "Summarizing\u{2026}"
+          if supportsUndo {
+            await pasteboard.paste(placeholder)
+          }
+
+          finalText = try await refinement.refine(modifiedResult, refinementMode, refinementTone, refinementProvider, geminiAPIKey)
+
+          guard !finalText.isEmpty else {
+            if supportsUndo {
+              await pasteboard.undoAndReplace("")
+            }
+            await send(.transcriptionCompleted)
+            return
+          }
+
+          if supportsUndo {
+            await pasteboard.undoAndReplace(finalText)
+          } else {
+            await pasteboard.paste(finalText)
+          }
+        } else {
+          finalText = modifiedResult
+          guard !finalText.isEmpty else {
+            await send(.transcriptionCompleted)
+            return
+          }
+          await pasteboard.paste(finalText)
+        }
+        soundEffect.play(.pasteTranscript)
+
+        try await storeTranscript(
+          result: finalText,
           duration: duration,
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,
           audioURL: audioURL,
           transcriptionHistory: transcriptionHistory
         )
+        await send(.transcriptionCompleted)
       } catch {
         await send(.transcriptionError(error, audioURL))
       }
@@ -465,9 +518,10 @@ private extension TranscriptionFeature {
     audioURL: URL?
   ) -> Effect<Action> {
     state.isTranscribing = false
+    state.isRefining = false
     state.isPrewarming = false
     state.error = error.localizedDescription
-    
+
     if let audioURL {
       try? FileManager.default.removeItem(at: audioURL)
     }
@@ -475,8 +529,8 @@ private extension TranscriptionFeature {
     return .none
   }
 
-  /// Move file to permanent location, create a transcript record, paste text, and play sound.
-  func finalizeRecordingAndStoreTranscript(
+  /// Persist the transcript to history storage.
+  func storeTranscript(
     result: String,
     duration: TimeInterval,
     sourceAppBundleID: String?,
@@ -511,9 +565,6 @@ private extension TranscriptionFeature {
     } else {
       try? FileManager.default.removeItem(at: audioURL)
     }
-
-    await pasteboard.paste(result)
-    soundEffect.play(.pasteTranscript)
   }
 }
 
@@ -522,6 +573,7 @@ private extension TranscriptionFeature {
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
     state.isTranscribing = false
+    state.isRefining = false
     state.isRecording = false
     state.isPrewarming = false
 
@@ -559,7 +611,9 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing {
+    if store.isRefining {
+      return .refining
+    } else if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording
