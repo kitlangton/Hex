@@ -4,39 +4,64 @@ import Foundation
 public enum RefinementTextProcessor {
 
 	/// Remove leaked prompt artifacts from model output.
+	/// Only strips "Text:" if it appears at the start (matching our prompt format).
 	public static func stripLeakedTags(_ text: String) -> String {
-		text.replacingOccurrences(of: "Text:", with: "")
+		var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
+		if result.hasPrefix("Text:") {
+			result = String(result.dropFirst(5))
+		}
+		return result
 			.trimmingCharacters(in: .whitespacesAndNewlines)
 			.trimmingCharacters(in: .init(charactersIn: "\""))
 			.trimmingCharacters(in: .whitespacesAndNewlines)
 	}
 
 	/// Strip conversational preamble/postamble that models sometimes add.
+	/// Only strips lines that are purely preamble — short throwaway lines, not substantive content.
 	public static func stripPreamble(_ text: String) -> String {
 		var lines = text.components(separatedBy: "\n")
 
+		// Strip leading lines that are purely preamble (short, no real content)
 		while let first = lines.first {
 			let trimmed = first.trimmingCharacters(in: .whitespaces)
-			if trimmed.isEmpty
-				|| trimmed == "---"
-				|| trimmed.lowercased().hasPrefix("certainly")
-				|| trimmed.lowercased().hasPrefix("sure")
-				|| trimmed.lowercased().hasPrefix("here's")
-				|| trimmed.lowercased().hasPrefix("here is")
-				|| trimmed.lowercased().hasPrefix("of course") {
+			let lowered = trimmed.lowercased()
+
+			// Only strip empty lines and separators unconditionally
+			if trimmed.isEmpty || trimmed == "---" {
+				lines.removeFirst()
+				continue
+			}
+
+			// Only strip preamble phrases if the line is short (< 80 chars)
+			// and ends with a colon or exclamation — indicating it's a throwaway intro
+			let isPreamblePhrase = lowered.hasPrefix("certainly")
+				|| lowered.hasPrefix("of course")
+			let isIntroLine = (lowered.hasPrefix("sure") || lowered.hasPrefix("here's") || lowered.hasPrefix("here is"))
+				&& (trimmed.hasSuffix(":") || trimmed.hasSuffix("!") || trimmed.hasSuffix("."))
+
+			if (isPreamblePhrase || isIntroLine) && trimmed.count < 80 {
 				lines.removeFirst()
 			} else {
 				break
 			}
 		}
 
+		// Strip trailing lines that are purely postamble
 		while let last = lines.last {
 			let trimmed = last.trimmingCharacters(in: .whitespaces)
-			if trimmed.isEmpty
-				|| trimmed == "---"
-				|| trimmed.lowercased().hasPrefix("let me know")
-				|| trimmed.lowercased().hasPrefix("feel free")
-				|| trimmed.lowercased().hasPrefix("i hope") {
+			let lowered = trimmed.lowercased()
+
+			if trimmed.isEmpty || trimmed == "---" {
+				lines.removeLast()
+				continue
+			}
+
+			// Only strip if the line is a standalone closing remark (short, < 80 chars)
+			let isPostamble = lowered.hasPrefix("let me know")
+				|| lowered.hasPrefix("feel free")
+				|| lowered.hasPrefix("i hope this helps")
+
+			if isPostamble && trimmed.count < 80 {
 				lines.removeLast()
 			} else {
 				break

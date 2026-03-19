@@ -110,6 +110,7 @@ struct AppFeature {
         return .run { _ in
           await Self.showToneNotification(nextTone)
         }
+
         
       case .transcription(.modelMissing):
         HexLog.app.notice("Model missing - activating app and switching to settings")
@@ -190,7 +191,16 @@ struct AppFeature {
   }
   
   @MainActor
-  private static func showToneNotification(_ tone: RefinementTone) {
+  private static func showToneNotification(_ tone: RefinementTone) async {
+    let center = UNUserNotificationCenter.current()
+
+    // Ensure notification permission is granted
+    let settings = await center.notificationSettings()
+    if settings.authorizationStatus == .notDetermined {
+      _ = try? await center.requestAuthorization(options: [.alert])
+    }
+    guard settings.authorizationStatus != .denied else { return }
+
     let label: String = switch tone {
     case .natural: "Natural"
     case .professional: "Professional"
@@ -209,7 +219,7 @@ struct AppFeature {
       content: content,
       trigger: nil
     )
-    UNUserNotificationCenter.current().add(request)
+    try? await center.add(request)
   }
 
   private func startPasteLastTranscriptMonitoring() -> Effect<Action> {

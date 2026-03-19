@@ -99,9 +99,8 @@ struct TranscriptionFeature {
       // MARK: - HotKey Flow
 
       case .hotKeyPressed:
-        // If we're transcribing, send a cancel first. Otherwise start recording immediately.
-        // We'll decide later (on release) whether to keep or discard the recording.
-        return handleHotKeyPressed(isTranscribing: state.isTranscribing)
+        // If we're transcribing or refining, send a cancel first. Otherwise start recording.
+        return handleHotKeyPressed(isBusy: state.isTranscribing || state.isRefining)
 
       case .hotKeyReleased:
         // If we're currently recording, then stop. Otherwise, just cancel
@@ -171,12 +170,13 @@ private extension TranscriptionFeature {
     .run { send in
       var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+      @Shared(.isSettingCycleToneHotkey) var isSettingCycleToneHotkey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
-        // Skip if the user is currently setting a hotkey
-        if isSettingHotKey {
+        // Skip if the user is currently setting any hotkey
+        if isSettingHotKey || isSettingCycleToneHotkey {
           return false
         }
 
@@ -270,9 +270,9 @@ private extension TranscriptionFeature {
 // MARK: - HotKey Press/Release Handlers
 
 private extension TranscriptionFeature {
-  func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
-    // If already transcribing, cancel first. Otherwise start recording immediately.
-    let maybeCancel = isTranscribing ? Effect.send(Action.cancel) : .none
+  func handleHotKeyPressed(isBusy: Bool) -> Effect<Action> {
+    // If already transcribing/refining, cancel first. Otherwise start recording immediately.
+    let maybeCancel = isBusy ? Effect.send(Action.cancel) : .none
     let startRecording = Effect.send(Action.startRecording)
     return .merge(maybeCancel, startRecording)
   }
@@ -460,6 +460,7 @@ private extension TranscriptionFeature {
     }
 
     return .run { [refinement, pasteboard] send in
+      var didPastePlaceholder = false
       do {
         let finalText: String
         if refinementMode != .raw {
@@ -473,20 +474,23 @@ private extension TranscriptionFeature {
           let placeholder = refinementMode == .refined ? "Refining\u{2026}" : "Summarizing\u{2026}"
           if supportsUndo {
             await pasteboard.paste(placeholder)
+            didPastePlaceholder = true
           }
 
           finalText = try await refinement.refine(modifiedResult, refinementMode, refinementTone, refinementProvider, geminiAPIKey)
 
           guard !finalText.isEmpty else {
-            if supportsUndo {
+            if didPastePlaceholder {
               await pasteboard.undoAndReplace("")
+              didPastePlaceholder = false
             }
             await send(.transcriptionCompleted)
             return
           }
 
-          if supportsUndo {
+          if didPastePlaceholder {
             await pasteboard.undoAndReplace(finalText)
+            didPastePlaceholder = false
           } else {
             await pasteboard.paste(finalText)
           }
@@ -510,6 +514,10 @@ private extension TranscriptionFeature {
         )
         await send(.transcriptionCompleted)
       } catch {
+        // Clean up placeholder if it was pasted before the error/cancellation
+        if didPastePlaceholder {
+          await pasteboard.undoAndReplace("")
+        }
         await send(.transcriptionError(error, audioURL))
       }
     }

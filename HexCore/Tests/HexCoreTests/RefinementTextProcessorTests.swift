@@ -6,21 +6,35 @@ final class RefinementTextProcessorTests: XCTestCase {
 	// MARK: - stripPreamble
 
 	func testStripPreambleRemovesCertainly() {
-		let input = "Certainly! Here's the corrected version:\n\nThe meeting is at 3pm."
+		let input = "Certainly!\n\nThe meeting is at 3pm."
 		let result = RefinementTextProcessor.stripPreamble(input)
 		XCTAssertEqual(result, "The meeting is at 3pm.")
 	}
 
-	func testStripPreambleRemovesSure() {
+	func testStripPreambleRemovesSureWithColon() {
 		let input = "Sure, here you go:\n\nThe meeting is at 3pm."
 		let result = RefinementTextProcessor.stripPreamble(input)
 		XCTAssertEqual(result, "The meeting is at 3pm.")
 	}
 
-	func testStripPreambleRemovesHeres() {
+	func testStripPreamblePreservesSureAsContent() {
+		// "Sure" as real dictation content — no colon/exclamation, not a throwaway
+		let input = "Sure I can handle that"
+		let result = RefinementTextProcessor.stripPreamble(input)
+		XCTAssertEqual(result, "Sure I can handle that")
+	}
+
+	func testStripPreambleRemovesHeresWithColon() {
 		let input = "Here's the cleaned text:\n---\nThe meeting is at 3pm."
 		let result = RefinementTextProcessor.stripPreamble(input)
 		XCTAssertEqual(result, "The meeting is at 3pm.")
+	}
+
+	func testStripPreamblePreservesHeresAsContent() {
+		// "Here's" as real content
+		let input = "Here's what I think about the project"
+		let result = RefinementTextProcessor.stripPreamble(input)
+		XCTAssertEqual(result, "Here's what I think about the project")
 	}
 
 	func testStripPreambleRemovesOfCourse() {
@@ -47,10 +61,17 @@ final class RefinementTextProcessorTests: XCTestCase {
 		XCTAssertEqual(result, "The meeting is at 3pm.")
 	}
 
-	func testStripPreambleRemovesPostambleIHope() {
+	func testStripPreambleRemovesPostambleIHopeThisHelps() {
 		let input = "The meeting is at 3pm.\nI hope this helps!"
 		let result = RefinementTextProcessor.stripPreamble(input)
 		XCTAssertEqual(result, "The meeting is at 3pm.")
+	}
+
+	func testStripPreamblePreservesIHopeAsContent() {
+		// "I hope" as real dictation — long substantive line
+		let input = "I hope we can finish the project by Friday and deliver it to the client on time"
+		let result = RefinementTextProcessor.stripPreamble(input)
+		XCTAssertEqual(result, input)
 	}
 
 	func testStripPreamblePreservesCleanText() {
@@ -73,15 +94,29 @@ final class RefinementTextProcessorTests: XCTestCase {
 	func testStripPreamblePreservesMultilineContent() {
 		let input = "First line of content.\nSecond line of content.\nThird line."
 		let result = RefinementTextProcessor.stripPreamble(input)
-		XCTAssertEqual(result, "First line of content.\nSecond line of content.\nThird line.")
+		XCTAssertEqual(result, input)
+	}
+
+	func testStripPreamblePreservesLongPreambleLikeLine() {
+		// A long line starting with "Sure" that's clearly real content
+		let input = "Sure enough the quarterly results exceeded expectations by a significant margin across all divisions"
+		let result = RefinementTextProcessor.stripPreamble(input)
+		XCTAssertEqual(result, input)
 	}
 
 	// MARK: - stripLeakedTags
 
-	func testStripLeakedTagsRemovesTextPrefix() {
+	func testStripLeakedTagsRemovesTextPrefixAtStart() {
 		let input = "Text: The meeting is at 3pm."
 		let result = RefinementTextProcessor.stripLeakedTags(input)
 		XCTAssertEqual(result, "The meeting is at 3pm.")
+	}
+
+	func testStripLeakedTagsPreservesTextInMiddle() {
+		// "Text:" appearing in the middle of content should NOT be stripped
+		let input = "The field is Text: something"
+		let result = RefinementTextProcessor.stripLeakedTags(input)
+		XCTAssertEqual(result, "The field is Text: something")
 	}
 
 	func testStripLeakedTagsRemovesQuotes() {
@@ -102,6 +137,12 @@ final class RefinementTextProcessorTests: XCTestCase {
 		XCTAssertEqual(result, "The meeting is at 3pm.")
 	}
 
+	func testStripLeakedTagsHandlesTextPrefixWithQuotes() {
+		let input = "Text: \"The meeting is at 3pm.\""
+		let result = RefinementTextProcessor.stripLeakedTags(input)
+		XCTAssertEqual(result, "The meeting is at 3pm.")
+	}
+
 	// MARK: - clean (full pipeline)
 
 	func testCleanCombinesPreambleAndTagStripping() {
@@ -114,6 +155,12 @@ final class RefinementTextProcessorTests: XCTestCase {
 		let input = "Text: \"The meeting is at 3pm.\""
 		let result = RefinementTextProcessor.clean(input)
 		XCTAssertEqual(result, "The meeting is at 3pm.")
+	}
+
+	func testCleanPreservesLegitimateContent() {
+		let input = "Sure enough the project went well"
+		let result = RefinementTextProcessor.clean(input)
+		XCTAssertEqual(result, input)
 	}
 
 	// MARK: - isRefusal
@@ -142,7 +189,7 @@ final class RefinementTextProcessorTests: XCTestCase {
 
 	func testIsOffScriptDetectsLongRefinedOutput() {
 		let input = "Short input."
-		let output = String(repeating: "a", count: input.count * 2) // 2x length
+		let output = String(repeating: "a", count: input.count * 2)
 		XCTAssertTrue(RefinementTextProcessor.isOffScript(output: output, input: input, mode: .refined))
 	}
 
@@ -154,7 +201,6 @@ final class RefinementTextProcessorTests: XCTestCase {
 
 	func testIsOffScriptStricterForSummarized() {
 		let input = "This is a fairly long input that should be summarized."
-		// 1.3x length — too long for summary but fine for refined
 		let output = String(repeating: "a", count: Int(Double(input.count) * 1.3))
 		XCTAssertTrue(RefinementTextProcessor.isOffScript(output: output, input: input, mode: .summarized))
 		XCTAssertFalse(RefinementTextProcessor.isOffScript(output: output, input: input, mode: .refined))
@@ -172,31 +218,26 @@ final class RefinementTextProcessorTests: XCTestCase {
 	}
 
 	func testIsOffScriptRawModeUsesRefinedThreshold() {
-		// .raw should never reach isOffScript, but if it does, it uses refined ratio
 		let input = "Short."
 		let output = String(repeating: "a", count: input.count * 2)
 		XCTAssertTrue(RefinementTextProcessor.isOffScript(output: output, input: input, mode: .raw))
 	}
 
-	// MARK: - isCancellation (Fix #2)
+	// MARK: - isCancellation
 
 	func testIsCancellationDetectsCancellationError() {
-		let error = CancellationError()
-		XCTAssertTrue(RefinementTextProcessor.isCancellation(error))
+		XCTAssertTrue(RefinementTextProcessor.isCancellation(CancellationError()))
 	}
 
 	func testIsCancellationReturnsFalseForOtherErrors() {
-		let error = NSError(domain: "test", code: 42)
-		XCTAssertFalse(RefinementTextProcessor.isCancellation(error))
+		XCTAssertFalse(RefinementTextProcessor.isCancellation(NSError(domain: "test", code: 42)))
 	}
 
 	func testIsCancellationReturnsFalseForURLError() {
-		let error = URLError(.timedOut)
-		XCTAssertFalse(RefinementTextProcessor.isCancellation(error))
+		XCTAssertFalse(RefinementTextProcessor.isCancellation(URLError(.timedOut)))
 	}
 
-	func testIsCancellationReturnsFalseForDecodingError() {
-		// A generic Swift error
+	func testIsCancellationReturnsFalseForCustomError() {
 		struct CustomError: Error {}
 		XCTAssertFalse(RefinementTextProcessor.isCancellation(CustomError()))
 	}
