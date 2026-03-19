@@ -14,6 +14,7 @@ private enum HotKeyCaptureTarget {
   case recording
   case pasteLastTranscript
   case cycleTone
+  case refineSelection
 }
 
 extension SharedReaderKey
@@ -34,6 +35,10 @@ extension SharedReaderKey
   static var isSettingCycleToneHotkey: Self {
     Self[.inMemory("isSettingCycleToneHotkey"), default: false]
   }
+
+  static var isSettingRefineSelectionHotkey: Self {
+    Self[.inMemory("isSettingRefineSelectionHotkey"), default: false]
+  }
 }
 
 // MARK: - Settings Feature
@@ -47,6 +52,7 @@ struct SettingsFeature {
     @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool = false
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.isSettingCycleToneHotkey) var isSettingCycleToneHotkey: Bool = false
+    @Shared(.isSettingRefineSelectionHotkey) var isSettingRefineSelectionHotkey: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
     @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
 
@@ -54,6 +60,7 @@ struct SettingsFeature {
     var currentModifiers: Modifiers = .init(modifiers: [])
     var currentPasteLastModifiers: Modifiers = .init(modifiers: [])
     var currentCycleToneModifiers: Modifiers = .init(modifiers: [])
+    var currentRefineSelectionModifiers: Modifiers = .init(modifiers: [])
     var remappingScratchpadText: String = ""
     
     // Available microphones
@@ -76,6 +83,8 @@ struct SettingsFeature {
     case clearPasteLastTranscriptHotkey
     case startSettingCycleToneHotkey
     case clearCycleToneHotkey
+    case startSettingRefineSelectionHotkey
+    case clearRefineSelectionHotkey
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
     case toggleShowDockIcon(Bool)
@@ -136,6 +145,9 @@ struct SettingsFeature {
     case .cycleTone:
       state.$isSettingCycleToneHotkey.withLock { $0 = true }
       state.currentCycleToneModifiers = .init(modifiers: [])
+    case .refineSelection:
+      state.$isSettingRefineSelectionHotkey.withLock { $0 = true }
+      state.currentRefineSelectionModifiers = .init(modifiers: [])
     }
   }
 
@@ -150,6 +162,9 @@ struct SettingsFeature {
     case .cycleTone:
       state.$isSettingCycleToneHotkey.withLock { $0 = false }
       state.currentCycleToneModifiers = .init(modifiers: [])
+    case .refineSelection:
+      state.$isSettingRefineSelectionHotkey.withLock { $0 = false }
+      state.currentRefineSelectionModifiers = .init(modifiers: [])
     }
   }
 
@@ -161,6 +176,8 @@ struct SettingsFeature {
       state.currentPasteLastModifiers
     case .cycleTone:
       state.currentCycleToneModifiers
+    case .refineSelection:
+      state.currentRefineSelectionModifiers
     }
   }
 
@@ -172,6 +189,8 @@ struct SettingsFeature {
       state.currentPasteLastModifiers = modifiers
     case .cycleTone:
       state.currentCycleToneModifiers = modifiers
+    case .refineSelection:
+      state.currentRefineSelectionModifiers = modifiers
     }
   }
 
@@ -192,6 +211,11 @@ struct SettingsFeature {
       state.$hexSettings.withLock {
         $0.cycleToneHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
       }
+    case .refineSelection:
+      guard let key else { return }
+      state.$hexSettings.withLock {
+        $0.refineSelectionHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
+      }
     }
   }
 
@@ -204,7 +228,7 @@ struct SettingsFeature {
     let updatedModifiers = keyEvent.modifiers.union(captureModifiers(for: target, state: state))
     updateCaptureModifiers(updatedModifiers, for: target, state: &state)
 
-    if (target == .pasteLastTranscript || target == .cycleTone), keyEvent.key != nil, updatedModifiers.isEmpty {
+    if (target == .pasteLastTranscript || target == .cycleTone || target == .refineSelection), keyEvent.key != nil, updatedModifiers.isEmpty {
       return .none
     }
 
@@ -360,7 +384,19 @@ struct SettingsFeature {
         state.$hexSettings.withLock { $0.cycleToneHotkey = nil }
         return .none
 
+      case .startSettingRefineSelectionHotkey:
+        beginCapture(.refineSelection, state: &state)
+        return .none
+
+      case .clearRefineSelectionHotkey:
+        state.$hexSettings.withLock { $0.refineSelectionHotkey = nil }
+        return .none
+
       case let .keyEvent(keyEvent):
+        if state.isSettingRefineSelectionHotkey {
+          return handleCapture(keyEvent, for: .refineSelection, state: &state)
+        }
+
         if state.isSettingCycleToneHotkey {
           return handleCapture(keyEvent, for: .cycleTone, state: &state)
         }

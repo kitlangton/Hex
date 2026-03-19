@@ -171,12 +171,13 @@ private extension TranscriptionFeature {
       var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
       @Shared(.isSettingCycleToneHotkey) var isSettingCycleToneHotkey: Bool
+      @Shared(.isSettingRefineSelectionHotkey) var isSettingRefineSelectionHotkey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
         // Skip if the user is currently setting any hotkey
-        if isSettingHotKey || isSettingCycleToneHotkey {
+        if isSettingHotKey || isSettingCycleToneHotkey || isSettingRefineSelectionHotkey {
           return false
         }
 

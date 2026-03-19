@@ -51,6 +51,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var refinementProvider: RefinementProvider
 	public var refinementTone: RefinementTone
 	public var cycleToneHotkey: HotKey?
+	public var refineSelectionHotkey: HotKey?
 	public var geminiAPIKey: String?
 
 	private mutating func normalizeDoubleTapSettings() {
@@ -88,6 +89,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		refinementProvider: RefinementProvider = .apple,
 		refinementTone: RefinementTone = .natural,
 		cycleToneHotkey: HotKey? = nil,
+		refineSelectionHotkey: HotKey? = nil,
 		geminiAPIKey: String? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
@@ -118,6 +120,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.refinementProvider = refinementProvider
 		self.refinementTone = refinementTone
 		self.cycleToneHotkey = cycleToneHotkey
+		self.refineSelectionHotkey = refineSelectionHotkey
 		self.geminiAPIKey = geminiAPIKey
 		normalizeDoubleTapSettings()
 	}
@@ -171,6 +174,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case refinementProvider
 	case refinementTone
 	case cycleToneHotkey
+	case refineSelectionHotkey
 	case geminiAPIKey
 }
 
@@ -309,6 +313,7 @@ private enum HexSettingsSchema {
 		SettingsField(.refinementProvider, keyPath: \.refinementProvider, default: defaults.refinementProvider).eraseToAny(),
 		SettingsField(.refinementTone, keyPath: \.refinementTone, default: defaults.refinementTone).eraseToAny(),
 		SettingsField(.cycleToneHotkey, keyPath: \.cycleToneHotkey, default: defaults.cycleToneHotkey).eraseToAny(),
+		SettingsField(.refineSelectionHotkey, keyPath: \.refineSelectionHotkey, default: defaults.refineSelectionHotkey).eraseToAny(),
 		SettingsField(.geminiAPIKey, keyPath: \.geminiAPIKey, default: defaults.geminiAPIKey).eraseToAny()
 	]
 }

@@ -25,6 +25,11 @@ final class RefinementSettingsTests: XCTestCase {
 		XCTAssertNil(settings.cycleToneHotkey)
 	}
 
+	func testDefaultRefineSelectionHotkey() {
+		let settings = HexSettings()
+		XCTAssertNil(settings.refineSelectionHotkey)
+	}
+
 	func testDefaultGeminiAPIKey() {
 		let settings = HexSettings()
 		XCTAssertNil(settings.geminiAPIKey)
@@ -81,6 +86,7 @@ final class RefinementSettingsTests: XCTestCase {
 		XCTAssertEqual(decoded.refinementProvider, .apple, "Should default to apple when missing")
 		XCTAssertEqual(decoded.refinementTone, .natural, "Should default to natural when missing")
 		XCTAssertNil(decoded.cycleToneHotkey, "Should default to nil when missing")
+		XCTAssertNil(decoded.refineSelectionHotkey, "Should default to nil when missing")
 		XCTAssertNil(decoded.geminiAPIKey, "Should default to nil when missing")
 	}
 
@@ -102,6 +108,7 @@ final class RefinementSettingsTests: XCTestCase {
 		XCTAssertEqual(decoded.refinementProvider, .apple)
 		XCTAssertEqual(decoded.refinementTone, .natural)
 		XCTAssertNil(decoded.cycleToneHotkey)
+		XCTAssertNil(decoded.refineSelectionHotkey)
 		XCTAssertNil(decoded.geminiAPIKey)
 
 		// Existing fields should still be correct

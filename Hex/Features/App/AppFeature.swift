@@ -45,6 +45,7 @@ struct AppFeature {
     case task
     case pasteLastTranscript
     case cycleTone
+    case refineSelection
 
     // Permission actions
     case checkPermissions
@@ -60,6 +61,7 @@ struct AppFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
   @Dependency(\.permissions) var permissions
+  @Dependency(\.refinement) var refinement
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -85,6 +87,7 @@ struct AppFeature {
         return .merge(
           startPasteLastTranscriptMonitoring(),
           startToneCycleMonitoring(),
+          startRefineSelectionMonitoring(),
           ensureSelectedModelReadiness(),
           startPermissionMonitoring()
         )
@@ -112,6 +115,44 @@ struct AppFeature {
         }
 
         
+      case .refineSelection:
+        let mode = state.settings.hexSettings.refinementMode
+        let tone = state.settings.hexSettings.refinementTone
+        let provider = state.settings.hexSettings.refinementProvider
+        let apiKey = state.settings.hexSettings.geminiAPIKey
+
+        guard mode != .raw else { return .none }
+
+        return .run { [refinement, pasteboard] _ in
+          // Copy current selection to clipboard via Cmd+C
+          await MainActor.run {
+            let source = CGEventSource(stateID: .combinedSessionState)
+            let cKey: CGKeyCode = 8
+            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: true)
+            keyDown?.flags = .maskCommand
+            keyDown?.post(tap: .cghidEventTap)
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: false)
+            keyUp?.flags = .maskCommand
+            keyUp?.post(tap: .cghidEventTap)
+          }
+
+          // Wait for clipboard to update
+          try? await Task.sleep(for: .milliseconds(150))
+
+          // Read the selected text from clipboard
+          let selectedText = await MainActor.run {
+            NSPasteboard.general.string(forType: .string)
+          }
+
+          guard let selectedText, !selectedText.isEmpty else { return }
+
+          // Refine the selected text
+          let refined = try await refinement.refine(selectedText, mode, tone, provider, apiKey)
+
+          // Paste the refined text back (replaces the selection)
+          await pasteboard.paste(refined)
+        }
+
       case .transcription(.modelMissing):
         HexLog.app.notice("Model missing - activating app and switching to settings")
         state.activeTab = .settings
@@ -278,6 +319,40 @@ struct AppFeature {
 
         MainActor.assumeIsolated {
           send(.cycleTone)
+        }
+        return true
+      }
+
+      defer { token.cancel() }
+
+      await withTaskCancellationHandler {
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(60))
+        }
+      } onCancel: {
+        token.cancel()
+      }
+    }
+  }
+
+  /// Monitors the user-configured hotkey for refining selected text.
+  private func startRefineSelectionMonitoring() -> Effect<Action> {
+    .run { send in
+      @Shared(.isSettingRefineSelectionHotkey) var isSettingRefineSelectionHotkey: Bool
+      @Shared(.hexSettings) var hexSettings: HexSettings
+
+      let token = keyEventMonitor.handleKeyEvent { keyEvent in
+        if isSettingRefineSelectionHotkey { return false }
+
+        guard let refineHotkey = hexSettings.refineSelectionHotkey,
+              let key = keyEvent.key,
+              key == refineHotkey.key,
+              keyEvent.modifiers.matchesExactly(refineHotkey.modifiers) else {
+          return false
+        }
+
+        MainActor.assumeIsolated {
+          send(.refineSelection)
         }
         return true
       }

@@ -93,6 +93,44 @@ struct RefinementSectionView: View {
 					}
 				}
 
+				// Refine selection hotkey
+				VStack(spacing: 12) {
+					let hotkey = store.hexSettings.refineSelectionHotkey
+					let isCapturing = store.isSettingRefineSelectionHotkey
+					let displayKey = isCapturing ? nil : hotkey?.key
+					let displayMods = isCapturing ? store.currentRefineSelectionModifiers : (hotkey?.modifiers ?? .init(modifiers: []))
+
+					HStack {
+						Text("Refine Selection Hotkey")
+						Spacer()
+						if hotkey != nil && !isCapturing {
+							Button {
+								store.send(.clearRefineSelectionHotkey)
+							} label: {
+								Image(systemName: "xmark.circle.fill")
+									.foregroundStyle(.secondary)
+							}
+							.buttonStyle(.plain)
+						}
+					}
+
+					HStack {
+						Spacer()
+						HotKeyView(modifiers: displayMods, key: displayKey, isActive: isCapturing)
+							.animation(.spring(), value: displayKey)
+							.animation(.spring(), value: displayMods)
+						Spacer()
+					}
+					.contentShape(Rectangle())
+					.onTapGesture {
+						store.send(.startSettingRefineSelectionHotkey)
+					}
+
+					Text("Select text in any app and press this hotkey to refine or summarize the selection in place.")
+						.font(.system(size: 11))
+						.foregroundStyle(.secondary)
+				}
+
 				// Provider picker
 				HStack(alignment: .center) {
 					Text("Provider")
