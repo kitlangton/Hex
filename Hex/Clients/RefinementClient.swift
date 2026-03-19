@@ -22,18 +22,21 @@ extension RefinementClient: DependencyKey {
 			refine: { text, mode, tone, provider, apiKey in
 				refinementLogger.notice("Refinement requested: mode=\(mode.rawValue) tone=\(tone.rawValue) provider=\(provider.rawValue) hasKey=\(apiKey?.isEmpty == false)")
 				guard mode != .raw else { return text }
-				return await safeRefine(text, mode: mode, tone: tone, provider: provider, apiKey: apiKey)
+				return try await safeRefine(text, mode: mode, tone: tone, provider: provider, apiKey: apiKey)
 			}
 		)
 	}
 
-	/// Wraps AI processing with timeout and error fallback — always returns usable text.
-	private static func safeRefine(_ text: String, mode: RefinementMode, tone: RefinementTone, provider: RefinementProvider, apiKey: String?) async -> String {
+	/// Wraps AI processing with timeout and error fallback.
+	/// Rethrows CancellationError so TCA cancellation works correctly.
+	/// All other errors fall back to raw text.
+	private static func safeRefine(_ text: String, mode: RefinementMode, tone: RefinementTone, provider: RefinementProvider, apiKey: String?) async throws -> String {
 		let timeout = provider == .gemini ? geminiTimeout : appleTimeout
 		do {
 			return try await withThrowingTaskGroup(of: String.self) { group in
 				group.addTask {
-					try await dispatch(text, mode: mode, tone: tone, provider: provider, apiKey: apiKey)
+					try Task.checkCancellation()
+					return try await dispatch(text, mode: mode, tone: tone, provider: provider, apiKey: apiKey)
 				}
 				group.addTask {
 					try await Task.sleep(for: timeout)
@@ -47,6 +50,9 @@ extension RefinementClient: DependencyKey {
 				group.cancelAll()
 				return result
 			}
+		} catch is CancellationError {
+			refinementLogger.notice("Refinement cancelled")
+			throw CancellationError()
 		} catch RefinementError.timeout {
 			refinementLogger.warning("Refinement timed out after \(timeout) (\(provider.rawValue)); falling back to raw text")
 			return text

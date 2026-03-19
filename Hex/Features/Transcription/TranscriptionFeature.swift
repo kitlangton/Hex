@@ -459,12 +459,16 @@ private extension TranscriptionFeature {
       state.isRefining = true
     }
 
-    let supportsUndo = !TerminalAppDetector.isTerminal(sourceAppBundleID)
-
     return .run { [refinement, pasteboard] send in
       do {
         let finalText: String
         if refinementMode != .raw {
+          // Check frontmost app NOW (at paste time) not at recording time
+          let currentAppBundleID = await MainActor.run {
+            NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+          }
+          let supportsUndo = !TerminalAppDetector.isTerminal(currentAppBundleID)
+
           // Paste placeholder at cursor while refining (skip for terminal apps)
           let placeholder = refinementMode == .refined ? "Refining\u{2026}" : "Summarizing\u{2026}"
           if supportsUndo {

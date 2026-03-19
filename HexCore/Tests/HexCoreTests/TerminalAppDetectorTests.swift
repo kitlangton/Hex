@@ -62,4 +62,34 @@ final class TerminalAppDetectorTests: XCTestCase {
 	func testReturnsFalseForEmptyString() {
 		XCTAssertFalse(TerminalAppDetector.isTerminal(""))
 	}
+
+	// MARK: - App Switching Scenarios (Fix #3)
+
+	func testDetectionChangesWhenAppSwitches() {
+		// Simulate: user starts recording in Notes, switches to Terminal
+		let recordTimeApp = "com.apple.Notes"
+		let pasteTimeApp = "com.apple.Terminal"
+
+		// At recording time: Notes supports undo
+		XCTAssertFalse(TerminalAppDetector.isTerminal(recordTimeApp))
+		// At paste time: Terminal does NOT support undo
+		XCTAssertTrue(TerminalAppDetector.isTerminal(pasteTimeApp))
+		// The paste-time check should be used, not the record-time check
+	}
+
+	func testDetectionConsistentWhenAppDoesNotSwitch() {
+		// User stays in same app throughout
+		let app = "com.apple.Notes"
+		XCTAssertFalse(TerminalAppDetector.isTerminal(app))
+		XCTAssertFalse(TerminalAppDetector.isTerminal(app))
+	}
+
+	func testDetectionHandlesNilAfterSwitch() {
+		// App could become nil if frontmost app is unavailable
+		let recordTimeApp: String? = "com.apple.Notes"
+		let pasteTimeApp: String? = nil
+
+		XCTAssertFalse(TerminalAppDetector.isTerminal(recordTimeApp))
+		XCTAssertFalse(TerminalAppDetector.isTerminal(pasteTimeApp))
+	}
 }

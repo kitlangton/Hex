@@ -65,4 +65,9 @@ public enum RefinementTextProcessor {
 	public static func clean(_ text: String) -> String {
 		stripLeakedTags(stripPreamble(text))
 	}
+
+	/// Determines if an error is a cancellation that should be propagated (not swallowed).
+	public static func isCancellation(_ error: Error) -> Bool {
+		error is CancellationError
+	}
 }

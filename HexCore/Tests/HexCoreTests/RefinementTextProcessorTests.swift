@@ -177,4 +177,27 @@ final class RefinementTextProcessorTests: XCTestCase {
 		let output = String(repeating: "a", count: input.count * 2)
 		XCTAssertTrue(RefinementTextProcessor.isOffScript(output: output, input: input, mode: .raw))
 	}
+
+	// MARK: - isCancellation (Fix #2)
+
+	func testIsCancellationDetectsCancellationError() {
+		let error = CancellationError()
+		XCTAssertTrue(RefinementTextProcessor.isCancellation(error))
+	}
+
+	func testIsCancellationReturnsFalseForOtherErrors() {
+		let error = NSError(domain: "test", code: 42)
+		XCTAssertFalse(RefinementTextProcessor.isCancellation(error))
+	}
+
+	func testIsCancellationReturnsFalseForURLError() {
+		let error = URLError(.timedOut)
+		XCTAssertFalse(RefinementTextProcessor.isCancellation(error))
+	}
+
+	func testIsCancellationReturnsFalseForDecodingError() {
+		// A generic Swift error
+		struct CustomError: Error {}
+		XCTAssertFalse(RefinementTextProcessor.isCancellation(CustomError()))
+	}
 }
