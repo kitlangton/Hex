@@ -47,6 +47,12 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+	public var refinementMode: RefinementMode
+	public var refinementProvider: RefinementProvider
+	public var refinementTone: RefinementTone
+	public var cycleToneHotkey: HotKey?
+	public var refineSelectionHotkey: HotKey?
+	public var geminiAPIKey: String?
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -78,7 +84,13 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		refinementMode: RefinementMode = .raw,
+		refinementProvider: RefinementProvider = .apple,
+		refinementTone: RefinementTone = .natural,
+		cycleToneHotkey: HotKey? = nil,
+		refineSelectionHotkey: HotKey? = nil,
+		geminiAPIKey: String? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -104,6 +116,12 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.refinementMode = refinementMode
+		self.refinementProvider = refinementProvider
+		self.refinementTone = refinementTone
+		self.cycleToneHotkey = cycleToneHotkey
+		self.refineSelectionHotkey = refineSelectionHotkey
+		self.geminiAPIKey = geminiAPIKey
 		normalizeDoubleTapSettings()
 	}
 
@@ -152,6 +170,12 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case refinementMode
+	case refinementProvider
+	case refinementTone
+	case cycleToneHotkey
+	case refineSelectionHotkey
+	case geminiAPIKey
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -284,6 +308,12 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
-		).eraseToAny()
+		).eraseToAny(),
+		SettingsField(.refinementMode, keyPath: \.refinementMode, default: defaults.refinementMode).eraseToAny(),
+		SettingsField(.refinementProvider, keyPath: \.refinementProvider, default: defaults.refinementProvider).eraseToAny(),
+		SettingsField(.refinementTone, keyPath: \.refinementTone, default: defaults.refinementTone).eraseToAny(),
+		SettingsField(.cycleToneHotkey, keyPath: \.cycleToneHotkey, default: defaults.cycleToneHotkey).eraseToAny(),
+		SettingsField(.refineSelectionHotkey, keyPath: \.refineSelectionHotkey, default: defaults.refineSelectionHotkey).eraseToAny(),
+		SettingsField(.geminiAPIKey, keyPath: \.geminiAPIKey, default: defaults.geminiAPIKey).eraseToAny()
 	]
 }

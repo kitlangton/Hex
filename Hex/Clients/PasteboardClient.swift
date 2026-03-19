@@ -20,6 +20,7 @@ struct PasteboardClient {
     var paste: @Sendable (String) async -> Void
     var copy: @Sendable (String) async -> Void
     var sendKeyboardCommand: @Sendable (KeyboardCommand) async -> Void
+    var undoAndReplace: @Sendable (String) async -> Void
 }
 
 extension PasteboardClient: DependencyKey {
@@ -34,6 +35,9 @@ extension PasteboardClient: DependencyKey {
             },
             sendKeyboardCommand: { command in
                 await live.sendKeyboardCommand(command)
+            },
+            undoAndReplace: { replacement in
+                await live.undoAndReplace(replacement: replacement)
             }
         )
     }
@@ -330,6 +334,28 @@ struct PasteboardClientLive {
         try await Task.sleep(nanoseconds: UInt64(milliseconds) * 1_000_000)
     }
     
+    @MainActor
+    func undoAndReplace(replacement: String) async {
+        // Undo the placeholder paste
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let zKey: CGKeyCode = 6 // Z key
+
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: zKey, keyDown: true)
+        keyDown?.flags = .maskCommand
+        keyDown?.post(tap: .cghidEventTap)
+
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: zKey, keyDown: false)
+        keyUp?.flags = .maskCommand
+        keyUp?.post(tap: .cghidEventTap)
+
+        // Let the undo complete
+        try? await Task.sleep(for: .milliseconds(100))
+
+        // Only paste if there's actual replacement text
+        guard !replacement.isEmpty else { return }
+        await paste(text: replacement)
+    }
+
     func simulateTypingWithAppleScript(_ text: String) {
         let escapedText = text.replacingOccurrences(of: "\"", with: "\\\"")
         let script = NSAppleScript(source: "tell application \"System Events\" to keystroke \"\(escapedText)\"")
