@@ -57,6 +57,11 @@ private struct SuperFastCaptureConstants {
   static let ringBufferDuration: TimeInterval = 1.0
   static let defaultPreRollDuration: TimeInterval = 0.45
   static let tapBufferSize: AVAudioFrameCount = 2_048
+  static let fallbackStopGracePeriod: TimeInterval = 0.05
+  static let minimumStopGracePeriod: TimeInterval = 0.02
+  static let maximumStopGracePeriod: TimeInterval = 0.08
+  static let stopGraceSafetyMargin: TimeInterval = 0.008
+  static let callbackTimingWindowSize = 8
 }
 
 enum CaptureRecordingMode: String {
@@ -78,6 +83,12 @@ enum CaptureRecordingMode: String {
 }
 
 final class SuperFastCaptureController {
+  struct StopTimingEstimate {
+    let gracePeriod: TimeInterval
+    let callbackInterval: TimeInterval
+    let bufferDuration: TimeInterval
+  }
+
   private struct ActiveRecording {
     let url: URL
     let file: AVAudioFile
@@ -103,6 +114,9 @@ final class SuperFastCaptureController {
   private var converter: AVAudioConverter?
   private var activeRecording: ActiveRecording?
   private var keepWarmBuffer = false
+  private var lastProcessedBufferAt: Date?
+  private var recentCallbackIntervals: [TimeInterval] = []
+  private var recentBufferDurations: [TimeInterval] = []
 
   init(meterContinuation: AsyncStream<Meter>.Continuation) {
     self.meterContinuation = meterContinuation
@@ -118,6 +132,28 @@ final class SuperFastCaptureController {
 
   var isRecording: Bool {
     processingQueue.sync { activeRecording != nil }
+  }
+
+  var stopTimingEstimate: StopTimingEstimate {
+    processingQueue.sync {
+      let callbackInterval = recentCallbackIntervals.max() ?? 0
+      let bufferDuration = recentBufferDurations.max() ?? 0
+      let observedCadence = max(callbackInterval, bufferDuration)
+      let gracePeriod = min(
+        max(
+          observedCadence > 0
+            ? observedCadence + SuperFastCaptureConstants.stopGraceSafetyMargin
+            : SuperFastCaptureConstants.fallbackStopGracePeriod,
+          SuperFastCaptureConstants.minimumStopGracePeriod
+        ),
+        SuperFastCaptureConstants.maximumStopGracePeriod
+      )
+      return StopTimingEstimate(
+        gracePeriod: gracePeriod,
+        callbackInterval: callbackInterval,
+        bufferDuration: bufferDuration
+      )
+    }
   }
 
   func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
@@ -178,6 +214,9 @@ final class SuperFastCaptureController {
     processingQueue.sync {
       activeRecording = nil
       ringBuffer.clear()
+      lastProcessedBufferAt = nil
+      recentCallbackIntervals.removeAll(keepingCapacity: false)
+      recentBufferDurations.removeAll(keepingCapacity: false)
     }
   }
 
@@ -249,6 +288,13 @@ final class SuperFastCaptureController {
   }
 
   private func process(_ buffer: AVAudioPCMBuffer) {
+    let now = Date()
+    if let lastProcessedBufferAt {
+      appendRecentMetric(now.timeIntervalSince(lastProcessedBufferAt), to: &recentCallbackIntervals)
+    }
+    lastProcessedBufferAt = now
+    appendRecentMetric(Double(buffer.frameLength) / buffer.format.sampleRate, to: &recentBufferDurations)
+
     guard let converted = convert(buffer),
           converted.frameLength > 0,
           let samples = converted.floatChannelData?[0]
@@ -375,5 +421,13 @@ final class SuperFastCaptureController {
     }
 
     return copy
+  }
+
+  private func appendRecentMetric(_ value: TimeInterval, to metrics: inout [TimeInterval]) {
+    guard value.isFinite, value > 0 else { return }
+    metrics.append(value)
+    if metrics.count > SuperFastCaptureConstants.callbackTimingWindowSize {
+      metrics.removeFirst(metrics.count - SuperFastCaptureConstants.callbackTimingWindowSize)
+    }
   }
 }

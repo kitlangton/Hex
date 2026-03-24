@@ -355,8 +355,8 @@ private extension TranscriptionFeature {
 
       var audioURL: URL?
       do {
-        soundEffect.play(.stopRecording)
         let capturedURL = await recording.stopRecording()
+        soundEffect.play(.stopRecording)
         audioURL = capturedURL
 
         // Create transcription options with the selected language

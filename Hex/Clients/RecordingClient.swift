@@ -1133,6 +1133,14 @@ actor RecordingClientLive {
   func stopRecording() async -> URL {
     let activeSession = activeRecordingSession
 
+    if activeSession?.backend == .captureEngine || captureController.isRecording {
+      let stopTimingEstimate = captureController.stopTimingEstimate
+      recordingLogger.debug(
+        "Waiting \(self.formatDuration(stopTimingEstimate.gracePeriod)) before finalizing capture-engine recording callbackInterval=\(self.formatDuration(stopTimingEstimate.callbackInterval)) bufferDuration=\(self.formatDuration(stopTimingEstimate.bufferDuration))"
+      )
+      try? await Task.sleep(for: .milliseconds(Int((stopTimingEstimate.gracePeriod * 1000).rounded())))
+    }
+
     if let captureURL = captureController.finishRecording(clearBuffer: currentCaptureMode() == .superFast) {
       let stoppedAt = Date()
       let session = activeSession ?? ActiveRecordingSession(
