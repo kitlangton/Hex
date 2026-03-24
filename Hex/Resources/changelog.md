@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2
+
+### Patch Changes
+
+- 55249a6: Keep the ends of recordings from getting clipped in super fast mode.
+- d9e40cc: Use the capture engine for normal recordings to reduce startup drift
+- d9e40cc: Keep the microphone picker visible and refresh it when audio devices change
+
 ## 0.7.1
 
 ### Patch Changes
