@@ -19,6 +19,7 @@ public enum SoundEffect: String, CaseIterable {
   case startRecording
   case stopRecording
   case cancel
+  case cancelWarning
 
   public var fileName: String {
     self.rawValue
