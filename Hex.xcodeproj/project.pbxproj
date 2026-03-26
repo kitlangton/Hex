@@ -600,8 +600,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/EmergeTools/Pow";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.5;
+				kind = revision;
+				revision = 1b4b1dda28c50b95f0872927ee2226fe8b58950e;
 			};
 		};
 		476BAD3C2D47E7880088C61F /* XCRemoteSwiftPackageReference "Sparkle" */ = {
