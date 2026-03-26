@@ -847,6 +847,18 @@ actor RecordingClientLive {
     FileManager.default.temporaryDirectory.appendingPathComponent("hex-capture-\(UUID().uuidString).wav")
   }
 
+  private func makeIgnoredStopURL() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("hex-ignored-stop-\(UUID().uuidString).wav")
+  }
+
+  nonisolated static func shouldIgnoreStopRequest(
+    snapshotSessionID: UUID?,
+    currentSessionID: UUID?
+  ) -> Bool {
+    guard let snapshotSessionID else { return false }
+    return currentSessionID != snapshotSessionID
+  }
+
   private func ensureCaptureControllerReady(
     for deviceID: AudioDeviceID?,
     reason: String,
@@ -1131,6 +1143,7 @@ actor RecordingClientLive {
   }
 
   func stopRecording() async -> URL {
+    let stopSessionID = recordingSessionID
     let activeSession = activeRecordingSession
 
     if activeSession?.backend == .captureEngine || captureController.isRecording {
@@ -1139,6 +1152,14 @@ actor RecordingClientLive {
         "Waiting \(self.formatDuration(stopTimingEstimate.gracePeriod)) before finalizing capture-engine recording callbackInterval=\(self.formatDuration(stopTimingEstimate.callbackInterval)) bufferDuration=\(self.formatDuration(stopTimingEstimate.bufferDuration))"
       )
       try? await Task.sleep(for: .milliseconds(Int((stopTimingEstimate.gracePeriod * 1000).rounded())))
+
+      if Self.shouldIgnoreStopRequest(
+        snapshotSessionID: stopSessionID,
+        currentSessionID: recordingSessionID
+      ) {
+        recordingLogger.notice("Ignoring stale stop request after a newer recording session started")
+        return makeIgnoredStopURL()
+      }
     }
 
     if let captureURL = captureController.finishRecording(clearBuffer: currentCaptureMode() == .superFast) {

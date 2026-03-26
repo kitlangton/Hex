@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4F0D6A012F1A000100000001 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
+		4F0D6A022F1A000100000001 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		47512ABF2E14D8C9000E25BA /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 47512ABE2E14D8C9000E25BA /* WhisperKit */; };
 		476316272E5FB31400913CDE /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
 		4765045E2D45900200C7EA60 /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = 4765045D2D45900200C7EA60 /* Pow */; };
@@ -51,6 +53,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		4F0D6A032F1A000100000001 /* HexTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HexTests;
+			sourceTree = "<group>";
+		};
 		47E05DF02D444EC600D26DA6 /* Hex */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -66,6 +73,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F0D6A022F1A000100000001 /* ComposableArchitecture in Frameworks */,
+				4F0D6A012F1A000100000001 /* HexCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -105,6 +114,7 @@
 				B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */,
 				B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */,
 				47E05DF02D444EC600D26DA6 /* Hex */,
+				4F0D6A032F1A000100000001 /* HexTests */,
 				4735444F2D445936001FBCB5 /* Frameworks */,
 				47E05DEF2D444EC600D26DA6 /* Products */,
 			);
@@ -135,8 +145,13 @@
 			dependencies = (
 				478637AA2D48725900319BFA /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (
+				4F0D6A032F1A000100000001 /* HexTests */,
+			);
 			name = HexTests;
 			packageProductDependencies = (
+				47E05E012D444EE900D26DA6 /* ComposableArchitecture */,
+				476316262E5FB31400913CDE /* HexCore */,
 			);
 			productName = HexTests;
 			productReference = 478637A52D48725900319BFA /* HexTests.xctest */;
