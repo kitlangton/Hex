@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3
+
+### Patch Changes
+
+- 7340d1e: Restore double-tap lock audio capture (#193)
+
 ## 0.7.2
 
 ### Patch Changes
