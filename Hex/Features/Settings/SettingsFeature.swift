@@ -75,6 +75,15 @@ struct SettingsFeature {
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
     case toggleSuperFastMode(Bool)
+    case setUseClipboardPaste(Bool)
+    case setCopyToClipboard(Bool)
+    case setDoubleTapLockEnabled(Bool)
+    case setUseDoubleTapOnly(Bool)
+    case setMinimumKeyTime(Double)
+    case setOutputLanguage(String?)
+    case setSelectedMicrophoneID(String?)
+    case setSoundEffectsEnabled(Bool)
+    case setSoundEffectsVolume(Double)
 
     // Permission delegation (forwarded to AppFeature)
     case requestMicrophone
@@ -90,14 +99,18 @@ struct SettingsFeature {
     
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
+    case setMaxHistoryEntries(Int?)
 
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
 
     // Word remappings
+    case setWordRemovalsEnabled(Bool)
     case addWordRemoval
+    case updateWordRemoval(WordRemoval)
     case removeWordRemoval(UUID)
     case addWordRemapping
+    case updateWordRemapping(WordRemapping)
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
   }
@@ -365,6 +378,13 @@ struct SettingsFeature {
         }
         return .none
 
+      case let .updateWordRemoval(removal):
+        state.$hexSettings.withLock {
+          guard let index = $0.wordRemovals.firstIndex(where: { $0.id == removal.id }) else { return }
+          $0.wordRemovals[index] = removal
+        }
+        return .none
+
       case let .removeWordRemoval(id):
         state.$hexSettings.withLock {
           $0.wordRemovals.removeAll { $0.id == id }
@@ -374,6 +394,13 @@ struct SettingsFeature {
       case .addWordRemapping:
         state.$hexSettings.withLock {
           $0.wordRemappings.append(.init(match: "", replacement: ""))
+        }
+        return .none
+
+      case let .updateWordRemapping(remapping):
+        state.$hexSettings.withLock {
+          guard let index = $0.wordRemappings.firstIndex(where: { $0.id == remapping.id }) else { return }
+          $0.wordRemappings[index] = remapping
         }
         return .none
 
@@ -425,6 +452,14 @@ struct SettingsFeature {
         state.$hexSettings.withLock { $0.preventSystemSleep = enabled }
         return .none
 
+      case let .setUseClipboardPaste(enabled):
+        state.$hexSettings.withLock { $0.useClipboardPaste = enabled }
+        return .none
+
+      case let .setCopyToClipboard(enabled):
+        state.$hexSettings.withLock { $0.copyToClipboard = enabled }
+        return .none
+
       case let .setRecordingAudioBehavior(behavior):
         state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
         return .none
@@ -434,6 +469,41 @@ struct SettingsFeature {
         return .run { _ in
           await recording.warmUpRecorder()
         }
+
+      case let .setDoubleTapLockEnabled(enabled):
+        state.$hexSettings.withLock {
+          $0.doubleTapLockEnabled = enabled
+          if !enabled {
+            $0.useDoubleTapOnly = false
+          }
+        }
+        return .none
+
+      case let .setUseDoubleTapOnly(enabled):
+        state.$hexSettings.withLock {
+          $0.useDoubleTapOnly = enabled && $0.doubleTapLockEnabled
+        }
+        return .none
+
+      case let .setMinimumKeyTime(value):
+        state.$hexSettings.withLock { $0.minimumKeyTime = value }
+        return .none
+
+      case let .setOutputLanguage(language):
+        state.$hexSettings.withLock { $0.outputLanguage = language }
+        return .none
+
+      case let .setSelectedMicrophoneID(deviceID):
+        state.$hexSettings.withLock { $0.selectedMicrophoneID = deviceID }
+        return .none
+
+      case let .setSoundEffectsEnabled(enabled):
+        state.$hexSettings.withLock { $0.soundEffectsEnabled = enabled }
+        return .none
+
+      case let .setSoundEffectsVolume(volume):
+        state.$hexSettings.withLock { $0.soundEffectsVolume = volume }
+        return .none
 
       // Permission requests
       case .requestMicrophone:
@@ -496,11 +566,19 @@ struct SettingsFeature {
         
         return .none
 
+      case let .setMaxHistoryEntries(maxHistoryEntries):
+        state.$hexSettings.withLock { $0.maxHistoryEntries = maxHistoryEntries }
+        return .none
+
       case let .setModifierSide(kind, side):
         guard state.hexSettings.hotkey.key == nil else { return .none }
         state.$hexSettings.withLock {
           $0.hotkey.modifiers = $0.hotkey.modifiers.setting(kind: kind, to: side)
         }
+        return .none
+
+      case let .setWordRemovalsEnabled(enabled):
+        state.$hexSettings.withLock { $0.wordRemovalsEnabled = enabled }
         return .none
 
       }

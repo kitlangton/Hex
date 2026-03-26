@@ -28,7 +28,7 @@ struct HistorySectionView: View {
 						Picker("", selection: Binding(
 							get: { store.hexSettings.maxHistoryEntries ?? 0 },
 							set: { newValue in
-								store.hexSettings.maxHistoryEntries = newValue == 0 ? nil : newValue
+								store.send(.setMaxHistoryEntries(newValue == 0 ? nil : newValue))
 							}
 						)) {
 							Text("Unlimited").tag(0)

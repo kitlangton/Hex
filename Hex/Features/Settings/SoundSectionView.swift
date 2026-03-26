@@ -10,12 +10,18 @@ struct SoundSectionView: View {
 	var body: some View {
 		let sliderBinding = Binding<Double>(
 			get: { volumePercentage(for: store.hexSettings.soundEffectsVolume) },
-			set: { store.hexSettings.soundEffectsVolume = actualVolume(fromPercentage: $0) }
+			set: { store.send(.setSoundEffectsVolume(actualVolume(fromPercentage: $0))) }
 		)
 
 		return Section {
 			Label {
-				Toggle("Sound Effects", isOn: $store.hexSettings.soundEffectsEnabled)
+				Toggle(
+					"Sound Effects",
+					isOn: Binding(
+						get: { store.hexSettings.soundEffectsEnabled },
+						set: { store.send(.setSoundEffectsEnabled($0)) }
+					)
+				)
 			} icon: {
 				Image(systemName: "speaker.wave.2.fill")
 			}

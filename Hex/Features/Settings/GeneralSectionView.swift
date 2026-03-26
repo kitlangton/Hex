@@ -32,14 +32,26 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
-				Toggle("Use clipboard to insert", isOn: $store.hexSettings.useClipboardPaste)
+				Toggle(
+					"Use clipboard to insert",
+					isOn: Binding(
+						get: { store.hexSettings.useClipboardPaste },
+						set: { store.send(.setUseClipboardPaste($0)) }
+					)
+				)
 				Text("Use clipboard to insert text. Fast but may not restore all clipboard content.\nTurn off to use simulated keypresses. Slower, but doesn't need to restore clipboard")
 			} icon: {
 				Image(systemName: "doc.on.doc.fill")
 			}
 
 			Label {
-				Toggle("Copy to clipboard", isOn: $store.hexSettings.copyToClipboard)
+				Toggle(
+					"Copy to clipboard",
+					isOn: Binding(
+						get: { store.hexSettings.copyToClipboard },
+						set: { store.send(.setCopyToClipboard($0)) }
+					)
+				)
 				Text("Copy transcription text to clipboard in addition to pasting it")
 			} icon: {
 				Image(systemName: "doc.on.clipboard")

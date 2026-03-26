@@ -12,7 +12,7 @@ struct MicrophoneSelectionSectionView: View {
 		Binding(
 			get: { store.hexSettings.selectedMicrophoneID ?? Self.systemDefaultTag },
 			set: { newValue in
-				store.hexSettings.selectedMicrophoneID = newValue == Self.systemDefaultTag ? nil : newValue
+				store.send(.setSelectedMicrophoneID(newValue == Self.systemDefaultTag ? nil : newValue))
 			}
 		)
 	}
