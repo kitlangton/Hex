@@ -77,20 +77,19 @@ actor SoundEffectsClientLive {
   private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
   private var isEngineRunning = false
-  private var soundEffectsEnabled = HexSettings().soundEffectsEnabled
 
   func play(_ soundEffect: SoundEffect) {
-	guard soundEffectsEnabled else { return }
-	guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
-		logger.error("Requested sound \(soundEffect.rawValue) not preloaded")
-		return
-	}
-	prepareEngineIfNeeded()
-	let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
-	player.volume = Float(clampedVolume)
-	player.stop()
-	player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-	player.play()
+    guard hexSettings.soundEffectsEnabled else { return }
+    guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
+      logger.error("Requested sound \(soundEffect.rawValue) not preloaded")
+      return
+    }
+    prepareEngineIfNeeded()
+    let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
+    player.volume = Float(clampedVolume)
+    player.stop()
+    player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+    player.play()
   }
 
   func stop(_ soundEffect: SoundEffect) {
@@ -111,11 +110,10 @@ actor SoundEffectsClientLive {
     isSetup = true
   }
 
-  func setEnabled(_ enabled: Bool) async {
-    soundEffectsEnabled = enabled
+  func setEnabled(_: Bool) async {
     await preloadSounds()
 
-    if enabled {
+    if hexSettings.soundEffectsEnabled {
       prepareEngineIfNeeded()
     } else {
       stopAll()
