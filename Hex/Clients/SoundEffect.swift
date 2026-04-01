@@ -35,6 +35,7 @@ public struct SoundEffectsClient {
   public var stop: @Sendable (SoundEffect) -> Void
   public var stopAll: @Sendable () -> Void
   public var preloadSounds: @Sendable () async -> Void
+  public var setEnabled: @Sendable (Bool) async -> Void
 }
 
 extension SoundEffectsClient: DependencyKey {
@@ -52,6 +53,9 @@ extension SoundEffectsClient: DependencyKey {
       },
       preloadSounds: {
         await live.preloadSounds()
+      },
+      setEnabled: { enabled in
+        await live.setEnabled(enabled)
       }
     )
   }
@@ -73,9 +77,10 @@ actor SoundEffectsClientLive {
   private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
   private var isEngineRunning = false
+  private var soundEffectsEnabled = HexSettings().soundEffectsEnabled
 
   func play(_ soundEffect: SoundEffect) {
-	guard hexSettings.soundEffectsEnabled else { return }
+	guard soundEffectsEnabled else { return }
 	guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
 		logger.error("Requested sound \(soundEffect.rawValue) not preloaded")
 		return
@@ -102,9 +107,20 @@ actor SoundEffectsClientLive {
     for soundEffect in SoundEffect.allCases {
       loadSound(soundEffect)
     }
-    prepareEngineIfNeeded()
 
     isSetup = true
+  }
+
+  func setEnabled(_ enabled: Bool) async {
+    soundEffectsEnabled = enabled
+    await preloadSounds()
+
+    if enabled {
+      prepareEngineIfNeeded()
+    } else {
+      stopAll()
+      stopEngineIfNeeded()
+    }
   }
 
   private var isSetup = false
@@ -136,6 +152,7 @@ actor SoundEffectsClientLive {
       logger.error("Failed to load sound \(soundEffect.rawValue): \(error.localizedDescription)")
     }
   }
+
   private func prepareEngineIfNeeded() {
     if !isEngineRunning || !engine.isRunning {
       engine.prepare()
@@ -149,5 +166,19 @@ actor SoundEffectsClientLive {
         logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
       }
     }
+  }
+
+  private func stopEngineIfNeeded() {
+    guard isEngineRunning || engine.isRunning else { return }
+    engine.stop()
+    isEngineRunning = false
+  }
+
+  deinit {
+    playerNodes.values.forEach {
+      $0.stop()
+      engine.detach($0)
+    }
+    engine.stop()
   }
 }
