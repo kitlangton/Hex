@@ -26,6 +26,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 		Task {
 			await soundEffect.preloadSounds()
+			await soundEffect.setEnabled(hexSettings.soundEffectsEnabled)
 		}
 		launchedAtLogin = wasLaunchedAtLogin()
 		appLogger.info("Application did finish launching")

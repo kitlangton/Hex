@@ -120,6 +120,7 @@ struct SettingsFeature {
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
   @Dependency(\.permissions) var permissions
+  @Dependency(\.soundEffects) var soundEffects
   @Dependency(\.transcriptPersistence) var transcriptPersistence
 
   private func deleteAudioEffect(for transcripts: [Transcript]) -> Effect<Action> {
@@ -499,7 +500,9 @@ struct SettingsFeature {
 
       case let .setSoundEffectsEnabled(enabled):
         state.$hexSettings.withLock { $0.soundEffectsEnabled = enabled }
-        return .none
+        return .run { _ in
+          await soundEffects.setEnabled(enabled)
+        }
 
       case let .setSoundEffectsVolume(volume):
         state.$hexSettings.withLock { $0.soundEffectsVolume = volume }

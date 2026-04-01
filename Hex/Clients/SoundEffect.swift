@@ -35,6 +35,7 @@ public struct SoundEffectsClient {
   public var stop: @Sendable (SoundEffect) -> Void
   public var stopAll: @Sendable () -> Void
   public var preloadSounds: @Sendable () async -> Void
+  public var setEnabled: @Sendable (Bool) async -> Void
 }
 
 extension SoundEffectsClient: DependencyKey {
@@ -52,6 +53,9 @@ extension SoundEffectsClient: DependencyKey {
       },
       preloadSounds: {
         await live.preloadSounds()
+      },
+      setEnabled: { enabled in
+        await live.setEnabled(enabled)
       }
     )
   }
@@ -75,17 +79,17 @@ actor SoundEffectsClientLive {
   private var isEngineRunning = false
 
   func play(_ soundEffect: SoundEffect) {
-	guard hexSettings.soundEffectsEnabled else { return }
-	guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
-		logger.error("Requested sound \(soundEffect.rawValue) not preloaded")
-		return
-	}
-	prepareEngineIfNeeded()
-	let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
-	player.volume = Float(clampedVolume)
-	player.stop()
-	player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-	player.play()
+    guard hexSettings.soundEffectsEnabled else { return }
+    guard let player = playerNodes[soundEffect], let buffer = audioBuffers[soundEffect] else {
+      logger.error("Requested sound \(soundEffect.rawValue) not preloaded")
+      return
+    }
+    prepareEngineIfNeeded()
+    let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
+    player.volume = Float(clampedVolume)
+    player.stop()
+    player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+    player.play()
   }
 
   func stop(_ soundEffect: SoundEffect) {
@@ -102,9 +106,19 @@ actor SoundEffectsClientLive {
     for soundEffect in SoundEffect.allCases {
       loadSound(soundEffect)
     }
-    prepareEngineIfNeeded()
 
     isSetup = true
+  }
+
+  func setEnabled(_: Bool) async {
+    await preloadSounds()
+
+    if hexSettings.soundEffectsEnabled {
+      prepareEngineIfNeeded()
+    } else {
+      stopAll()
+      stopEngineIfNeeded()
+    }
   }
 
   private var isSetup = false
@@ -136,6 +150,7 @@ actor SoundEffectsClientLive {
       logger.error("Failed to load sound \(soundEffect.rawValue): \(error.localizedDescription)")
     }
   }
+
   private func prepareEngineIfNeeded() {
     if !isEngineRunning || !engine.isRunning {
       engine.prepare()
@@ -149,5 +164,19 @@ actor SoundEffectsClientLive {
         logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
       }
     }
+  }
+
+  private func stopEngineIfNeeded() {
+    guard isEngineRunning || engine.isRunning else { return }
+    engine.stop()
+    isEngineRunning = false
+  }
+
+  deinit {
+    playerNodes.values.forEach {
+      $0.stop()
+      engine.detach($0)
+    }
+    engine.stop()
   }
 }
