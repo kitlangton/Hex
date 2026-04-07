@@ -17,8 +17,7 @@ This document now describes the final architecture that shipped, not the earlier
 - the GUI app keeps its `TranscriptionClient` API, but now delegates to the shared engine
 - the CLI uses a thin `AVAudioRecorder` wrapper and does not depend on TCA, SwiftUI, or AppKit
 - the CLI can be run from source with `swift run --package-path HexCore hex-cli`
-- the CLI can be installed locally onto `PATH` with `./HexCore/install-hex-cli.sh`
-- the installer writes a versioned binary that matches the current Hex app version and refreshes the `hex-cli` symlink
+- the CLI can be built directly as a release binary with `swift build --package-path HexCore -c release --product hex-cli`
 - the CLI loads Parakeet with CPU-only CoreML compute units to avoid ANE runtime warnings leaking into stderr
 
 ## Architecture Decisions
@@ -91,9 +90,6 @@ HexCore/
 Hex/
   Clients/
     TranscriptionClient.swift
-
-HexCore/
-  install-hex-cli.sh
 ```
 
 ## Runtime Behavior
@@ -136,27 +132,24 @@ swift run --package-path HexCore hex-cli --model parakeet-tdt-0.6b-v3-coreml
 swift run --package-path HexCore hex-cli --model openai_whisper-tiny --output transcript.txt
 ```
 
-## Local Installation
+## Release Build
 
-Install a release build into `~/.local/bin` by default:
-
-```bash
-./HexCore/install-hex-cli.sh
-```
-
-Install into a different directory:
+Build the standalone binary:
 
 ```bash
-INSTALL_DIR="$HOME/bin" ./HexCore/install-hex-cli.sh
+swift build --package-path HexCore -c release --product hex-cli
+swift build --package-path HexCore -c release --show-bin-path
 ```
 
-After installation:
+That output directory contains the compiled `hex-cli` binary.
+
+If you want it on your `PATH`, copy or symlink it into a directory such as `~/.local/bin`.
+
+After placing it on your `PATH`:
 
 ```bash
 hex-cli --help
 ```
-
-The installer creates `hex-cli-<current-version>` and updates `hex-cli` to point at it so the installed artifact matches the current Hex version
 
 ## Validation
 

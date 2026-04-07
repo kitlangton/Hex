@@ -32,16 +32,16 @@ swift run --package-path HexCore hex-cli
 
 Use `--model <id>` to force a specific model and `--output <path>` to write the transcript to disk in addition to stdout. Recording stops on Enter or `Ctrl+C`, and both paths continue through transcription. The CLI loads Parakeet in CPU-only mode by default to avoid noisy CoreML runtime warnings in terminal sessions.
 
-To install a release build onto your local `PATH`:
+To build a release binary:
 
 ```bash
-./HexCore/install-hex-cli.sh
-hex-cli --help
+swift build --package-path HexCore -c release --product hex-cli
+swift build --package-path HexCore -c release --show-bin-path
 ```
 
-By default the installer copies the binary to `~/.local/bin`. Override that with `INSTALL_DIR=/your/bin/dir` if you want a different location.
+That prints the directory containing the compiled `hex-cli` binary.
 
-The installer creates a versioned binary like `hex-cli-0.7.3` and updates `hex-cli` to point at that version.
+If you want it on your `PATH`, copy or symlink that binary into a directory like `~/.local/bin` yourself.
 
 ## Contributing
 
