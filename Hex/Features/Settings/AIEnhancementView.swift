@@ -1,8 +1,6 @@
-// 
+//
 //  AIEnhancementView.swift
 //  Hex
-//
-//  Created by Claude AI on 4/22/25.
 //
 
 import ComposableArchitecture
@@ -11,7 +9,6 @@ import SwiftUI
 struct AIEnhancementView: View {
     @Bindable var store: StoreOf<AIEnhancementFeature>
     @State private var showExpandedPrompt = false
-    @State private var isHoveringModelSelect = false
     
     var body: some View {
         Form {

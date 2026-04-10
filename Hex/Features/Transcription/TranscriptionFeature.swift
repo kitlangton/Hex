@@ -150,12 +150,11 @@ struct TranscriptionFeature {
         return handleAIEnhancement(&state, result: result, audioURL: audioURL)
 
       case let .aiEnhancementError(error):
-        let nsError = error as NSError
-        if nsError.domain == "AIEnhancementClient" && (nsError.code == -1001 || nsError.localizedDescription.contains("Ollama")) {
-          print("AI Enhancement error due to Ollama connectivity: \(error)")
+        if error is AIEnhancementError {
+          transcriptionFeatureLogger.notice("AI enhancement error (Ollama): \(error.localizedDescription)")
           return .send(.ollamaBecameUnavailable)
         } else {
-          print("AI Enhancement error: \(error)")
+          transcriptionFeatureLogger.error("AI enhancement error: \(error.localizedDescription)")
           return .none
         }
 
@@ -166,7 +165,7 @@ struct TranscriptionFeature {
         return .run { send in
           let isAvailable = await aiEnhancement.isOllamaAvailable()
           if !isAvailable {
-            print("[TranscriptionFeature] Ollama is not available. AI enhancement is disabled.")
+            transcriptionFeatureLogger.notice("Ollama is not available. AI enhancement is disabled.")
           }
         }
 
@@ -548,7 +547,7 @@ private extension TranscriptionFeature {
           let enhancedText = try await aiEnhancement.enhance(result, model, options) { _ in }
           await send(.aiEnhancementResult(enhancedText, audioURL))
         } catch {
-          print("[TranscriptionFeature] Error enhancing text with AI: \(error)")
+          transcriptionFeatureLogger.error("AI enhancement failed: \(error.localizedDescription)")
           await send(.aiEnhancementError(error))
         }
       }

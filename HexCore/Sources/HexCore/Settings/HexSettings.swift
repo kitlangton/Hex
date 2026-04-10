@@ -98,7 +98,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
 		wordRemappings: [WordRemapping] = [],
 		useAIEnhancement: Bool = false,
-		selectedAIModel: String = "llama3:8b",
+		selectedAIModel: String = "gemma3",
 		aiEnhancementPrompt: String = HexSettings.defaultAIEnhancementPrompt,
 		aiEnhancementTemperature: Double = 0.3
 	) {

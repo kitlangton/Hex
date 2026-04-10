@@ -2,8 +2,6 @@
 //  AIEnhancementFeature.swift
 //  Hex
 //
-//  Created by Claude AI on 4/22/25.
-//
 
 import ComposableArchitecture
 import Foundation
@@ -14,16 +12,11 @@ struct AIEnhancementFeature {
     @ObservableState
     struct State: Equatable {
         @Shared(.hexSettings) var hexSettings: HexSettings
-        
+
         var isOllamaAvailable: Bool = false
         var availableModels: [String] = []
         var isLoadingModels: Bool = false
         var errorMessage: String? = nil
-        
-        // Computed property for convenient access to the default model
-        var defaultAIModel: String {
-            "gemma3"
-        }
     }
     
     enum Action {
@@ -79,12 +72,7 @@ struct AIEnhancementFeature {
                 
                 // If the selected model is not in the list and we have models, select the first one
                 if !models.isEmpty && !models.contains(state.hexSettings.selectedAIModel) {
-                    // Check if the default model is available
-                    if models.contains(state.defaultAIModel) {
-                        state.$hexSettings.withLock { $0.selectedAIModel = state.defaultAIModel }
-                    } else {
-                        state.$hexSettings.withLock { $0.selectedAIModel = models[0] }
-                    }
+                    state.$hexSettings.withLock { $0.selectedAIModel = models[0] }
                 }
                 
                 return .none
