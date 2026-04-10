@@ -22,6 +22,7 @@ struct TranscriptionFeature {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
+    var isEnhancing: Bool = false // Add this to track when AI enhancement is active
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
@@ -55,12 +56,20 @@ struct TranscriptionFeature {
 
     // Model availability
     case modelMissing
+
+    // AI Enhancement flow
+    case setEnhancingState(Bool)
+    case aiEnhancementResult(String, URL)
+    case aiEnhancementError(Error)
+    case ollamaBecameUnavailable
+    case recheckOllamaAvailability
   }
 
   enum CancelID {
     case metering
     case recordingCleanup
     case transcription
+    case aiEnhancement
   }
 
   @Dependency(\.transcription) var transcription
@@ -71,6 +80,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.aiEnhancement) var aiEnhancement
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -91,7 +101,15 @@ struct TranscriptionFeature {
       // MARK: - Metering
 
       case let .audioLevelUpdated(meter):
-        state.meter = meter
+        // Only update state.meter if it's significantly different from the previous value
+        // or if we're currently recording (when we need more responsive updates)
+        let averageDiff = abs(meter.averagePower - state.meter.averagePower)
+        let peakDiff = abs(meter.peakPower - state.meter.peakPower)
+        let significantChange = averageDiff > 0.03 || peakDiff > 0.05
+
+        if state.isRecording || significantChange {
+          state.meter = meter
+        }
         return .none
 
       // MARK: - HotKey Flow
@@ -122,6 +140,35 @@ struct TranscriptionFeature {
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
 
+      // MARK: - AI Enhancement Results
+
+      case let .setEnhancingState(isEnhancing):
+        state.isEnhancing = isEnhancing
+        return .none
+
+      case let .aiEnhancementResult(result, audioURL):
+        return handleAIEnhancement(&state, result: result, audioURL: audioURL)
+
+      case let .aiEnhancementError(error):
+        if error is AIEnhancementError {
+          transcriptionFeatureLogger.notice("AI enhancement error (Ollama): \(error.localizedDescription)")
+          return .send(.ollamaBecameUnavailable)
+        } else {
+          transcriptionFeatureLogger.error("AI enhancement error: \(error.localizedDescription)")
+          return .none
+        }
+
+      case .ollamaBecameUnavailable:
+        return .send(.recheckOllamaAvailability)
+
+      case .recheckOllamaAvailability:
+        return .run { send in
+          let isAvailable = await aiEnhancement.isOllamaAvailable()
+          if !isAvailable {
+            transcriptionFeatureLogger.notice("Ollama is not available. AI enhancement is disabled.")
+          }
+        }
+
       case .modelMissing:
         return .none
 
@@ -150,9 +197,52 @@ struct TranscriptionFeature {
 private extension TranscriptionFeature {
   /// Effect to begin observing the audio meter.
   func startMeteringEffect() -> Effect<Action> {
-    .run { send in
+    // Create a separate actor to handle rate limiting safely in Swift 6
+    actor MeterRateLimiter {
+      private var lastUpdateTime = Date()
+      private var lastMeter: Meter? = nil
+      
+      func shouldUpdate(meter: Meter) -> Bool {
+        let now = Date()
+        let timeSinceLastUpdate = now.timeIntervalSince(lastUpdateTime)
+        
+        // Always update if enough time has passed (ensures UI responsiveness)
+        if timeSinceLastUpdate >= 0.05 { // Max 20 updates per second
+          self.lastUpdateTime = now
+          self.lastMeter = meter
+          return true
+        }
+        // Or if there's a significant change from the last meter we actually sent
+        else if let last = lastMeter {
+          let averageDiff = abs(meter.averagePower - last.averagePower)
+          let peakDiff = abs(meter.peakPower - last.peakPower)
+          // More responsive threshold for significant changes
+          let shouldUpdate = averageDiff > 0.02 || peakDiff > 0.04
+          
+          if shouldUpdate {
+            self.lastUpdateTime = now
+            self.lastMeter = meter
+          }
+          
+          return shouldUpdate
+        }
+        
+        self.lastUpdateTime = now
+        self.lastMeter = meter
+        return true // First update always passes through
+      }
+    }
+    
+    return .run { send in
+      let rateLimiter = MeterRateLimiter()
+      
       for await meter in await recording.observeAudioLevel() {
-        await send(.audioLevelUpdated(meter))
+        // Check if we should send this update
+        if await rateLimiter.shouldUpdate(meter: meter) {
+          // The Effect.run captures its function as @Sendable, so we're already on an appropriate context
+          // for sending actions. ComposableArchitecture handles dispatching to the main thread as needed.
+            await send(.audioLevelUpdated(meter))
+        }
       }
     }
     .cancellable(id: CancelID.metering, cancelInFlight: true)
@@ -350,9 +440,13 @@ private extension TranscriptionFeature {
     // Otherwise, proceed to transcription
     state.isTranscribing = true
     state.error = nil
+    
+    // Extract all required state values to local variables to avoid capturing inout parameter
     let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
-
+    let settings = state.hexSettings
+    // recordingStartTime captured in handleTranscriptionResult
+    
     state.isPrewarming = true
 
     return .run { [sleepManagement] send in
@@ -395,10 +489,84 @@ private extension TranscriptionFeature {
     result: String,
     audioURL: URL
   ) -> Effect<Action> {
+    // First check if we should use AI enhancement
+    if state.hexSettings.useAIEnhancement {
+      return enhanceWithAI(result: result, audioURL: audioURL, state: state)
+    } else {
+      state.isTranscribing = false
+      state.isPrewarming = false
+
+      // If empty text, nothing else to do
+      guard !result.isEmpty else {
+        return .none
+      }
+
+      let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+      let sourceAppBundleID = state.sourceAppBundleID
+      let sourceAppName = state.sourceAppName
+      let transcriptionHistory = state.$transcriptionHistory
+
+      return .run { send in
+        do {
+          try await finalizeRecordingAndStoreTranscript(
+            result: result,
+            duration: duration,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            audioURL: audioURL,
+            transcriptionHistory: transcriptionHistory
+          )
+        } catch {
+          await send(.transcriptionError(error, audioURL))
+        }
+      }
+      .cancellable(id: CancelID.transcription)
+    }
+  }
+  
+  // MARK: - AI Enhancement Handlers
+  
+  // Use AI to enhance the transcription result
+  private func enhanceWithAI(result: String, audioURL: URL, state: State) -> Effect<Action> {
+    guard !result.isEmpty else {
+      return .send(.aiEnhancementResult(result, audioURL))
+    }
+
+    let model = state.hexSettings.selectedAIModel
+    let promptText = state.hexSettings.aiEnhancementPrompt
+    let temperature = state.hexSettings.aiEnhancementTemperature
+    let options = EnhancementOptions(
+      prompt: promptText,
+      temperature: temperature
+    )
+
+    return .merge(
+      .send(.setEnhancingState(true)),
+      .run { send in
+        do {
+          let enhancedText = try await aiEnhancement.enhance(result, model, options) { _ in }
+          await send(.aiEnhancementResult(enhancedText, audioURL))
+        } catch {
+          transcriptionFeatureLogger.error("AI enhancement failed: \(error.localizedDescription)")
+          await send(.aiEnhancementError(error))
+        }
+      }
+    )
+    // Don't make this cancellable to avoid premature cancellation
+    // This may have been causing the issue with the enhancement being cancelled
+  }
+  
+  // Handle the AI enhancement result
+  private func handleAIEnhancement(
+    _ state: inout State,
+    result: String,
+    audioURL: URL
+  ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
+    state.isEnhancing = false  // Reset the enhancing state
+    state.pendingTranscription = nil  // Clear the pending transcription since enhancement succeeded
 
-    // Check for force quit command (emergency escape hatch)
     if ForceQuitCommandDetector.matches(result) {
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
       return .run { _ in
@@ -409,7 +577,6 @@ private extension TranscriptionFeature {
       }
     }
 
-    // If empty text, nothing else to do
     guard !result.isEmpty else {
       return .none
     }
@@ -531,13 +698,13 @@ private extension TranscriptionFeature {
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
+    state.isEnhancing = false
 
     return .merge(
       .cancel(id: CancelID.transcription),
+      .cancel(id: CancelID.aiEnhancement),
       .run { [sleepManagement] _ in
-        // Allow system to sleep again
         await sleepManagement.allowSleep()
-        // Stop the recording to release microphone access
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
         try? FileManager.default.removeItem(at: url)
@@ -570,7 +737,9 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing {
+    if store.isEnhancing {
+      return .enhancing 
+    } else if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording

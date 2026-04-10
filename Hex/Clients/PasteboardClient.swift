@@ -103,7 +103,7 @@ struct PasteboardClientLive {
         // Convert modifiers to CGEventFlags and key codes for modifier keys
         var modifierKeyCodes: [CGKeyCode] = []
         var flags = CGEventFlags()
-        
+
         for modifier in command.modifiers.sorted {
             switch modifier.kind {
             case .command:
@@ -123,32 +123,32 @@ struct PasteboardClientLive {
                 // Fn key doesn't need explicit key down/up
             }
         }
-        
+
         // Press modifiers down
         for keyCode in modifierKeyCodes {
             let modDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
             modDown?.post(tap: .cghidEventTap)
         }
-        
+
         // Press main key if present
         if let key = command.key {
             let keyCode = Sauce.shared.keyCode(for: key)
-            
+
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
             keyDown?.flags = flags
             keyDown?.post(tap: .cghidEventTap)
-            
+
             let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
             keyUp?.flags = flags
             keyUp?.post(tap: .cghidEventTap)
         }
-        
+
         // Release modifiers in reverse order
         for keyCode in modifierKeyCodes.reversed() {
             let modUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
             modUp?.post(tap: .cghidEventTap)
         }
-        
+
         pasteboardLogger.debug("Sent keyboard command: \(command.displayName)")
     }
 
@@ -207,7 +207,7 @@ struct PasteboardClientLive {
         let targetChangeCount = writeAndTrackChangeCount(pasteboard: pasteboard, text: text)
         _ = await waitForPasteboardCommit(targetChangeCount: targetChangeCount)
         let pasteSucceeded = await performPaste(text)
-        
+
         // Only restore original pasteboard contents if:
         // 1. Copying to clipboard is disabled AND
         // 2. The paste operation succeeded
@@ -223,13 +223,10 @@ struct PasteboardClientLive {
         }
         
         // If we failed to paste AND user doesn't want clipboard retention,
-        // show a notification that text is available in clipboard
+        // log the issue but leave text in clipboard as fallback
         if !pasteSucceeded && !hexSettings.copyToClipboard {
             // Keep the transcribed text in clipboard regardless of setting
             pasteboardLogger.notice("Paste operation failed; text remains in clipboard as fallback.")
-            
-            // TODO: Could add a notification here to inform user
-            // that text is available in clipboard
         }
     }
 

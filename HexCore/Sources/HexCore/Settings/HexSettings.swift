@@ -10,6 +10,20 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
 	public static let baseSoundEffectsVolume: Double = HexCoreConstants.baseSoundEffectsVolume
+	public static let defaultAIEnhancementPrompt = """
+	You are a professional editor improving transcribed text from speech-to-text.
+
+	Your task is to:
+	1. Fix grammar, punctuation, and capitalization
+	2. Correct obvious transcription errors and typos
+	3. Format the text to be more readable
+	4. Preserve all meaning and information from the original
+	5. Make the text flow naturally as written text
+	6. DO NOT add any new information that wasn't in the original
+	7. DO NOT remove any information from the original text
+
+	Focus only on improving readability while preserving the exact meaning.
+	"""
 	public static let defaultWordRemovals: [WordRemoval] = [
 		.init(pattern: "uh+"),
 		.init(pattern: "um+"),
@@ -47,6 +61,10 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+	public var useAIEnhancement: Bool
+	public var selectedAIModel: String
+	public var aiEnhancementPrompt: String
+	public var aiEnhancementTemperature: Double
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -78,7 +96,11 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		useAIEnhancement: Bool = false,
+		selectedAIModel: String = "gemma3",
+		aiEnhancementPrompt: String = HexSettings.defaultAIEnhancementPrompt,
+		aiEnhancementTemperature: Double = 0.3
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -104,6 +126,10 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.useAIEnhancement = useAIEnhancement
+		self.selectedAIModel = selectedAIModel
+		self.aiEnhancementPrompt = aiEnhancementPrompt
+		self.aiEnhancementTemperature = aiEnhancementTemperature
 		normalizeDoubleTapSettings()
 	}
 
@@ -152,6 +178,10 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case useAIEnhancement
+	case selectedAIModel
+	case aiEnhancementPrompt
+	case aiEnhancementTemperature
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -284,6 +314,10 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
-		).eraseToAny()
+		).eraseToAny(),
+		SettingsField(.useAIEnhancement, keyPath: \.useAIEnhancement, default: defaults.useAIEnhancement).eraseToAny(),
+		SettingsField(.selectedAIModel, keyPath: \.selectedAIModel, default: defaults.selectedAIModel).eraseToAny(),
+		SettingsField(.aiEnhancementPrompt, keyPath: \.aiEnhancementPrompt, default: defaults.aiEnhancementPrompt).eraseToAny(),
+		SettingsField(.aiEnhancementTemperature, keyPath: \.aiEnhancementTemperature, default: defaults.aiEnhancementTemperature).eraseToAny()
 	]
 }
