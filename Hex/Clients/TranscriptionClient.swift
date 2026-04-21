@@ -183,6 +183,8 @@ actor TranscriptionClientLive {
       let contents = try fileManager.contentsOfDirectory(atPath: modelFolder.path)
       guard !contents.isEmpty else { return false }
 
+      // WhisperKit expects a model folder laid out as `<model>/*.mlmodelc` plus a
+      // sibling `tokenizer/` directory. Both must be present for the model to load.
       let hasModelFiles = contents.contains { $0.hasSuffix(".mlmodelc") || $0.contains("model") }
       let tokenizerFolder = modelFolder.appendingPathComponent("tokenizer", isDirectory: true)
       let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolder.path)
@@ -275,6 +277,14 @@ actor TranscriptionClientLive {
   /// to a concrete model name from the current HuggingFace repository.
   /// Preference: downloaded > non-turbo > any match.
   private func resolveVariant(_ variant: String) async -> String {
+    let hasGlob = variant.contains("*") || variant.contains("?")
+
+    // Fast path: a concrete name whose folder is already on disk does not need
+    // network resolution. Keeps the hot path (already-downloaded models) offline-safe.
+    if !hasGlob, FileManager.default.fileExists(atPath: modelPath(for: variant).path) {
+      return variant
+    }
+
     let names: [String]
     do { names = try await WhisperKit.fetchAvailableModels() } catch { return variant }
 
@@ -282,7 +292,7 @@ actor TranscriptionClientLive {
     if names.contains(variant) { return variant }
 
     // Glob pattern -- use fnmatch-based resolution
-    if variant.contains("*") || variant.contains("?") {
+    if hasGlob {
       var models: [(name: String, isDownloaded: Bool)] = []
       for name in names where ModelPatternMatcher.matches(variant, name) {
         models.append((name, await isModelDownloaded(name)))

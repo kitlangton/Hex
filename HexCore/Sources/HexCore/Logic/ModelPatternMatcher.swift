@@ -24,6 +24,8 @@ public enum ModelPatternMatcher {
     if matches(pattern, text) { return true }
     let stripped1 = stripSizeSuffix(pattern)
     let stripped2 = stripSizeSuffix(text)
+    // Guard against degenerate inputs (e.g. "_626MB") both collapsing to empty.
+    guard !stripped1.isEmpty, !stripped2.isEmpty else { return false }
     return stripped1 == stripped2
   }
 

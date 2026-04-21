@@ -352,10 +352,13 @@ public struct ModelDownloadFeature {
 			var failureMessage: String?
 			switch result {
 			case let .success(name):
-				if let idx = state.availableModels.firstIndex(where: { ModelPatternMatcher.matchesFlexible(name, $0.name) }) {
-					state.availableModels[id: state.availableModels[idx].id]?.isDownloaded = true
+				// `matchesFlexible` takes (pattern, text). Catalog entries may carry
+				// glob patterns; `name` is the resolved concrete model name -- so
+				// the catalog entry must be the pattern argument.
+				if let idx = state.availableModels.firstIndex(where: { ModelPatternMatcher.matchesFlexible($0.name, name) }) {
+					state.availableModels[idx].isDownloaded = true
 				}
-				if let idx = state.curatedModels.firstIndex(where: { ModelPatternMatcher.matchesFlexible(name, $0.internalName) }) {
+				if let idx = state.curatedModels.firstIndex(where: { ModelPatternMatcher.matchesFlexible($0.internalName, name) }) {
 					state.curatedModels[idx].isDownloaded = true
 				}
 				state.$hexSettings.withLock { settings in
