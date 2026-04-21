@@ -33,7 +33,7 @@
   },
   {
     "displayName": "Whisper Large v3",
-    "internalName": "openai_whisper-large-v3-v20240930",
+    "internalName": "openai_whisper-large-v3-v20240930_626MB",
     "size": "Multilingual",
     "accuracyStars": 4,
     "speedStars": 2,

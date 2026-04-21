@@ -138,7 +138,12 @@ public struct ModelDownloadFeature {
 		// Convenience computed vars
 		var selectedModel: String { hexSettings.selectedModel }
 		var selectedModelIsDownloaded: Bool {
-			availableModels[id: selectedModel]?.isDownloaded ?? false
+			if let exact = availableModels[id: selectedModel] {
+				return exact.isDownloaded
+			}
+			return availableModels.first(where: {
+				ModelPatternMatcher.matchesFlexible(selectedModel, $0.name)
+			})?.isDownloaded ?? false
 		}
 
 		var anyModelDownloaded: Bool {
@@ -285,7 +290,7 @@ public struct ModelDownloadFeature {
 			var curated = CuratedModelLoader.load()
 			for idx in curated.indices {
 				let internalName = curated[idx].internalName
-				if let match = available.first(where: { ModelPatternMatcher.matches(internalName, $0.name) }) {
+				if let match = available.first(where: { ModelPatternMatcher.matchesFlexible(internalName, $0.name) }) {
 					curated[idx].isDownloaded = match.isDownloaded
 				} else {
 					curated[idx].isDownloaded = false
@@ -347,8 +352,10 @@ public struct ModelDownloadFeature {
 			var failureMessage: String?
 			switch result {
 			case let .success(name):
-				state.availableModels[id: name]?.isDownloaded = true
-				if let idx = state.curatedModels.firstIndex(where: { $0.internalName == name }) {
+				if let idx = state.availableModels.firstIndex(where: { ModelPatternMatcher.matchesFlexible(name, $0.name) }) {
+					state.availableModels[id: state.availableModels[idx].id]?.isDownloaded = true
+				}
+				if let idx = state.curatedModels.firstIndex(where: { ModelPatternMatcher.matchesFlexible(name, $0.internalName) }) {
 					state.curatedModels[idx].isDownloaded = true
 				}
 				state.$hexSettings.withLock { settings in

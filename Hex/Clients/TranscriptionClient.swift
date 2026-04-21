@@ -172,30 +172,21 @@ actor TranscriptionClientLive {
       parakeetLogger.debug("Parakeet available? \(available)")
       return available
     }
-    let modelFolderPath = modelPath(for: modelName).path
+    let modelFolder = effectiveModelPath(for: modelName)
     let fileManager = FileManager.default
 
-    // First, check if the basic model directory exists
-    guard fileManager.fileExists(atPath: modelFolderPath) else {
-      // Don't print logs that would spam the console
+    guard fileManager.fileExists(atPath: modelFolder.path) else {
       return false
     }
 
     do {
-      // Check if the directory has actual model files in it
-      let contents = try fileManager.contentsOfDirectory(atPath: modelFolderPath)
+      let contents = try fileManager.contentsOfDirectory(atPath: modelFolder.path)
+      guard !contents.isEmpty else { return false }
 
-      // Model should have multiple files and certain key components
-      guard !contents.isEmpty else {
-        return false
-      }
-
-      // Check for specific model structure - need both tokenizer and model files
       let hasModelFiles = contents.contains { $0.hasSuffix(".mlmodelc") || $0.contains("model") }
-      let tokenizerFolderPath = tokenizerPath(for: modelName).path
-      let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolderPath)
+      let tokenizerFolder = modelFolder.appendingPathComponent("tokenizer", isDirectory: true)
+      let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolder.path)
 
-      // Both conditions must be true for a model to be considered downloaded
       return hasModelFiles && hasTokenizer
     } catch {
       return false
@@ -280,21 +271,31 @@ actor TranscriptionClientLive {
 
   // MARK: - Private Helpers
 
-  /// Resolve wildcard patterns (e.g. "distil*large-v3") to a concrete model name.
+  /// Resolve wildcard patterns (e.g. "distil*large-v3") or stale model names
+  /// to a concrete model name from the current HuggingFace repository.
   /// Preference: downloaded > non-turbo > any match.
   private func resolveVariant(_ variant: String) async -> String {
-    guard variant.contains("*") || variant.contains("?") else { return variant }
-
     let names: [String]
     do { names = try await WhisperKit.fetchAvailableModels() } catch { return variant }
 
-    // Build tuple array with download status for matching models
-    var models: [(name: String, isDownloaded: Bool)] = []
-    for name in names where ModelPatternMatcher.matches(variant, name) {
-      models.append((name, await isModelDownloaded(name)))
+    // Exact match -- no resolution needed
+    if names.contains(variant) { return variant }
+
+    // Glob pattern -- use fnmatch-based resolution
+    if variant.contains("*") || variant.contains("?") {
+      var models: [(name: String, isDownloaded: Bool)] = []
+      for name in names where ModelPatternMatcher.matches(variant, name) {
+        models.append((name, await isModelDownloaded(name)))
+      }
+      return ModelPatternMatcher.resolvePattern(variant, from: models) ?? variant
     }
 
-    return ModelPatternMatcher.resolvePattern(variant, from: models) ?? variant
+    // Stale name -- check for size-suffix variant (e.g. _626MB appended by HuggingFace)
+    if let match = names.first(where: { ModelPatternMatcher.matchesFlexible(variant, $0) }) {
+      return match
+    }
+
+    return variant
   }
 
   private func isParakeet(_ name: String) -> Bool {
@@ -310,6 +311,19 @@ actor TranscriptionClientLive {
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")
       .appendingPathComponent(sanitizedVariant, isDirectory: true)
+  }
+
+  /// Returns the on-disk model folder, falling back to the name without size suffix
+  /// if the exact path doesn't exist (handles HuggingFace _NNNmb renames).
+  private func effectiveModelPath(for variant: String) -> URL {
+    let exact = modelPath(for: variant)
+    if FileManager.default.fileExists(atPath: exact.path) { return exact }
+    let stripped = ModelPatternMatcher.stripSizeSuffix(variant)
+    if stripped != variant {
+      let fallback = modelPath(for: stripped)
+      if FileManager.default.fileExists(atPath: fallback.path) { return fallback }
+    }
+    return exact
   }
 
   /// Creates or returns the local folder for the tokenizer files of a given `variant`.
@@ -390,8 +404,8 @@ actor TranscriptionClientLive {
     loadingProgress.completedUnitCount = 0
     progressCallback(loadingProgress)
 
-    let modelFolder = modelPath(for: modelName)
-    let tokenizerFolder = tokenizerPath(for: modelName)
+    let modelFolder = effectiveModelPath(for: modelName)
+    let tokenizerFolder = modelFolder.appendingPathComponent("tokenizer", isDirectory: true)
 
     // Use WhisperKit's config to load the model
     let config = WhisperKitConfig(
