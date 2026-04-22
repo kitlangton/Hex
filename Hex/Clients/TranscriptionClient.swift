@@ -323,8 +323,12 @@ actor TranscriptionClientLive {
       .appendingPathComponent(sanitizedVariant, isDirectory: true)
   }
 
-  /// Returns the on-disk model folder, falling back to the name without size suffix
-  /// if the exact path doesn't exist (handles HuggingFace _NNNmb renames).
+  /// Returns the on-disk model folder, tolerating HuggingFace `_NNNMB` size-suffix
+  /// renames in either direction:
+  /// - variant carries the suffix, folder does not -> strip and retry.
+  /// - variant is the bare name, folder has the suffix -> scan siblings for a
+  ///   size-suffix variant (handles upgrade users whose persisted `selectedModel`
+  ///   was stored under the pre-rename name).
   private func effectiveModelPath(for variant: String) -> URL {
     let exact = modelPath(for: variant)
     if FileManager.default.fileExists(atPath: exact.path) { return exact }
@@ -332,6 +336,15 @@ actor TranscriptionClientLive {
     if stripped != variant {
       let fallback = modelPath(for: stripped)
       if FileManager.default.fileExists(atPath: fallback.path) { return fallback }
+    } else {
+      // variant has no suffix; look for a suffixed sibling on disk.
+      let parent = exact.deletingLastPathComponent()
+      if let siblings = try? FileManager.default.contentsOfDirectory(atPath: parent.path),
+         let match = siblings.first(where: { name in
+           name != variant && ModelPatternMatcher.matchesFlexible(variant, name)
+         }) {
+        return parent.appendingPathComponent(match, isDirectory: true)
+      }
     }
     return exact
   }
