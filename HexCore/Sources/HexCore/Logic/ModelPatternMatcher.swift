@@ -17,6 +17,26 @@ public enum ModelPatternMatcher {
     return pattern == text
   }
 
+  /// Matches model names tolerating HuggingFace size suffixes like `_626MB`.
+  /// Returns true if exact match, glob match, or one name equals the other
+  /// with a `_\d+MB` suffix stripped.
+  public static func matchesFlexible(_ pattern: String, _ text: String) -> Bool {
+    if matches(pattern, text) { return true }
+    let stripped1 = stripSizeSuffix(pattern)
+    let stripped2 = stripSizeSuffix(text)
+    // Guard against degenerate inputs (e.g. "_626MB") both collapsing to empty.
+    guard !stripped1.isEmpty, !stripped2.isEmpty else { return false }
+    return stripped1 == stripped2
+  }
+
+  /// Strips a trailing `_\d+MB` suffix from a model name if present.
+  public static func stripSizeSuffix(_ name: String) -> String {
+    guard let range = name.range(of: #"_\d+MB$"#, options: .regularExpression) else {
+      return name
+    }
+    return String(name[name.startIndex..<range.lowerBound])
+  }
+
   /// Given a list of model names and download status, resolve a glob pattern to a concrete name.
   /// Preference: downloaded > non-turbo > any match.
   /// Returns `nil` if no match found.
