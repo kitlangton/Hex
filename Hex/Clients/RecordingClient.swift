@@ -493,6 +493,10 @@ actor RecordingClientLive {
       reason: "audio-devices-changed"
     )
 
+    captureController.onConfigurationChange = { [weak self] in
+      Task { await self?.enqueueCaptureEnvironmentChange(reason: "engine-config-changed", forceRestart: true) }
+    }
+
     recordingLogger.notice("Installed recording environment observers")
   }
 

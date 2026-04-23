@@ -110,7 +110,13 @@ final class SuperFastCaptureController {
     interleaved: false
   )!
 
+  // Written once from RecordingClientLive.startObservingSystemChanges() before any notification
+  // can fire; read only on the main queue inside the NotificationCenter callback. No real-world
+  // race, but marked nonisolated(unsafe) to make the threading contract explicit.
+  nonisolated(unsafe) var onConfigurationChange: (() -> Void)?
+
   private var engine: AVAudioEngine?
+  private var engineConfigObserver: NSObjectProtocol?
   private var converter: AVAudioConverter?
   private var activeRecording: ActiveRecording?
   private var keepWarmBuffer = false
@@ -185,6 +191,14 @@ final class SuperFastCaptureController {
       )
     }
 
+    // When another app (e.g. FaceTime) changes the input device to multi-channel (e.g. 3-channel),
+    // AVAudioConverter has no layout info to downmix to mono and silently produces silence.
+    // Explicitly take channel 0 (the primary mic capsule) to avoid this.
+    // Trade-off: for stereo built-in mics, Apple's default mix (L*0.707 + R*0.707) gives slightly
+    // better off-axis pickup than channel 0 alone. Acceptable given that the alternative is silence.
+    if inputFormat.channelCount > 1 {
+      converter.channelMap = [0]
+    }
     self.converter = converter
 
     inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: inputFormat) {
@@ -195,14 +209,29 @@ final class SuperFastCaptureController {
     engine.prepare()
     try engine.start()
     self.engine = engine
+
+    // AVAudioEngine stops itself when the I/O format changes (e.g. a video call app
+    // renegotiates the device sample rate). Observe the notification so we can restart.
+    engineConfigObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange,
+      object: engine,
+      queue: .main
+    ) { [weak self] _ in
+      self?.onConfigurationChange?()
+    }
+
     logger.notice(
-      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
+      "Capture engine armed reason=\(reason, privacy: .public) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate), privacy: .public)Hz channelCount=\(inputFormat.channelCount, privacy: .public) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration), privacy: .public)s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration), privacy: .public)s"
     )
   }
 
   func stop(reason: String = "unknown") {
     if engine != nil {
-      logger.notice("Capture engine stopped reason=\(reason)")
+      logger.notice("Capture engine stopped reason=\(reason, privacy: .public)")
+    }
+    if let observer = engineConfigObserver {
+      NotificationCenter.default.removeObserver(observer)
+      engineConfigObserver = nil
     }
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
@@ -299,6 +328,10 @@ final class SuperFastCaptureController {
           converted.frameLength > 0,
           let samples = converted.floatChannelData?[0]
     else {
+      if activeRecording != nil {
+        // Transient drops are expected during an engine format change / restart; use debug not warning.
+        logger.debug("Buffer dropped during active recording — convert returned nil or empty frames")
+      }
       return
     }
 
@@ -314,8 +347,10 @@ final class SuperFastCaptureController {
     guard var recording = activeRecording else { return }
     if !recording.didLogFirstBuffer {
       let timeToFirstBuffer = Date().timeIntervalSince(recording.requestedAt)
+      var peak: Float = 0
+      for i in 0 ..< sampleCount { peak = max(peak, abs(samples[i])) }
       logger.notice(
-        "Capture engine first buffer latency=\(String(format: "%.3f", timeToFirstBuffer))s prepended=\(String(format: "%.3f", recording.prependedDuration))s frames=\(sampleCount)"
+        "Capture engine first buffer latency=\(String(format: "%.3f", timeToFirstBuffer), privacy: .public)s prepended=\(String(format: "%.3f", recording.prependedDuration), privacy: .public)s frames=\(sampleCount, privacy: .public) peakAmplitude=\(String(format: "%.6f", peak), privacy: .public)"
       )
       recording.didLogFirstBuffer = true
       activeRecording = recording
