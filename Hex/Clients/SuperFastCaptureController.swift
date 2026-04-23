@@ -110,7 +110,10 @@ final class SuperFastCaptureController {
     interleaved: false
   )!
 
+  var onConfigurationChange: (() -> Void)?
+
   private var engine: AVAudioEngine?
+  private var engineConfigObserver: NSObjectProtocol?
   private var converter: AVAudioConverter?
   private var activeRecording: ActiveRecording?
   private var keepWarmBuffer = false
@@ -195,6 +198,17 @@ final class SuperFastCaptureController {
     engine.prepare()
     try engine.start()
     self.engine = engine
+
+    // AVAudioEngine stops itself when the I/O format changes (e.g. a video call app
+    // renegotiates the device sample rate). Observe the notification so we can restart.
+    engineConfigObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange,
+      object: engine,
+      queue: .main
+    ) { [weak self] _ in
+      self?.onConfigurationChange?()
+    }
+
     logger.notice(
       "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
     )
@@ -203,6 +217,10 @@ final class SuperFastCaptureController {
   func stop(reason: String = "unknown") {
     if engine != nil {
       logger.notice("Capture engine stopped reason=\(reason)")
+    }
+    if let observer = engineConfigObserver {
+      NotificationCenter.default.removeObserver(observer)
+      engineConfigObserver = nil
     }
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
