@@ -110,7 +110,10 @@ final class SuperFastCaptureController {
     interleaved: false
   )!
 
-  var onConfigurationChange: (() -> Void)?
+  // Written once from RecordingClientLive.startObservingSystemChanges() before any notification
+  // can fire; read only on the main queue inside the NotificationCenter callback. No real-world
+  // race, but marked nonisolated(unsafe) to make the threading contract explicit.
+  nonisolated(unsafe) var onConfigurationChange: (() -> Void)?
 
   private var engine: AVAudioEngine?
   private var engineConfigObserver: NSObjectProtocol?
@@ -191,6 +194,8 @@ final class SuperFastCaptureController {
     // When another app (e.g. FaceTime) changes the input device to multi-channel (e.g. 3-channel),
     // AVAudioConverter has no layout info to downmix to mono and silently produces silence.
     // Explicitly take channel 0 (the primary mic capsule) to avoid this.
+    // Trade-off: for stereo built-in mics, Apple's default mix (L*0.707 + R*0.707) gives slightly
+    // better off-axis pickup than channel 0 alone. Acceptable given that the alternative is silence.
     if inputFormat.channelCount > 1 {
       converter.channelMap = [0]
     }
@@ -222,7 +227,7 @@ final class SuperFastCaptureController {
 
   func stop(reason: String = "unknown") {
     if engine != nil {
-      logger.notice("Capture engine stopped reason=\(reason)")
+      logger.notice("Capture engine stopped reason=\(reason, privacy: .public)")
     }
     if let observer = engineConfigObserver {
       NotificationCenter.default.removeObserver(observer)
@@ -324,7 +329,8 @@ final class SuperFastCaptureController {
           let samples = converted.floatChannelData?[0]
     else {
       if activeRecording != nil {
-        logger.warning("Buffer dropped during active recording — convert returned nil or empty frames")
+        // Transient drops are expected during an engine format change / restart; use debug not warning.
+        logger.debug("Buffer dropped during active recording — convert returned nil or empty frames")
       }
       return
     }
