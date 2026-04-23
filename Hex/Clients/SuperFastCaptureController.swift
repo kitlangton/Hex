@@ -188,6 +188,12 @@ final class SuperFastCaptureController {
       )
     }
 
+    // When another app (e.g. FaceTime) changes the input device to multi-channel (e.g. 3-channel),
+    // AVAudioConverter has no layout info to downmix to mono and silently produces silence.
+    // Explicitly take channel 0 (the primary mic capsule) to avoid this.
+    if inputFormat.channelCount > 1 {
+      converter.channelMap = [0]
+    }
     self.converter = converter
 
     inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: inputFormat) {
@@ -210,7 +216,7 @@ final class SuperFastCaptureController {
     }
 
     logger.notice(
-      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
+      "Capture engine armed reason=\(reason, privacy: .public) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate), privacy: .public)Hz channelCount=\(inputFormat.channelCount, privacy: .public) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration), privacy: .public)s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration), privacy: .public)s"
     )
   }
 
@@ -317,6 +323,9 @@ final class SuperFastCaptureController {
           converted.frameLength > 0,
           let samples = converted.floatChannelData?[0]
     else {
+      if activeRecording != nil {
+        logger.warning("Buffer dropped during active recording — convert returned nil or empty frames")
+      }
       return
     }
 
@@ -332,8 +341,10 @@ final class SuperFastCaptureController {
     guard var recording = activeRecording else { return }
     if !recording.didLogFirstBuffer {
       let timeToFirstBuffer = Date().timeIntervalSince(recording.requestedAt)
+      var peak: Float = 0
+      for i in 0 ..< sampleCount { peak = max(peak, abs(samples[i])) }
       logger.notice(
-        "Capture engine first buffer latency=\(String(format: "%.3f", timeToFirstBuffer))s prepended=\(String(format: "%.3f", recording.prependedDuration))s frames=\(sampleCount)"
+        "Capture engine first buffer latency=\(String(format: "%.3f", timeToFirstBuffer), privacy: .public)s prepended=\(String(format: "%.3f", recording.prependedDuration), privacy: .public)s frames=\(sampleCount, privacy: .public) peakAmplitude=\(String(format: "%.6f", peak), privacy: .public)"
       )
       recording.didLogFirstBuffer = true
       activeRecording = recording
