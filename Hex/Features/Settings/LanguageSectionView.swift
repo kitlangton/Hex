@@ -9,21 +9,41 @@ struct LanguageSectionView: View {
 	@Bindable var store: StoreOf<SettingsFeature>
 
 	var body: some View {
-		Label {
-			Picker(
-				"Output Language",
-				selection: Binding(
-					get: { store.hexSettings.outputLanguage },
-					set: { store.send(.setOutputLanguage($0)) }
-				)
-			) {
-				ForEach(store.languages, id: \.id) { language in
-					Text(language.name).tag(language.code as String?)
+		Section {
+			Label {
+				Picker(
+					"Output Language",
+					selection: Binding(
+						get: { store.hexSettings.outputLanguage },
+						set: { store.send(.setOutputLanguage($0)) }
+					)
+				) {
+					ForEach(store.languages, id: \.id) { language in
+						Text(language.name).tag(language.code as String?)
+					}
 				}
+				.pickerStyle(.menu)
+			} icon: {
+				Image(systemName: "globe")
 			}
-			.pickerStyle(.menu)
-		} icon: {
-			Image(systemName: "globe")
+
+			Label {
+				VStack(alignment: .leading, spacing: 4) {
+					TextField(
+						"e.g. use all lowercase, no trailing period",
+						text: Binding(
+							get: { store.hexSettings.whisperPrompt ?? "" },
+							set: { store.send(.setWhisperPrompt($0)) }
+						)
+					)
+					Text("Guides the model's output style. Whisper will try to match the tone and formatting of this prompt.")
+						.settingsCaption()
+				}
+			} icon: {
+				Image(systemName: "text.quote")
+			}
+		} header: {
+			Text("Transcription")
 		}
 		.enableInjection()
 	}

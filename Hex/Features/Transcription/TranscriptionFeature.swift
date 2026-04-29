@@ -352,6 +352,7 @@ private extension TranscriptionFeature {
     state.error = nil
     let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
+    let whisperPrompt = state.hexSettings.whisperPrompt
 
     state.isPrewarming = true
 
@@ -372,6 +373,7 @@ private extension TranscriptionFeature {
           language: language,
           detectLanguage: language == nil, // Only auto-detect if no language specified
           chunkingStrategy: .vad,
+          initialPrompt: whisperPrompt,
         )
         
         let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }

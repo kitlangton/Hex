@@ -104,6 +104,9 @@ struct SettingsFeature {
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
 
+    // Whisper prompt
+    case setWhisperPrompt(String?)
+
     // Word remappings
     case setWordRemovalsEnabled(Bool)
     case addWordRemoval
@@ -578,6 +581,10 @@ struct SettingsFeature {
         state.$hexSettings.withLock {
           $0.hotkey.modifiers = $0.hotkey.modifiers.setting(kind: kind, to: side)
         }
+        return .none
+
+      case let .setWhisperPrompt(prompt):
+        state.$hexSettings.withLock { $0.whisperPrompt = prompt?.isEmpty == true ? nil : prompt }
         return .none
 
       case let .setWordRemovalsEnabled(enabled):
