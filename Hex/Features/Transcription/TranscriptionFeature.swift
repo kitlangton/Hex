@@ -67,7 +67,12 @@ struct TranscriptionFeature {
 
   enum CancelID {
     case metering
+    /// Trivial cleanup work that owns no temp WAV (the discard path's removeItem call).
+    /// Safe to cancel when a new recording starts.
     case recordingCleanup
+    /// Post-stop work that owns a temp WAV and persists it through transcriptPersistence.
+    /// Must NOT be cancelled by handleStartRecording or we leak the temp file or lose the row.
+    case recordingFinalize
     case transcription
   }
 
@@ -369,7 +374,7 @@ private extension TranscriptionFeature {
           transcriptionHistory: transcriptionHistory
         )
       }
-      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+      .cancellable(id: CancelID.recordingFinalize, cancelInFlight: true)
     }
 
     // Otherwise, proceed to transcription
@@ -711,7 +716,7 @@ private extension TranscriptionFeature {
           )
         }
       }
-      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+      .cancellable(id: CancelID.recordingFinalize, cancelInFlight: true)
     )
   }
 
