@@ -99,6 +99,7 @@ struct SettingsFeature {
     
     // History Management
     case toggleSaveTranscriptionHistory(Bool)
+    case toggleSaveCancelledRecordings(Bool)
     case setMaxHistoryEntries(Int?)
 
     // Modifier configuration
@@ -567,6 +568,10 @@ struct SettingsFeature {
           return deleteAudioEffect(for: transcripts)
         }
         
+        return .none
+
+      case let .toggleSaveCancelledRecordings(enabled):
+        state.$hexSettings.withLock { $0.saveCancelledRecordings = enabled }
         return .none
 
       case let .setMaxHistoryEntries(maxHistoryEntries):

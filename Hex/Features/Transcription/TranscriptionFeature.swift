@@ -628,7 +628,9 @@ private extension TranscriptionFeature {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
     let meetsMinimumDuration = duration >= 1.0
-    let shouldPersist = meetsMinimumDuration && hexSettings.saveTranscriptionHistory
+    let shouldPersist = meetsMinimumDuration
+      && hexSettings.saveTranscriptionHistory
+      && hexSettings.saveCancelledRecordings
 
     guard shouldPersist else {
       try? FileManager.default.removeItem(at: audioURL)
