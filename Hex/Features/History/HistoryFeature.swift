@@ -96,7 +96,7 @@ struct HistoryFeature {
 		var audioPlayerController: AudioPlayerController?
 		var retryingTranscriptIDs: Set<UUID> = []
 		var lastRetryError: [UUID: String] = [:]
-		var retrySuccessFlash: Set<UUID> = []
+		var copiedTranscriptIDs: Set<UUID> = []
 
 		mutating func stopAudioPlayback() {
 			audioPlayerController?.stop()
@@ -109,7 +109,8 @@ struct HistoryFeature {
 	enum Action {
 		case playTranscript(UUID)
 		case stopPlayback
-		case copyToClipboard(String)
+		case copyTranscript(UUID)
+		case copiedFlashEnded(UUID)
 		case deleteTranscript(UUID)
 		case deleteAllTranscripts
 		case confirmDeleteAll
@@ -118,11 +119,11 @@ struct HistoryFeature {
 		case retryTranscript(UUID)
 		case retrySucceeded(UUID, String)
 		case retryFailed(UUID, String)
-		case retrySuccessFlashEnded(UUID)
 	}
 
 	enum CancelID: Hashable {
 		case retry(UUID)
+		case copyFlash(UUID)
 	}
 
 	@Dependency(\.pasteboard) var pasteboard
@@ -185,10 +186,24 @@ struct HistoryFeature {
 				state.stopAudioPlayback()
 				return .none
 
-			case let .copyToClipboard(text):
-				return .run { [pasteboard] _ in
-					await pasteboard.copy(text)
+			case let .copyTranscript(id):
+				guard let row = state.transcriptionHistory.history.first(where: { $0.id == id }) else {
+					return .none
 				}
+				state.copiedTranscriptIDs.insert(id)
+				let text = row.text
+				return .merge(
+					.run { [pasteboard] _ in await pasteboard.copy(text) },
+					.run { send in
+						try? await Task.sleep(for: .seconds(1.5))
+						await send(.copiedFlashEnded(id))
+					}
+					.cancellable(id: CancelID.copyFlash(id), cancelInFlight: true)
+				)
+
+			case let .copiedFlashEnded(id):
+				state.copiedTranscriptIDs.remove(id)
+				return .none
 
 			case let .deleteTranscript(id):
 				guard let index = state.transcriptionHistory.history.firstIndex(where: { $0.id == id }) else {
@@ -205,14 +220,15 @@ struct HistoryFeature {
 					history.history.remove(at: index)
 				}
 
-				// Clear any retry-related state for this id and abort any in-flight retry effect.
+				// Clear retry- and copy-flash-related state and abort any in-flight effects for this id.
 				state.retryingTranscriptIDs.remove(id)
 				state.lastRetryError[id] = nil
-				state.retrySuccessFlash.remove(id)
+				state.copiedTranscriptIDs.remove(id)
 
 				return .merge(
 					deleteAudioEffect(for: [transcript]),
-					.cancel(id: CancelID.retry(id))
+					.cancel(id: CancelID.retry(id)),
+					.cancel(id: CancelID.copyFlash(id))
 				)
 
 			case .deleteAllTranscripts:
@@ -221,6 +237,7 @@ struct HistoryFeature {
 			case .confirmDeleteAll:
 				let transcripts = state.transcriptionHistory.history
 				let activeRetryIDs = state.retryingTranscriptIDs
+				let activeCopyIDs = state.copiedTranscriptIDs
 				state.stopAudioPlayback()
 
 				state.$transcriptionHistory.withLock { history in
@@ -228,11 +245,12 @@ struct HistoryFeature {
 				}
 				state.retryingTranscriptIDs.removeAll()
 				state.lastRetryError.removeAll()
-				state.retrySuccessFlash.removeAll()
+				state.copiedTranscriptIDs.removeAll()
 
 				return .merge(
 					[deleteAudioEffect(for: transcripts)] +
-						activeRetryIDs.map { .cancel(id: CancelID.retry($0)) }
+						activeRetryIDs.map { .cancel(id: CancelID.retry($0)) } +
+						activeCopyIDs.map { .cancel(id: CancelID.copyFlash($0)) }
 				)
 
 			case .navigateToSettings:
@@ -309,12 +327,11 @@ struct HistoryFeature {
 				}
 				state.retryingTranscriptIDs.remove(id)
 				state.lastRetryError[id] = nil
-				state.retrySuccessFlash.insert(id)
 
-				return .run { send in
-					try? await Task.sleep(for: .seconds(0.4))
-					await send(.retrySuccessFlashEnded(id))
-				}
+				// Auto-copy + flash: the row morphs to .completed and the Copy button slot
+				// becomes visible; .copyTranscript puts text on the clipboard and lights up
+				// the existing "Copied" flash for 1.5s. Single click → fully done.
+				return .send(.copyTranscript(id))
 
 			case let .retryFailed(id, message):
 				// Row-still-exists guard.
@@ -323,10 +340,6 @@ struct HistoryFeature {
 				}
 				state.retryingTranscriptIDs.remove(id)
 				state.lastRetryError[id] = message
-				return .none
-
-			case let .retrySuccessFlashEnded(id):
-				state.retrySuccessFlash.remove(id)
 				return .none
 			}
 		}
@@ -368,7 +381,6 @@ private struct TranscriptStatusPill: View {
 
 private struct RetryButton: View {
 	let isRetrying: Bool
-	let isSuccessFlash: Bool
 	let errorMessage: String?
 	let onRetry: () -> Void
 
@@ -387,9 +399,6 @@ private struct RetryButton: View {
 			ProgressView()
 				.controlSize(.small)
 				.tint(.blue)
-		} else if isSuccessFlash {
-			Image(systemName: "checkmark")
-				.foregroundStyle(.green)
 		} else if errorMessage != nil {
 			Image(systemName: "exclamationmark")
 				.foregroundStyle(.orange)
@@ -402,7 +411,6 @@ private struct RetryButton: View {
 	private var helpText: String {
 		if let errorMessage { return errorMessage }
 		if isRetrying { return "Retrying transcription…" }
-		if isSuccessFlash { return "Retry succeeded" }
 		return "Retry transcription"
 	}
 }
@@ -411,7 +419,7 @@ struct TranscriptView: View {
 	let transcript: Transcript
 	let isPlaying: Bool
 	let isRetrying: Bool
-	let isRetrySuccessFlash: Bool
+	let isCopied: Bool
 	let retryError: String?
 	let onPlay: () -> Void
 	let onCopy: () -> Void
@@ -476,24 +484,20 @@ struct TranscriptView: View {
 					if isIncomplete {
 						RetryButton(
 							isRetrying: isRetrying,
-							isSuccessFlash: isRetrySuccessFlash,
 							errorMessage: retryError,
 							onRetry: onRetry
 						)
 					} else {
-						Button {
-							onCopy()
-							showCopyAnimation()
-						} label: {
+						Button(action: onCopy) {
 							HStack(spacing: 4) {
-								Image(systemName: showCopied ? "checkmark" : "doc.on.doc.fill")
-								if showCopied {
+								Image(systemName: isCopied ? "checkmark" : "doc.on.doc.fill")
+								if isCopied {
 									Text("Copied").font(.caption)
 								}
 							}
 						}
 						.buttonStyle(.plain)
-						.foregroundStyle(showCopied ? .green : .secondary)
+						.foregroundStyle(isCopied ? .green : .secondary)
 						.help("Copy to clipboard")
 					}
 
@@ -526,36 +530,14 @@ struct TranscriptView: View {
 				)
 		)
 		.animation(.bouncy(duration: 0.3), value: status)
-		.onDisappear {
-			// Clean up any running task when view disappears
-			copyTask?.cancel()
-		}
+		.animation(.easeInOut(duration: 0.2), value: isCopied)
 	}
-
-	@State private var showCopied = false
-	@State private var copyTask: Task<Void, Error>?
 
 	private var placeholderText: String {
 		switch status {
 		case .completed: return transcript.text
 		case .cancelled: return "Recording cancelled"
 		case .failed: return "Transcription failed"
-		}
-	}
-
-	private func showCopyAnimation() {
-		copyTask?.cancel()
-
-		copyTask = Task {
-			withAnimation {
-				showCopied = true
-			}
-
-			try await Task.sleep(for: .seconds(1.5))
-
-			withAnimation {
-				showCopied = false
-			}
 		}
 	}
 }
@@ -565,7 +547,7 @@ struct TranscriptView: View {
 		transcript: Transcript(timestamp: Date(), text: "Hello, world!", audioPath: URL(fileURLWithPath: "/Users/langton/Downloads/test.m4a"), duration: 1.0),
 		isPlaying: false,
 		isRetrying: false,
-		isRetrySuccessFlash: false,
+		isCopied: false,
 		retryError: nil,
 		onPlay: {},
 		onCopy: {},
@@ -606,10 +588,10 @@ struct HistoryView: View {
                   transcript: transcript,
                   isPlaying: store.playingTranscriptID == transcript.id,
                   isRetrying: store.retryingTranscriptIDs.contains(transcript.id),
-                  isRetrySuccessFlash: store.retrySuccessFlash.contains(transcript.id),
+                  isCopied: store.copiedTranscriptIDs.contains(transcript.id),
                   retryError: store.lastRetryError[transcript.id],
                   onPlay: { store.send(.playTranscript(transcript.id)) },
-                  onCopy: { store.send(.copyToClipboard(transcript.text)) },
+                  onCopy: { store.send(.copyTranscript(transcript.id)) },
                   onDelete: { store.send(.deleteTranscript(transcript.id)) },
                   onRetry: { store.send(.retryTranscript(transcript.id)) }
                 )
