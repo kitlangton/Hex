@@ -313,9 +313,11 @@ struct HistoryFeature {
 				}
 
 				// Empty post-processed text: surface as inline error, leave row in prior state.
+				// Could be silent audio, the model returning nothing, or filters stripping
+				// everything -- stay neutral so the message doesn't blame the wrong cause.
 				guard !text.isEmpty else {
 					state.retryingTranscriptIDs.remove(id)
-					state.lastRetryError[id] = "Transcript empty after word filters"
+					state.lastRetryError[id] = "Transcript is empty"
 					return .none
 				}
 
