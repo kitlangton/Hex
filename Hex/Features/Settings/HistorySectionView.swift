@@ -51,6 +51,17 @@ struct HistorySectionView: View {
 						.padding(.leading, 28)
 				}
 
+				Label {
+					Toggle("Save cancelled recordings", isOn: Binding(
+						get: { store.hexSettings.saveCancelledRecordings },
+						set: { store.send(.toggleSaveCancelledRecordings($0)) }
+					))
+					Text("Keep audio for cancelled and failed transcriptions so you can retry them.")
+						.settingsCaption()
+				} icon: {
+					Image(systemName: "arrow.clockwise")
+				}
+
 				PasteLastTranscriptHotkeyRow(store: store)
 			}
 		} header: {
