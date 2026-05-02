@@ -627,7 +627,10 @@ private extension TranscriptionFeature {
   ) async {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
-    let meetsMinimumDuration = duration >= 1.0
+    // Floor at the user's minimumKeyTime so high-threshold users don't see sub-threshold
+    // recordings persisted, with 1.0s as an absolute lower bound to keep storage bounded
+    // against rapid modifier taps from users with very low minimumKeyTime values.
+    let meetsMinimumDuration = duration >= max(hexSettings.minimumKeyTime, 1.0)
     let shouldPersist = meetsMinimumDuration
       && hexSettings.saveTranscriptionHistory
       && hexSettings.saveCancelledRecordings
