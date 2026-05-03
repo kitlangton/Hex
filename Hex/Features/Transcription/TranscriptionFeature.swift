@@ -439,7 +439,7 @@ private extension TranscriptionFeature {
       return .none
     }
     let duration = state.activeTranscriptionDuration
-      ?? state.recordingStartTime.map { Date().timeIntervalSince($0) }
+      ?? state.recordingStartTime.map { now.timeIntervalSince($0) }
       ?? 0
     state.activeTranscriptionAudioURL = nil
     state.activeTranscriptionDuration = nil
