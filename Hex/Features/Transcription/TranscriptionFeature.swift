@@ -381,7 +381,10 @@ private extension TranscriptionFeature {
           transcriptionHistory: transcriptionHistory
         )
       }
-      .cancellable(id: CancelID.recordingFinalize, cancelInFlight: true)
+      // Don't cancelInFlight here: a second finalize firing (rare hotkey-release + ESC
+      // race) must not abort an already-running persist between recording.stopRecording()
+      // and persistOrDiscard completing, or we leak the temp WAV / lose the row.
+      .cancellable(id: CancelID.recordingFinalize)
     }
 
     let model = state.hexSettings.selectedModel
@@ -443,10 +446,10 @@ private extension TranscriptionFeature {
 
           let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
 
-          transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
+          transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent, privacy: .private) to text length \(result.count)")
           await send(.transcriptionResult(result, capturedURL))
         } catch {
-          transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
+          transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription, privacy: .private)")
           await send(.transcriptionError(error, audioURL))
         }
       }
@@ -759,7 +762,7 @@ private extension TranscriptionFeature {
           )
         }
       }
-      .cancellable(id: CancelID.recordingFinalize, cancelInFlight: true)
+      .cancellable(id: CancelID.recordingFinalize)
     )
   }
 
