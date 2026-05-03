@@ -94,10 +94,8 @@ struct WordRemappingsView: View {
 
 				LazyVStack(alignment: .leading, spacing: 6) {
 					ForEach(store.hexSettings.wordRemovals) { removal in
-						if let removalBinding = removalBinding(for: removal.id) {
-							RemovalRow(removal: removalBinding) {
-								store.send(.removeWordRemoval(removal.id))
-							}
+						RemovalRow(removal: removalBinding(for: removal)) {
+							store.send(.removeWordRemoval(removal.id))
 						}
 					}
 				}
@@ -129,10 +127,8 @@ struct WordRemappingsView: View {
 
 				LazyVStack(alignment: .leading, spacing: 6) {
 					ForEach(store.hexSettings.wordRemappings) { remapping in
-						if let remappingBinding = remappingBinding(for: remapping.id) {
-							RemappingRow(remapping: remappingBinding) {
-								store.send(.removeWordRemapping(remapping.id))
-							}
+						RemappingRow(remapping: remappingBinding(for: remapping)) {
+							store.send(.removeWordRemapping(remapping.id))
 						}
 					}
 				}
@@ -189,22 +185,20 @@ struct WordRemappingsView: View {
 		.padding(.horizontal, Layout.rowHorizontalPadding)
 	}
 
-	private func removalBinding(for id: UUID) -> Binding<WordRemoval>? {
-		guard let index = store.hexSettings.wordRemovals.firstIndex(where: { $0.id == id }) else {
-			return nil
-		}
+	private func removalBinding(for removal: WordRemoval) -> Binding<WordRemoval> {
 		return Binding(
-			get: { store.hexSettings.wordRemovals[index] },
+			get: {
+				store.hexSettings.wordRemovals.first { $0.id == removal.id } ?? removal
+			},
 			set: { store.send(.updateWordRemoval($0)) }
 		)
 	}
 
-	private func remappingBinding(for id: UUID) -> Binding<WordRemapping>? {
-		guard let index = store.hexSettings.wordRemappings.firstIndex(where: { $0.id == id }) else {
-			return nil
-		}
+	private func remappingBinding(for remapping: WordRemapping) -> Binding<WordRemapping> {
 		return Binding(
-			get: { store.hexSettings.wordRemappings[index] },
+			get: {
+				store.hexSettings.wordRemappings.first { $0.id == remapping.id } ?? remapping
+			},
 			set: { store.send(.updateWordRemapping($0)) }
 		)
 	}

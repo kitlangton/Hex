@@ -66,7 +66,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
 		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
 		copyToClipboard: Bool = false,
-		superFastModeEnabled: Bool = false,
+		superFastModeEnabled: Bool = true,
 		useDoubleTapOnly: Bool = false,
 		doubleTapLockEnabled: Bool = true,
 		outputLanguage: String? = nil,
@@ -236,7 +236,7 @@ private enum HexSettingsSchema {
 		).eraseToAny(),
 		SettingsField(.minimumKeyTime, keyPath: \.minimumKeyTime, default: defaults.minimumKeyTime).eraseToAny(),
 		SettingsField(.copyToClipboard, keyPath: \.copyToClipboard, default: defaults.copyToClipboard).eraseToAny(),
-		SettingsField(.superFastModeEnabled, keyPath: \.superFastModeEnabled, default: defaults.superFastModeEnabled).eraseToAny(),
+		SettingsField(.superFastModeEnabled, keyPath: \.superFastModeEnabled, default: false).eraseToAny(),
 		SettingsField(.useDoubleTapOnly, keyPath: \.useDoubleTapOnly, default: defaults.useDoubleTapOnly).eraseToAny(),
 		SettingsField(.doubleTapLockEnabled, keyPath: \.doubleTapLockEnabled, default: defaults.doubleTapLockEnabled).eraseToAny(),
 		SettingsField(

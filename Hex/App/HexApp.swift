@@ -37,19 +37,16 @@ struct HexApp: App {
 			}(NSImage(named: "HexIcon")!)
 			Image(nsImage: image)
 		}
+		.commands {
+			CommandGroup(after: .appInfo) {
+				CheckForUpdatesView()
 
-
-		WindowGroup {}.defaultLaunchBehavior(.suppressed)
-			.commands {
-				CommandGroup(after: .appInfo) {
-					CheckForUpdatesView()
-
-					Button("Settings...") {
-						appDelegate.presentSettingsView()
-					}.keyboardShortcut(",")
-				}
-
-				CommandGroup(replacing: .help) {}
+				Button("Settings...") {
+					appDelegate.presentSettingsView()
+				}.keyboardShortcut(",")
 			}
+
+			CommandGroup(replacing: .help) {}
+		}
 	}
 }

@@ -34,6 +34,10 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded, settings)
 	}
 
+	func testNewSettingsEnableSuperFastModeByDefault() {
+		XCTAssertTrue(HexSettings().superFastModeEnabled)
+	}
+
 	func testInitNormalizesDoubleTapOnlyWhenLockDisabled() {
 		let settings = HexSettings(useDoubleTapOnly: true, doubleTapLockEnabled: false)
 
