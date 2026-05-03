@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.4
+
+### Patch Changes
+
+- 5a4af9b: Fix silent recordings from multichannel input devices during calls (#204)
+- b78f049: Stop priming the sound-effects audio engine when sound effects are disabled so Hex avoids unnecessary background audio activity and sleep assertions (#200).
+
 ## 0.7.3
 
 ### Patch Changes
