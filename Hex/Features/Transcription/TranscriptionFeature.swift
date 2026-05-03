@@ -503,12 +503,15 @@ private extension TranscriptionFeature {
     error: Error,
     audioURL: URL?
   ) -> Effect<Action> {
-    // Ownership guard FIRST when we have a URL: drop late-arriving errors after cancel.
-    if let audioURL, state.activeTranscriptionAudioURL != audioURL {
+    // Ownership guard FIRST: drop late-arriving errors that don't belong to the
+    // active session. Symmetric optional comparison covers all four nil/non-nil
+    // pairings — most importantly it stops a stale nil-URL error from clearing
+    // a newer session's activeTranscriptionAudioURL.
+    guard state.activeTranscriptionAudioURL == audioURL else {
       return .none
     }
     let duration = state.activeTranscriptionDuration
-      ?? state.recordingStartTime.map { Date().timeIntervalSince($0) }
+      ?? state.recordingStartTime.map { now.timeIntervalSince($0) }
       ?? 0
     state.activeTranscriptionAudioURL = nil
     state.activeTranscriptionDuration = nil
@@ -679,6 +682,10 @@ private extension TranscriptionFeature {
     state.activeTranscriptionAudioURL = nil
     state.activeTranscriptionDuration = nil
 
+    // Capture the cancel time at action-processing time so the duration reflects
+    // when the user pressed cancel, not when the .run block actually executes.
+    // Also keeps the timing path test-injectable via @Dependency(\.date.now).
+    let cancelTime = now
     let recordingStartTime = state.recordingStartTime
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
@@ -705,7 +712,7 @@ private extension TranscriptionFeature {
           // Cancel during recording — stop recording to get the temp URL.
           let url = await recording.stopRecording()
           guard !Task.isCancelled else { return }
-          let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+          let duration = recordingStartTime.map { cancelTime.timeIntervalSince($0) } ?? 0
           await persistOrDiscard(
             status: .cancelled,
             audioURL: url,
