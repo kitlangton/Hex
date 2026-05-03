@@ -30,7 +30,7 @@ struct SettingsView: View {
 			}
 
 			HotKeySectionView(store: store)
-          
+            
 			if microphonePermission == .granted {
 				MicrophoneSelectionSectionView(store: store)
 			}
@@ -40,9 +40,6 @@ struct SettingsView: View {
 			HistorySectionView(store: store)
 		}
 		.formStyle(.grouped)
-		.task {
-			await store.send(.task).finish()
-		}
 		.enableInjection()
 	}
 }

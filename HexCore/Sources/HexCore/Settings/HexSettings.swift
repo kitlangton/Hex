@@ -6,6 +6,43 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 	case doNothing
 }
 
+public struct OpenCodeExperimentalSettings: Codable, Equatable, Sendable {
+	public static let defaultHotkey = HotKey(key: nil, modifiers: [.option, .shift])
+	public static let defaultServerURL = "http://127.0.0.1:4096"
+	public static let defaultModel = ""
+	public static let defaultAllowedTools = "bash, external_directory, paste_text"
+	public static let defaultLaunchPath = "/Users/kit/code/open-source/opencode"
+
+	public var isEnabled: Bool
+	public var hotkey: HotKey
+	public var serverURL: String
+	public var launchPath: String
+	public var directory: String
+	public var model: String
+	public var allowedTools: String
+	public var instructions: String
+
+	public init(
+		isEnabled: Bool = false,
+		hotkey: HotKey = OpenCodeExperimentalSettings.defaultHotkey,
+		serverURL: String = OpenCodeExperimentalSettings.defaultServerURL,
+		launchPath: String = OpenCodeExperimentalSettings.defaultLaunchPath,
+		directory: String = "",
+		model: String = OpenCodeExperimentalSettings.defaultModel,
+		allowedTools: String = OpenCodeExperimentalSettings.defaultAllowedTools,
+		instructions: String = ""
+	) {
+		self.isEnabled = isEnabled
+		self.hotkey = hotkey
+		self.serverURL = serverURL
+		self.launchPath = launchPath
+		self.directory = directory
+		self.model = model
+		self.allowedTools = allowedTools
+		self.instructions = instructions
+	}
+}
+
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
@@ -47,6 +84,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+	public var openCodeExperimental: OpenCodeExperimentalSettings
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -78,7 +116,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		openCodeExperimental: OpenCodeExperimentalSettings = .init()
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -104,6 +143,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.openCodeExperimental = openCodeExperimental
 		normalizeDoubleTapSettings()
 	}
 
@@ -152,6 +192,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case openCodeExperimental
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -284,6 +325,11 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
+		).eraseToAny(),
+		SettingsField(
+			.openCodeExperimental,
+			keyPath: \.openCodeExperimental,
+			default: defaults.openCodeExperimental
 		).eraseToAny()
 	]
 }

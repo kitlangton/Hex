@@ -35,6 +35,20 @@ public extension URL {
 			return modelsDirectory
 		}
 	}
+
+	static var hexOpenCodeWorkspaceDirectory: URL {
+		get throws {
+			let workspaceDirectory = try hexApplicationSupport.appendingPathComponent("OpenCode", isDirectory: true)
+			let configDirectory = workspaceDirectory.appendingPathComponent(".opencode", isDirectory: true)
+			let fm = FileManager.default
+			try fm.createDirectory(at: workspaceDirectory, withIntermediateDirectories: true)
+			try fm.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+			try fm.createDirectory(at: configDirectory.appendingPathComponent("tool", isDirectory: true), withIntermediateDirectories: true)
+			try fm.createDirectory(at: configDirectory.appendingPathComponent("plugin", isDirectory: true), withIntermediateDirectories: true)
+			try fm.createDirectory(at: configDirectory.appendingPathComponent("agent", isDirectory: true), withIntermediateDirectories: true)
+			return workspaceDirectory
+		}
+	}
 }
 
 public extension FileManager {

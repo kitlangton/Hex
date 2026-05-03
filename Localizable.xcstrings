@@ -67,6 +67,9 @@
     "Add Removal" : {
 
     },
+    "Allowed Tools" : {
+
+    },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
       "localizations" : {
@@ -156,6 +159,9 @@
         }
       }
     },
+    "Comma or newline separated permission IDs. Custom tool IDs work if the OpenCode instance already loads them." : {
+
+    },
     "Copied" : {
       "comment" : "Transcription from history copied.",
       "localizations" : {
@@ -229,6 +235,9 @@
         }
       }
     },
+    "Directory" : {
+
+    },
     "Do Nothing" : {
 
     },
@@ -282,6 +291,9 @@
     "Enable in Settings" : {
 
     },
+    "Enable voice actions" : {
+
+    },
     "Enable Word Removals" : {
 
     },
@@ -307,6 +319,15 @@
           }
         }
       }
+    },
+    "Experimental" : {
+
+    },
+    "Extra system instructions attached to each voice action request." : {
+
+    },
+    "For localhost targets, Hex launches and owns `opencode serve` from the install path on first use. Leave Directory blank to use Hex's managed OpenCode workspace inside the app container." : {
+
     },
     "General" : {
       "comment" : "General section in Settings Header.",
@@ -386,7 +407,16 @@
     "Input Monitoring is required so Hex can listen for your hotkey." : {
 
     },
+    "Install Path" : {
+
+    },
+    "Instructions" : {
+
+    },
     "Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed." : {
+
+    },
+    "Loading models…" : {
 
     },
     "Match" : {
@@ -410,6 +440,9 @@
     "Microphone Selection" : {
 
     },
+    "Model" : {
+
+    },
     "Model prewarming..." : {
 
     },
@@ -417,6 +450,9 @@
 
     },
     "Modifier side" : {
+
+    },
+    "Modifier-only hold-to-talk shortcuts are allowed here. Keep it distinct from your regular dictation hotkey." : {
 
     },
     "Mute Volume" : {
@@ -467,6 +503,12 @@
           }
         }
       }
+    },
+    "OpenCode" : {
+
+    },
+    "Optional project directory" : {
+
     },
     "Output Language" : {
       "comment" : "transcription model setting for which language to use for text output.",
@@ -542,6 +584,9 @@
     "Quit" : {
 
     },
+    "Record a separate hold-to-talk command that Hex sends to a managed OpenCode runtime for tool-based computer control." : {
+
+    },
     "Refresh available input devices" : {
 
     },
@@ -572,6 +617,9 @@
         }
       }
     },
+    "Runtime" : {
+
+    },
     "Save Transcription History" : {
 
     },
@@ -599,6 +647,9 @@
         }
       }
     },
+    "Server" : {
+
+    },
     "Settings" : {
       "comment" : "title for settings view.",
       "localizations" : {
@@ -620,6 +671,9 @@
           }
         }
       }
+    },
+    "Shortcut" : {
+
     },
     "Show Changelog" : {
       "localizations" : {
@@ -711,6 +765,9 @@
       }
     },
     "Transforms" : {
+
+    },
+    "Unavailable Device" : {
 
     },
     "Unlimited" : {

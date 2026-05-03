@@ -93,7 +93,9 @@ class KeyEventMonitorClientLive {
   private var eventTapPort: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: @Sendable (KeyEvent) -> Bool] = [:]
+  private var continuationOrder: [UUID] = []
   private var inputContinuations: [UUID: @Sendable (InputEvent) -> Bool] = [:]
+  private var inputContinuationOrder: [UUID] = []
   private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
   private var isMonitoring = false
   private var wantsMonitoring = false
@@ -148,6 +150,7 @@ class KeyEventMonitorClientLive {
           continuation.yield(event)
           return false
         }
+        self.continuationOrder.append(uuid)
         let shouldStart = self.continuations.count == 1 && self.inputContinuations.isEmpty
 
         // Start monitoring if this is the first subscription
@@ -167,6 +170,7 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.continuations[uuid] = nil
+      self.continuationOrder.removeAll { $0 == uuid }
       if self.continuations.isEmpty && self.inputContinuations.isEmpty {
         self.stopMonitoring()
       }
@@ -177,6 +181,7 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.inputContinuations[uuid] = nil
+      self.inputContinuationOrder.removeAll { $0 == uuid }
       if self.continuations.isEmpty && self.inputContinuations.isEmpty {
         self.stopMonitoring()
       }
@@ -198,6 +203,7 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.continuations[uuid] = handler
+      self.continuationOrder.append(uuid)
       let shouldStart = self.continuations.count == 1 && self.inputContinuations.isEmpty
 
       if shouldStart {
@@ -216,6 +222,7 @@ class KeyEventMonitorClientLive {
     queue.async(flags: .barrier) { [weak self] in
       guard let self = self else { return }
       self.inputContinuations[uuid] = handler
+      self.inputContinuationOrder.append(uuid)
       let shouldStart = self.inputContinuations.count == 1 && self.continuations.isEmpty
 
       if shouldStart {
@@ -457,20 +464,26 @@ class KeyEventMonitorClientLive {
 
   private func processEvent<T>(
     _ event: T,
-    handlers: [UUID: @Sendable (T) -> Bool]
+    handlers: [UUID: @Sendable (T) -> Bool],
+    order: [UUID]
   ) -> Bool {
-    let handlerList = queue.sync { Array(handlers.values) }
-    return handlerList.reduce(false) { handled, handler in
-      handler(event) || handled
+    let orderedHandlers = queue.sync {
+      order.compactMap { handlers[$0] }
     }
+    for handler in orderedHandlers {
+      if handler(event) {
+        return true
+      }
+    }
+    return false
   }
 
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
-    processEvent(keyEvent, handlers: continuations)
+    processEvent(keyEvent, handlers: continuations, order: continuationOrder)
   }
 
   private func processInputEvent(_ inputEvent: InputEvent) -> Bool {
-    processEvent(inputEvent, handlers: inputContinuations)
+    processEvent(inputEvent, handlers: inputContinuations, order: inputContinuationOrder)
   }
 }
 

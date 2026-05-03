@@ -13,6 +13,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 	@Dependency(\.soundEffects) var soundEffect
 	@Dependency(\.recording) var recording
+	@Dependency(\.openCode) var openCode
 	@Shared(.hexSettings) var hexSettings: HexSettings
 
 	func applicationDidFinishLaunching(_: Notification) {
@@ -95,9 +96,18 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			return
 		}
 		let transcriptionStore = HexApp.appStore.scope(state: \.transcription, action: \.transcription)
-		let transcriptionView = TranscriptionView(store: transcriptionStore).padding().padding(.top).padding(.top)
-			.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-		invisibleWindow = InvisibleWindow.fromView(transcriptionView)
+		let openCodeStore = HexApp.appStore.scope(state: \.openCodeCommand, action: \.openCodeCommand)
+		let overlayView = ZStack {
+			TranscriptionView(store: transcriptionStore)
+				.padding()
+				.padding(.top)
+				.padding(.top)
+				.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+			OpenCodeOverlayView(store: openCodeStore)
+				.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+		}
+		invisibleWindow = InvisibleWindow.fromView(overlayView)
 		invisibleWindow?.makeKeyAndOrderFront(nil)
 	}
 
@@ -148,6 +158,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 	func applicationWillTerminate(_: Notification) {
 		Task {
+			await openCode.shutdownManagedServer()
 			await recording.cleanup()
 		}
 	}

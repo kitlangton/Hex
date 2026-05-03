@@ -15,6 +15,7 @@ private typealias SettingsAudioPropertyListenerBlock = @convention(block) (UInt3
 private enum HotKeyCaptureTarget {
   case recording
   case pasteLastTranscript
+  case openCodeCommand
 }
 
 extension SharedReaderKey
@@ -26,6 +27,14 @@ extension SharedReaderKey
   
   static var isSettingPasteLastTranscriptHotkey: Self {
     Self[.inMemory("isSettingPasteLastTranscriptHotkey"), default: false]
+  }
+
+  static var isSettingOpenCodeHotKey: Self {
+    Self[.inMemory("isSettingOpenCodeHotKey"), default: false]
+  }
+
+  static var suppressStandardTranscriptionHotKey: Self {
+    Self[.inMemory("suppressStandardTranscriptionHotKey"), default: false]
   }
 
   static var isRemappingScratchpadFocused: Self {
@@ -42,6 +51,7 @@ struct SettingsFeature {
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isSettingHotKey) var isSettingHotKey: Bool = false
     @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool = false
+    @Shared(.isSettingOpenCodeHotKey) var isSettingOpenCodeHotKey: Bool = false
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
     @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
@@ -49,11 +59,16 @@ struct SettingsFeature {
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
     var currentPasteLastModifiers: Modifiers = .init(modifiers: [])
+    var currentOpenCodeModifiers: Modifiers = .init(modifiers: [])
     var remappingScratchpadText: String = ""
     
     // Available microphones
     var availableInputDevices: [AudioInputDevice] = []
     var defaultInputDeviceName: String?
+    var isOpenCodeInstalled: Bool = false
+    var openCodeModels: [OpenCodeModelOption] = []
+    var isLoadingOpenCodeModels: Bool = false
+    var openCodeModelLoadError: String?
 
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
@@ -68,6 +83,7 @@ struct SettingsFeature {
     case task
     case startSettingHotKey
     case startSettingPasteLastTranscriptHotkey
+    case startSettingOpenCodeHotKey
     case clearPasteLastTranscriptHotkey
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
@@ -84,6 +100,18 @@ struct SettingsFeature {
     case setSelectedMicrophoneID(String?)
     case setSoundEffectsEnabled(Bool)
     case setSoundEffectsVolume(Double)
+    case setOpenCodeExperimentalEnabled(Bool)
+    case setOpenCodeServerURL(String)
+    case setOpenCodeLaunchPath(String)
+    case setOpenCodeDirectory(String)
+    case setOpenCodeModel(String)
+    case setOpenCodeAllowedTools(String)
+    case setOpenCodeInstructions(String)
+    case checkOpenCodeInstallation
+    case openCodeInstallationChecked(Bool)
+    case loadOpenCodeModels
+    case openCodeModelsLoaded([OpenCodeModelOption])
+    case openCodeModelsFailed(String)
 
     // Permission delegation (forwarded to AppFeature)
     case requestMicrophone
@@ -122,6 +150,7 @@ struct SettingsFeature {
   @Dependency(\.permissions) var permissions
   @Dependency(\.soundEffects) var soundEffects
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.openCode) var openCode
 
   private func deleteAudioEffect(for transcripts: [Transcript]) -> Effect<Action> {
     .run { [transcriptPersistence] _ in
@@ -139,6 +168,9 @@ struct SettingsFeature {
     case .pasteLastTranscript:
       state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = true }
       state.currentPasteLastModifiers = .init(modifiers: [])
+    case .openCodeCommand:
+      state.$isSettingOpenCodeHotKey.withLock { $0 = true }
+      state.currentOpenCodeModifiers = .init(modifiers: [])
     }
   }
 
@@ -150,6 +182,9 @@ struct SettingsFeature {
     case .pasteLastTranscript:
       state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
       state.currentPasteLastModifiers = .init(modifiers: [])
+    case .openCodeCommand:
+      state.$isSettingOpenCodeHotKey.withLock { $0 = false }
+      state.currentOpenCodeModifiers = .init(modifiers: [])
     }
   }
 
@@ -159,6 +194,8 @@ struct SettingsFeature {
       state.currentModifiers
     case .pasteLastTranscript:
       state.currentPasteLastModifiers
+    case .openCodeCommand:
+      state.currentOpenCodeModifiers
     }
   }
 
@@ -168,6 +205,8 @@ struct SettingsFeature {
       state.currentModifiers = modifiers
     case .pasteLastTranscript:
       state.currentPasteLastModifiers = modifiers
+    case .openCodeCommand:
+      state.currentOpenCodeModifiers = modifiers
     }
   }
 
@@ -182,6 +221,11 @@ struct SettingsFeature {
       guard let key else { return }
       state.$hexSettings.withLock {
         $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
+      }
+    case .openCodeCommand:
+      state.$hexSettings.withLock {
+        $0.openCodeExperimental.hotkey.key = key
+        $0.openCodeExperimental.hotkey.modifiers = modifiers.erasingSides()
       }
     }
   }
@@ -205,7 +249,7 @@ struct SettingsFeature {
       return .none
     }
 
-    if target == .recording, keyEvent.modifiers.isEmpty {
+    if target != .pasteLastTranscript, keyEvent.modifiers.isEmpty {
       applyCapturedHotKey(key: nil, modifiers: updatedModifiers, for: target, state: &state)
       endCapture(target, state: &state)
     }
@@ -258,6 +302,7 @@ struct SettingsFeature {
 
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
+          await send(.checkOpenCodeInstallation)
 
           // Set up periodic refresh of available devices (every 120 seconds)
           // Using a longer interval to reduce resource usage
@@ -265,7 +310,7 @@ struct SettingsFeature {
             for await _ in clock.timer(interval: .seconds(120)) {
               // Only refresh when the app is active to save resources
               if NSApplication.shared.isActive {
-                await send(.loadAvailableInputDevices)
+                send(.loadAvailableInputDevices)
               }
             }
           }
@@ -373,6 +418,10 @@ struct SettingsFeature {
         beginCapture(.recording, state: &state)
         return .none
 
+      case .startSettingOpenCodeHotKey:
+        beginCapture(.openCodeCommand, state: &state)
+        return .none
+
       case .addWordRemoval:
         state.$hexSettings.withLock {
           $0.wordRemovals.append(.init(pattern: ""))
@@ -426,6 +475,10 @@ struct SettingsFeature {
       case let .keyEvent(keyEvent):
         if state.isSettingPasteLastTranscriptHotkey {
           return handleCapture(keyEvent, for: .pasteLastTranscript, state: &state)
+        }
+
+        if state.isSettingOpenCodeHotKey {
+          return handleCapture(keyEvent, for: .openCodeCommand, state: &state)
         }
 
         guard state.isSettingHotKey else { return .none }
@@ -506,6 +559,78 @@ struct SettingsFeature {
 
       case let .setSoundEffectsVolume(volume):
         state.$hexSettings.withLock { $0.soundEffectsVolume = volume }
+        return .none
+
+      case let .setOpenCodeExperimentalEnabled(enabled):
+        state.$hexSettings.withLock { $0.openCodeExperimental.isEnabled = enabled }
+        return .none
+
+      case let .setOpenCodeServerURL(url):
+        state.$hexSettings.withLock { $0.openCodeExperimental.serverURL = url }
+        return .none
+
+      case let .setOpenCodeLaunchPath(path):
+        state.$hexSettings.withLock { $0.openCodeExperimental.launchPath = path }
+        return .send(.checkOpenCodeInstallation)
+
+      case let .setOpenCodeDirectory(directory):
+        state.$hexSettings.withLock { $0.openCodeExperimental.directory = directory }
+        return .none
+
+      case let .setOpenCodeModel(model):
+        state.$hexSettings.withLock { $0.openCodeExperimental.model = model }
+        return .none
+
+      case let .setOpenCodeAllowedTools(tools):
+        state.$hexSettings.withLock { $0.openCodeExperimental.allowedTools = tools }
+        return .none
+
+      case let .setOpenCodeInstructions(instructions):
+        state.$hexSettings.withLock { $0.openCodeExperimental.instructions = instructions }
+        return .none
+
+      case .checkOpenCodeInstallation:
+        let settings = state.hexSettings.openCodeExperimental
+        return .run { send in
+          let installed = await openCode.isInstalled(settings)
+          await send(.openCodeInstallationChecked(installed))
+        }
+        .cancellable(id: "checkOpenCodeInstallation", cancelInFlight: true)
+
+      case let .openCodeInstallationChecked(installed):
+        state.isOpenCodeInstalled = installed
+        if !installed {
+          state.openCodeModels = []
+          state.isLoadingOpenCodeModels = false
+          state.openCodeModelLoadError = nil
+        }
+        return .none
+
+      case .loadOpenCodeModels:
+        guard state.isOpenCodeInstalled else { return .none }
+        guard !state.isLoadingOpenCodeModels else { return .none }
+        let settings = state.hexSettings.openCodeExperimental
+        state.isLoadingOpenCodeModels = true
+        state.openCodeModelLoadError = nil
+        return .run { send in
+          do {
+            let models = try await openCode.loadModels(settings)
+            await send(.openCodeModelsLoaded(models))
+          } catch {
+            await send(.openCodeModelsFailed(error.localizedDescription))
+          }
+        }
+        .cancellable(id: "loadOpenCodeModels", cancelInFlight: true)
+
+      case let .openCodeModelsLoaded(models):
+        state.isLoadingOpenCodeModels = false
+        state.openCodeModels = models
+        state.openCodeModelLoadError = nil
+        return .none
+
+      case let .openCodeModelsFailed(message):
+        state.isLoadingOpenCodeModels = false
+        state.openCodeModelLoadError = message
         return .none
 
       // Permission requests

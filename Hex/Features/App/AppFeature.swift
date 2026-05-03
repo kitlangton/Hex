@@ -15,6 +15,7 @@ import SwiftUI
 struct AppFeature {
   enum ActiveTab: Equatable {
     case settings
+    case openCode
     case remappings
     case history
     case about
@@ -23,6 +24,7 @@ struct AppFeature {
 	@ObservableState
 	struct State {
 		var transcription: TranscriptionFeature.State = .init()
+		var openCodeCommand: OpenCodeCommandFeature.State = .init()
 		var settings: SettingsFeature.State = .init()
 		var history: HistoryFeature.State = .init()
 		var activeTab: ActiveTab = .settings
@@ -38,6 +40,7 @@ struct AppFeature {
   enum Action: BindableAction {
     case binding(BindingAction<State>)
     case transcription(TranscriptionFeature.Action)
+    case openCodeCommand(OpenCodeCommandFeature.Action)
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
     case setActiveTab(ActiveTab)
@@ -66,6 +69,10 @@ struct AppFeature {
       TranscriptionFeature()
     }
 
+    Scope(state: \.openCodeCommand, action: \.openCodeCommand) {
+      OpenCodeCommandFeature()
+    }
+
     Scope(state: \.settings, action: \.settings) {
       SettingsFeature()
     }
@@ -81,6 +88,8 @@ struct AppFeature {
         
       case .task:
         return .merge(
+          .send(.settings(.task)),
+          .send(.openCodeCommand(.task)),
           startPasteLastTranscriptMonitoring(),
           ensureSelectedModelReadiness(),
           startPermissionMonitoring()
@@ -95,7 +104,7 @@ struct AppFeature {
           await pasteboard.paste(lastTranscript)
         }
         
-      case .transcription(.modelMissing):
+      case .transcription(.modelMissing), .openCodeCommand(.modelMissing):
         HexLog.app.notice("Model missing - activating app and switching to settings")
         state.activeTab = .settings
         state.settings.shouldFlashModelSection = true
@@ -111,6 +120,15 @@ struct AppFeature {
       case .transcription:
         return .none
 
+      case .openCodeCommand:
+        return .none
+
+      case .settings(.openCodeInstallationChecked(false)):
+        if state.activeTab == .openCode {
+          state.activeTab = .settings
+        }
+        return .none
+
       case .settings:
         return .none
 
@@ -121,7 +139,14 @@ struct AppFeature {
         return .none
 		case let .setActiveTab(tab):
 			state.activeTab = tab
-			return .none
+			guard tab == .openCode,
+				state.settings.isOpenCodeInstalled,
+				state.settings.openCodeModels.isEmpty,
+				!state.settings.isLoadingOpenCodeModels
+			else {
+				return .none
+			}
+			return .send(.settings(.loadOpenCodeModels))
 
       // Permission handling
       case .checkPermissions:
@@ -270,6 +295,16 @@ struct AppView: View {
         .buttonStyle(.plain)
         .tag(AppFeature.ActiveTab.settings)
 
+        if store.settings.isOpenCodeInstalled {
+          Button {
+            store.send(.setActiveTab(.openCode))
+          } label: {
+            Label("OpenCode", systemImage: "sparkles.rectangle.stack")
+          }
+          .buttonStyle(.plain)
+          .tag(AppFeature.ActiveTab.openCode)
+        }
+
         Button {
           store.send(.setActiveTab(.remappings))
         } label: {
@@ -304,6 +339,9 @@ struct AppView: View {
           inputMonitoringPermission: store.inputMonitoringPermission
         )
         .navigationTitle("Settings")
+      case .openCode:
+        OpenCodeSettingsView(store: store.scope(state: \.settings, action: \.settings))
+          .navigationTitle("OpenCode")
       case .remappings:
         WordRemappingsView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("Transforms")

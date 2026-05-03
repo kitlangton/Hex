@@ -1470,6 +1470,12 @@ actor RecordingClientLive {
   }
 }
 
+extension URL {
+  var isHexIgnoredStopRecording: Bool {
+    lastPathComponent.hasPrefix("hex-ignored-stop-")
+  }
+}
+
 extension DependencyValues {
   var recording: RecordingClient {
     get { self[RecordingClient.self] }

@@ -163,12 +163,21 @@ private extension TranscriptionFeature {
     .run { send in
       var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+      @Shared(.suppressStandardTranscriptionHotKey) var suppressStandardTranscriptionHotKey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
+        if case let .keyboard(keyEvent) = inputEvent,
+           keyEvent.key == nil,
+           keyEvent.modifiers.isEmpty,
+           suppressStandardTranscriptionHotKey
+        {
+          $suppressStandardTranscriptionHotKey.withLock { $0 = false }
+        }
+
         // Skip if the user is currently setting a hotkey
-        if isSettingHotKey {
+        if isSettingHotKey || suppressStandardTranscriptionHotKey {
           return false
         }
 
@@ -363,6 +372,12 @@ private extension TranscriptionFeature {
       do {
         let capturedURL = await recording.stopRecording()
         guard !Task.isCancelled else { return }
+
+        if capturedURL.isHexIgnoredStopRecording {
+          FileManager.default.removeItemIfExists(at: capturedURL)
+          return
+        }
+
         soundEffect.play(.stopRecording)
         audioURL = capturedURL
 

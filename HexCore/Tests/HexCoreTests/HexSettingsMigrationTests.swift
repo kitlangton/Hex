@@ -25,6 +25,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.maxHistoryEntries, 10)
 		XCTAssertEqual(decoded.hasCompletedModelBootstrap, true)
 		XCTAssertEqual(decoded.hasCompletedStorageMigration, true)
+		XCTAssertEqual(decoded.openCodeExperimental, OpenCodeExperimentalSettings())
 	}
 
 	func testEncodeDecodeRoundTripPreservesDefaults() throws {
@@ -62,6 +63,26 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertFalse(settings.useDoubleTapOnly)
 		XCTAssertFalse(decoded.useDoubleTapOnly)
 		XCTAssertEqual(decoded, settings)
+	}
+
+	func testOpenCodeExperimentalSettingsRoundTrip() throws {
+		let settings = HexSettings(
+			openCodeExperimental: .init(
+				isEnabled: true,
+				hotkey: HotKey(key: .space, modifiers: [.option, .shift]),
+				serverURL: "http://127.0.0.1:4096",
+				launchPath: "/Users/kit/code/open-source/opencode",
+				directory: "/tmp/opencode",
+				model: "moonshotai/kimi-k2.5",
+				allowedTools: "bash, external_directory, custom_tool",
+				instructions: "Open apps when asked."
+			)
+		)
+
+		let data = try JSONEncoder().encode(settings)
+		let decoded = try JSONDecoder().decode(HexSettings.self, from: data)
+
+		XCTAssertEqual(decoded.openCodeExperimental, settings.openCodeExperimental)
 	}
 
 	private func loadFixture(named name: String) throws -> Data {
