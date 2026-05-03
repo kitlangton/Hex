@@ -112,14 +112,20 @@ final class SuperFastCaptureController {
 
   private var engine: AVAudioEngine?
   private var converter: AVAudioConverter?
+  private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
   private var keepWarmBuffer = false
   private var lastProcessedBufferAt: Date?
   private var recentCallbackIntervals: [TimeInterval] = []
   private var recentBufferDurations: [TimeInterval] = []
+  private let onEngineConfigurationChange: @Sendable () -> Void
 
-  init(meterContinuation: AsyncStream<Meter>.Continuation) {
+  init(
+    meterContinuation: AsyncStream<Meter>.Continuation,
+    onEngineConfigurationChange: @escaping @Sendable () -> Void
+  ) {
     self.meterContinuation = meterContinuation
+    self.onEngineConfigurationChange = onEngineConfigurationChange
   }
 
   deinit {
@@ -184,6 +190,9 @@ final class SuperFastCaptureController {
         userInfo: [NSLocalizedDescriptionKey: "Unable to create the capture engine audio converter."]
       )
     }
+    if inputFormat.channelCount > 1 {
+      converter.channelMap = [NSNumber(value: 0)]
+    }
 
     self.converter = converter
 
@@ -193,10 +202,23 @@ final class SuperFastCaptureController {
     }
 
     engine.prepare()
-    try engine.start()
+    do {
+      try engine.start()
+    } catch {
+      inputNode.removeTap(onBus: 0)
+      self.converter = nil
+      throw error
+    }
     self.engine = engine
+    configurationChangeObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange,
+      object: engine,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleConfigurationChange()
+    }
     logger.notice(
-      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
+      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
     )
   }
 
@@ -206,6 +228,10 @@ final class SuperFastCaptureController {
     }
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
+    }
+    if let configurationChangeObserver {
+      NotificationCenter.default.removeObserver(configurationChangeObserver)
+      self.configurationChangeObserver = nil
     }
     engine?.stop()
     engine = nil
@@ -218,6 +244,11 @@ final class SuperFastCaptureController {
       recentCallbackIntervals.removeAll(keepingCapacity: false)
       recentBufferDurations.removeAll(keepingCapacity: false)
     }
+  }
+
+  private func handleConfigurationChange() {
+    logger.notice("Capture engine configuration changed")
+    onEngineConfigurationChange()
   }
 
   func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {

@@ -348,7 +348,14 @@ actor RecordingClientLive {
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
-  private lazy var captureController = SuperFastCaptureController(meterContinuation: meterContinuation)
+  private lazy var captureController = SuperFastCaptureController(
+    meterContinuation: meterContinuation,
+    onEngineConfigurationChange: { [weak self] in
+      Task {
+        await self?.enqueueCaptureEnvironmentChange(reason: "capture-engine-configuration-changed", forceRestart: true)
+      }
+    }
+  )
   private var captureControllerDeviceID: AudioDeviceID?
   private var notificationObservers: [NSObjectProtocol] = []
   private var audioHardwareObservers: [AudioHardwareObserver] = []
