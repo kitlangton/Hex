@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.5
+
+### Patch Changes
+
+- b5a19b4: Fix word remapping deletion crashes (#207)
+- b5a19b4: Enable Super Fast Mode by default for new users
+- b5a19b4: Restore macOS Sonoma compatibility (#215)
+
 ## 0.7.4
 
 ### Patch Changes
