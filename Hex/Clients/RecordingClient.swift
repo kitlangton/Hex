@@ -1096,7 +1096,10 @@ actor RecordingClientLive {
         // recording starts during the first session's async stop grace period,
         // so the system is already at volume 0. Snapshotting 0 as previousVolume
         // would lose the real original level and leave speakers muted after transcription.
-        guard self.previousVolume == nil else { return }
+        guard self.previousVolume == nil else {
+          recordingLogger.notice("Skipping mute – previousVolume already captured from overlapping session; preserving original level")
+          return
+        }
         let volume = await self.muteSystemVolume()
         await self.setPreviousVolume(volume, sessionID: sessionID)
       }
