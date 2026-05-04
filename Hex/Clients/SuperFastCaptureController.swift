@@ -114,7 +114,9 @@ final class SuperFastCaptureController {
   private var converter: AVAudioConverter?
   private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
+  private var interruptedRecordingURL: URL?
   private var keepWarmBuffer = false
+  private var isReconfiguringEngine = false
   private var lastProcessedBufferAt: Date?
   private var recentCallbackIntervals: [TimeInterval] = []
   private var recentBufferDurations: [TimeInterval] = []
@@ -179,11 +181,20 @@ final class SuperFastCaptureController {
     }
 
     stop(reason: "restart-before-arm")
+    let inputFormat = try buildAndStartEngine(reason: reason)
+    logger.notice(
+      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
+    )
+  }
 
+  @discardableResult
+  private func buildAndStartEngine(reason: String) throws -> AVAudioFormat {
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
     let inputFormat = inputNode.inputFormat(forBus: 0)
-    guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+    guard inputFormat.sampleRate > 0,
+          let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+    else {
       throw NSError(
         domain: "SuperFastCapture",
         code: -1,
@@ -209,17 +220,26 @@ final class SuperFastCaptureController {
       self.converter = nil
       throw error
     }
+
     self.engine = engine
+    registerConfigurationChangeObserver(for: engine)
+    logger.debug("Capture engine started reason=\(reason)")
+    return inputFormat
+  }
+
+  private func registerConfigurationChangeObserver(for engine: AVAudioEngine) {
+    if let configurationChangeObserver {
+      NotificationCenter.default.removeObserver(configurationChangeObserver)
+      self.configurationChangeObserver = nil
+    }
+
     configurationChangeObserver = NotificationCenter.default.addObserver(
       forName: .AVAudioEngineConfigurationChange,
       object: engine,
-      queue: .main
+      queue: nil
     ) { [weak self] _ in
-      self?.handleConfigurationChange()
+      self?.enqueueConfigurationChange()
     }
-    logger.notice(
-      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
-    )
   }
 
   func stop(reason: String = "unknown") {
@@ -239,6 +259,7 @@ final class SuperFastCaptureController {
 
     processingQueue.sync {
       activeRecording = nil
+      interruptedRecordingURL = nil
       ringBuffer.clear()
       lastProcessedBufferAt = nil
       recentCallbackIntervals.removeAll(keepingCapacity: false)
@@ -246,9 +267,62 @@ final class SuperFastCaptureController {
     }
   }
 
-  private func handleConfigurationChange() {
+  private func enqueueConfigurationChange() {
+    processingQueue.async { [weak self] in
+      self?.handleConfigurationChangeOnProcessingQueue()
+    }
+  }
+
+  private func handleConfigurationChangeOnProcessingQueue() {
+    let isRecording = activeRecording != nil
+    if isRecording {
+      restartEngineForActiveRecordingOnProcessingQueue()
+      return
+    }
+
     logger.notice("Capture engine configuration changed")
     onEngineConfigurationChange()
+  }
+
+  private func restartEngineForActiveRecordingOnProcessingQueue(attempt: Int = 0) {
+    guard !isReconfiguringEngine else { return }
+    guard activeRecording != nil else { return }
+    isReconfiguringEngine = true
+    defer { isReconfiguringEngine = false }
+
+    logger.notice("Capture engine configuration changed during recording; rebuilding engine in place attempt=\(attempt + 1)")
+    if let inputNode = engine?.inputNode {
+      inputNode.removeTap(onBus: 0)
+    }
+    if let configurationChangeObserver {
+      NotificationCenter.default.removeObserver(configurationChangeObserver)
+      self.configurationChangeObserver = nil
+    }
+    engine?.stop()
+    engine = nil
+    converter = nil
+
+    do {
+      let inputFormat = try buildAndStartEngine(reason: "active-configuration-change")
+      logger.notice(
+        "Capture engine rebuilt during recording sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount)"
+      )
+    } catch {
+      logger.error("Failed to rebuild capture engine during recording: \(error.localizedDescription)")
+      guard attempt < 10 else {
+        logger.error("Giving up active capture engine rebuild after \(attempt + 1) attempts")
+        interruptedRecordingURL = activeRecording?.url
+        activeRecording = nil
+        return
+      }
+
+      Task { [weak self] in
+        try? await Task.sleep(for: .milliseconds(200))
+        self?.processingQueue.async { [weak self] in
+          self?.restartEngineForActiveRecordingOnProcessingQueue(attempt: attempt + 1)
+        }
+      }
+    }
   }
 
   func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {
@@ -302,8 +376,9 @@ final class SuperFastCaptureController {
 
   func finishRecording(clearBuffer: Bool = true) -> URL? {
     processingQueue.sync {
-      let url = activeRecording?.url
+      let url = activeRecording?.url ?? interruptedRecordingURL
       activeRecording = nil
+      interruptedRecordingURL = nil
       if clearBuffer {
         ringBuffer.clear()
       }
