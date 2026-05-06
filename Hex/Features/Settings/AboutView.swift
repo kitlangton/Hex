@@ -31,7 +31,9 @@ struct AboutView: View {
                     .sheet(isPresented: $showingChangelog, onDismiss: {
                         showingChangelog = false
                     }) {
-                        ChangelogView()
+                        NavigationStack {
+                            ChangelogView()
+                        }
                     }
                 }
                 HStack {
