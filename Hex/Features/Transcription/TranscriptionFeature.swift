@@ -19,7 +19,9 @@ private let transcriptionFeatureLogger = HexLog.transcription
 struct TranscriptionFeature {
   @ObservableState
   struct State {
+    var isStartingRecording: Bool = false
     var isRecording: Bool = false
+    var shouldStopWhenRecordingStarts: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
     var error: String?
@@ -43,6 +45,8 @@ struct TranscriptionFeature {
 
     // Recording flow
     case startRecording
+    case recordingStarted
+    case recordingStartFailed
     case stopRecording
 
     // Cancel/discard flow
@@ -104,12 +108,18 @@ struct TranscriptionFeature {
       case .hotKeyReleased:
         // If we're currently recording, then stop. Otherwise, just cancel
         // the delayed "startRecording" effect if we never actually started.
-        return handleHotKeyReleased(isRecording: state.isRecording)
+        return handleHotKeyReleased(isStartingRecording: state.isStartingRecording, isRecording: state.isRecording)
 
       // MARK: - Recording Flow
 
       case .startRecording:
         return handleStartRecording(&state)
+
+      case .recordingStarted:
+        return handleRecordingStarted(&state)
+
+      case .recordingStartFailed:
+        return handleRecordingStartFailed(&state)
 
       case .stopRecording:
         return handleStopRecording(&state)
@@ -129,14 +139,14 @@ struct TranscriptionFeature {
 
       case .cancel:
         // Only cancel if we're in the middle of recording, transcribing, or post-processing
-        guard state.isRecording || state.isTranscribing else {
+        guard state.isStartingRecording || state.isRecording || state.isTranscribing else {
           return .none
         }
         return handleCancel(&state)
 
       case .discard:
         // Silent discard for quick/accidental recordings
-        guard state.isRecording else {
+        guard state.isStartingRecording || state.isRecording else {
           return .none
         }
         return handleDiscard(&state)
@@ -269,9 +279,9 @@ private extension TranscriptionFeature {
     return .merge(maybeCancel, startRecording)
   }
 
-  func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
+  func handleHotKeyReleased(isStartingRecording: Bool, isRecording: Bool) -> Effect<Action> {
     // Always stop recording when hotkey is released
-    return isRecording ? .send(.stopRecording) : .none
+    return (isStartingRecording || isRecording) ? .send(.stopRecording) : .none
   }
 }
 
@@ -285,35 +295,65 @@ private extension TranscriptionFeature {
         .run { _ in soundEffect.play(.cancel) }
       )
     }
-    state.isRecording = true
-    let startTime = now
-    state.recordingStartTime = startTime
+    state.isStartingRecording = true
+    state.shouldStopWhenRecordingStarts = false
+    state.recordingStartTime = nil
     
     // Capture the active application
     if let activeApp = NSWorkspace.shared.frontmostApplication {
       state.sourceAppBundleID = activeApp.bundleIdentifier
       state.sourceAppName = activeApp.localizedName
     }
-    transcriptionFeatureLogger.notice("Recording started at \(startTime.ISO8601Format())")
+    transcriptionFeatureLogger.notice("Recording start requested at \(now.ISO8601Format())")
 
     // Prevent system sleep during recording
-    return .merge(
-      .cancel(id: CancelID.recordingCleanup),
-      .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] _ in
-        // Play sound immediately for instant feedback
-        soundEffect.play(.startRecording)
-
+    return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
         if preventSleep {
           await sleepManagement.preventSleep(reason: "Hex Voice Recording")
         }
-        await recording.startRecording()
+        let didStart = await recording.startRecording()
+        guard !Task.isCancelled else { return }
+        guard didStart else {
+          await sleepManagement.allowSleep()
+          await send(.recordingStartFailed)
+          return
+        }
+        soundEffect.play(.startRecording)
+        await send(.recordingStarted)
       }
-    )
+      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+  }
+
+  func handleRecordingStarted(_ state: inout State) -> Effect<Action> {
+    guard state.isStartingRecording else { return .none }
+    state.isStartingRecording = false
+    state.isRecording = true
+    let shouldStop = state.shouldStopWhenRecordingStarts
+    state.shouldStopWhenRecordingStarts = false
+    let startTime = now
+    state.recordingStartTime = startTime
+    transcriptionFeatureLogger.notice("Recording ready at \(startTime.ISO8601Format())")
+    return shouldStop ? .send(.stopRecording) : .none
+  }
+
+  func handleRecordingStartFailed(_ state: inout State) -> Effect<Action> {
+    state.isStartingRecording = false
+    state.shouldStopWhenRecordingStarts = false
+    state.isRecording = false
+    state.recordingStartTime = nil
+    return .none
   }
 
   func handleStopRecording(_ state: inout State) -> Effect<Action> {
+    if state.isStartingRecording {
+      state.shouldStopWhenRecordingStarts = true
+      transcriptionFeatureLogger.notice("Deferring stop until microphone is ready")
+      return .none
+    }
+
+    state.isStartingRecording = false
     state.isRecording = false
-    
+      
     let stopTime = now
     let startTime = state.recordingStartTime
     let duration = startTime.map { stopTime.timeIntervalSince($0) } ?? 0
@@ -528,6 +568,8 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
+    state.isStartingRecording = false
+    state.shouldStopWhenRecordingStarts = false
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
@@ -548,6 +590,8 @@ private extension TranscriptionFeature {
   }
 
   func handleDiscard(_ state: inout State) -> Effect<Action> {
+    state.isStartingRecording = false
+    state.shouldStopWhenRecordingStarts = false
     state.isRecording = false
     state.isPrewarming = false
 
@@ -572,6 +616,8 @@ struct TranscriptionView: View {
   var status: TranscriptionIndicatorView.Status {
     if store.isTranscribing {
       return .transcribing
+    } else if store.isStartingRecording {
+      return .preparingMicrophone
     } else if store.isRecording {
       return .recording
     } else if store.isPrewarming {

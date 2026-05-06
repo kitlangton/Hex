@@ -26,7 +26,7 @@ struct AudioInputDevice: Identifiable, Equatable {
 
 @DependencyClient
 struct RecordingClient {
-  var startRecording: @Sendable () async -> Void = {}
+  var startRecording: @Sendable () async -> Bool = { false }
   var stopRecording: @Sendable () async -> URL = { URL(fileURLWithPath: "") }
   var requestMicrophoneAccess: @Sendable () async -> Bool = { false }
   var observeAudioLevel: @Sendable () async -> AsyncStream<Meter> = { AsyncStream { _ in } }
@@ -733,6 +733,51 @@ actor RecordingClientLive {
     let buffersPointer = UnsafeMutableAudioBufferListPointer(bufferList)
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
+
+  private func getTransportType(deviceID: AudioDeviceID) -> UInt32? {
+    var address = audioPropertyAddress(kAudioDevicePropertyTransportType)
+    var transportType: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+
+    let status = AudioObjectGetPropertyData(
+      deviceID,
+      &address,
+      0,
+      nil,
+      &size,
+      &transportType
+    )
+
+    guard status == noErr else { return nil }
+    return transportType
+  }
+
+  private func isBluetoothDevice(deviceID: AudioDeviceID) -> Bool {
+    switch getTransportType(deviceID: deviceID) {
+    case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+      true
+    default:
+      false
+    }
+  }
+
+  private func inputDeviceIsReady(deviceID: AudioDeviceID) -> Bool {
+    guard deviceHasInput(deviceID: deviceID) else { return false }
+
+    var address = audioPropertyAddress(kAudioDevicePropertyNominalSampleRate)
+    var sampleRate = Float64(0)
+    var size = UInt32(MemoryLayout<Float64>.size)
+    let status = AudioObjectGetPropertyData(
+      deviceID,
+      &address,
+      0,
+      nil,
+      &size,
+      &sampleRate
+    )
+
+    return status == noErr && sampleRate > 0
+  }
   
   /// Set device as the default input device
   private func setInputDevice(deviceID: AudioDeviceID) {
@@ -848,6 +893,59 @@ actor RecordingClientLive {
     }
 
     return getDefaultInputDevice()
+  }
+
+  private func waitForHandsFreeInputIfNeeded(targetDeviceID: AudioDeviceID?) async throws -> AudioDeviceID? {
+    guard let targetDeviceID, isBluetoothDevice(deviceID: targetDeviceID) else {
+      return getDefaultInputDevice()
+    }
+
+    let startedAt = Date()
+    recordingLogger.notice("Waiting for Bluetooth HFP input device=\(self.describeDevice(targetDeviceID))")
+
+    for attempt in 0 ..< 30 {
+      let currentInput = getDefaultInputDevice()
+      if let currentInput,
+         currentInput == targetDeviceID,
+         isBluetoothDevice(deviceID: currentInput),
+         inputDeviceIsReady(deviceID: currentInput) {
+        recordingLogger.notice(
+          "Bluetooth HFP input ready attempt=\(attempt) elapsed=\(self.formatDuration(Date().timeIntervalSince(startedAt))) input=\(self.describeDevice(currentInput))"
+        )
+        return currentInput
+      }
+
+      if let currentInput,
+         currentInput != targetDeviceID,
+         isBluetoothDevice(deviceID: currentInput),
+         inputDeviceIsReady(deviceID: currentInput) {
+        recordingLogger.notice("Ignoring ready Bluetooth input \(self.describeDevice(currentInput)); waiting for requested \(self.describeDevice(targetDeviceID))")
+      }
+
+      try await Task.sleep(for: .milliseconds(100))
+    }
+
+    try Task.checkCancellation()
+
+    let currentInput = getDefaultInputDevice()
+    recordingLogger.error(
+      "Bluetooth HFP input not ready elapsed=\(self.formatDuration(Date().timeIntervalSince(startedAt))) input=\(self.describeDevice(currentInput)) target=\(self.describeDevice(targetDeviceID))"
+    )
+    return currentInput
+  }
+
+  private func settleHandsFreeCaptureIfNeeded(deviceID: AudioDeviceID?, sessionID: UUID) async throws -> AudioDeviceID? {
+    guard let deviceID, isBluetoothDevice(deviceID: deviceID) else { return deviceID }
+
+    recordingLogger.notice("Settling Bluetooth HFP capture before recording input=\(self.describeDevice(deviceID))")
+    try ensureCaptureControllerReady(for: deviceID, reason: "hfp-settle", forceRestart: true)
+    try await Task.sleep(for: .milliseconds(900))
+    try Task.checkCancellation()
+    guard isCurrentSession(sessionID) else { return getDefaultInputDevice() }
+
+    let settledInputDevice = getDefaultInputDevice()
+    try ensureCaptureControllerReady(for: settledInputDevice, reason: "hfp-settled", forceRestart: captureController.isRunning == false)
+    return settledInputDevice
   }
 
   private func makeCaptureRecordingURL() -> URL {
@@ -1048,7 +1146,7 @@ actor RecordingClientLive {
     }
   }
 
-  func startRecording() async {
+  func startRecording() async -> Bool {
     // Check and fix device-level mute before recording
     ensureInputDeviceUnmuted()
 
@@ -1100,12 +1198,36 @@ actor RecordingClientLive {
       break
     }
 
-    let activeInputDevice = applyPreferredInputDevice()
+    let requestedInputDevice = resolvePreferredInputDevice() ?? getDefaultInputDevice()
+    _ = applyPreferredInputDevice()
+    let activeInputDevice: AudioDeviceID?
+    do {
+      activeInputDevice = try await waitForHandsFreeInputIfNeeded(targetDeviceID: requestedInputDevice)
+    } catch is CancellationError {
+      recordingLogger.notice("Recording start cancelled while waiting for Bluetooth HFP input")
+      endRecordingSession()
+      await resumeMediaIfNeeded()
+      return false
+    } catch {
+      recordingLogger.error("Failed while waiting for Bluetooth HFP input: \(error.localizedDescription)")
+      endRecordingSession()
+      await resumeMediaIfNeeded()
+      return false
+    }
+    guard isCurrentSession(sessionID) else {
+      recordingLogger.notice("Recording start cancelled before input became ready")
+      return false
+    }
     let mode = currentCaptureMode()
     logRecordingStartRequest(mode: mode, inputDeviceID: activeInputDevice)
     let startRequestAt = Date()
 
     do {
+      let activeInputDevice = try await settleHandsFreeCaptureIfNeeded(deviceID: activeInputDevice, sessionID: sessionID)
+      guard isCurrentSession(sessionID) else {
+        recordingLogger.notice("Recording start cancelled while Bluetooth HFP settled")
+        return false
+      }
       try ensureCaptureControllerReady(for: activeInputDevice, reason: "startRecording")
       let recordingURL = makeCaptureRecordingURL()
       try captureController.beginRecording(to: recordingURL, requestedAt: startRequestAt, mode: mode)
@@ -1118,7 +1240,13 @@ actor RecordingClientLive {
       recordingLogger.notice(
         "Recording started mode=\(mode.rawValue) backend=\(RecordingBackend.captureEngine.rawValue) startup=\(self.formatDuration(startedAt.timeIntervalSince(startRequestAt)))"
       )
-      return
+      return true
+    } catch is CancellationError {
+      recordingLogger.notice("Recording start cancelled before capture engine became active")
+      stopCaptureController(reason: "start-cancelled")
+      endRecordingSession()
+      await resumeMediaIfNeeded()
+      return false
     } catch {
       recordingLogger.error("Failed to start capture engine for mode=\(mode.rawValue): \(error.localizedDescription); falling back to AVAudioRecorder")
       stopCaptureController(reason: "capture-engine-start-failed")
@@ -1130,7 +1258,7 @@ actor RecordingClientLive {
       guard recorder.record() else {
         recordingLogger.error("AVAudioRecorder refused to start recording")
         endRecordingSession()
-        return
+        return false
       }
       let startedAt = Date()
       activeRecordingSession = ActiveRecordingSession(
@@ -1142,16 +1270,29 @@ actor RecordingClientLive {
       recordingLogger.notice(
         "Recording started mode=\(mode.rawValue) backend=\(RecordingBackend.recorderFallback.rawValue) recordCall=\(self.formatDuration(Date().timeIntervalSince(recordCallStartedAt))) totalStart=\(self.formatDuration(startedAt.timeIntervalSince(startRequestAt)))"
       )
+      return true
     } catch {
       recordingLogger.error("Failed to start recording: \(error.localizedDescription)")
       clearActiveRecordingMetadata()
       endRecordingSession()
+      return false
     }
   }
 
   func stopRecording() async -> URL {
     let stopSessionID = recordingSessionID
     let activeSession = activeRecordingSession
+
+    if activeSession == nil, !captureController.isRecording, recorder?.isRecording != true {
+      recordingLogger.notice("stopRecording() called before recording backend became active")
+      if captureController.isRunning {
+        stopCaptureController(reason: "stop-before-recording-active")
+      }
+      endRecordingSession()
+      clearActiveRecordingMetadata()
+      await resumeMediaIfNeeded()
+      return makeIgnoredStopURL()
+    }
 
     if activeSession?.backend == .captureEngine || captureController.isRecording {
       let stopTimingEstimate = captureController.stopTimingEstimate

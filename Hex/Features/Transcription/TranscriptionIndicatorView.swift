@@ -17,6 +17,7 @@ struct TranscriptionIndicatorView: View {
     case optionKeyPressed
     case recording
     case transcribing
+    case preparingMicrophone
     case prewarming
   }
 
@@ -31,6 +32,7 @@ struct TranscriptionIndicatorView: View {
     case .recording:
       return mixedColor(mixedNSColor(.red, with: .black, by: 0.5), with: .red, by: meter.averagePower * 3)
     case .transcribing: return mixedColor(.blue, with: .black, by: 0.5)
+    case .preparingMicrophone: return mixedColor(.orange, with: .black, by: 0.5)
     case .prewarming: return mixedColor(.blue, with: .black, by: 0.5)
     }
   }
@@ -41,6 +43,7 @@ struct TranscriptionIndicatorView: View {
     case .optionKeyPressed: return Color.black
     case .recording: return mixedColor(.red, with: .white, by: 0.1).opacity(0.6)
     case .transcribing: return mixedColor(.blue, with: .white, by: 0.1).opacity(0.6)
+    case .preparingMicrophone: return mixedColor(.orange, with: .white, by: 0.1).opacity(0.6)
     case .prewarming: return mixedColor(.blue, with: .white, by: 0.1).opacity(0.6)
     }
   }
@@ -60,6 +63,7 @@ struct TranscriptionIndicatorView: View {
     case .optionKeyPressed: return Color.clear
     case .recording: return Color.red
     case .transcribing: return transcribeBaseColor
+    case .preparingMicrophone: return Color.orange
     case .prewarming: return transcribeBaseColor
     }
   }
@@ -138,10 +142,10 @@ struct TranscriptionIndicatorView: View {
           }
         }
       
-      // Show tooltip when prewarming
-      if status == .prewarming {
+      // Show tooltip when setting up microphone or model
+      if status == .preparingMicrophone || status == .prewarming {
         VStack(spacing: 4) {
-          Text("Model prewarming...")
+          Text(status == .preparingMicrophone ? "Preparing microphone..." : "Model prewarming...")
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(.white)
             .padding(.horizontal, 8)
@@ -166,6 +170,7 @@ struct TranscriptionIndicatorView: View {
     TranscriptionIndicatorView(status: .optionKeyPressed, meter: .init(averagePower: 0, peakPower: 0))
     TranscriptionIndicatorView(status: .recording, meter: .init(averagePower: 0.5, peakPower: 0.5))
     TranscriptionIndicatorView(status: .transcribing, meter: .init(averagePower: 0, peakPower: 0))
+    TranscriptionIndicatorView(status: .preparingMicrophone, meter: .init(averagePower: 0, peakPower: 0))
     TranscriptionIndicatorView(status: .prewarming, meter: .init(averagePower: 0, peakPower: 0))
   }
   .padding(40)
