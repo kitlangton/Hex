@@ -176,7 +176,10 @@ struct SettingsFeature {
     case .recording:
       state.$hexSettings.withLock {
         $0.hotkey.key = key
-        $0.hotkey.modifiers = modifiers.erasingSides()
+        // For modifier-only hotkeys, preserve the captured side (left/right) so the
+        // side picker pre-selects the physical key that was pressed. For key+modifier
+        // combos, erase sides — no picker exists and either side should trigger.
+        $0.hotkey.modifiers = key == nil ? modifiers : modifiers.erasingSides()
       }
     case .pasteLastTranscript:
       guard let key else { return }
