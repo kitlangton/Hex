@@ -59,7 +59,11 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private var shouldOpenForegroundUIOnLaunch: Bool {
-		!(launchedAtLogin && !hexSettings.showDockIcon)
+		// When Hex launches at login, stay quietly in the menu bar regardless of
+		// the dock-icon preference. Users who enabled "Open on Login" expect a
+		// background launch; the Settings window can be opened later from the
+		// menu bar item or ⌘, when needed.
+		!launchedAtLogin
 	}
 
 	private func wasLaunchedAtLogin() -> Bool {
