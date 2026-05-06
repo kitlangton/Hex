@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.6
+
+### Patch Changes
+
+- f4cecbb: Show in Finder reveals Parakeet caches at the correct path (#205)
+- f4cecbb: Stay in the menu bar when launched at login (#222)
+
 ## 0.7.5
 
 ### Patch Changes
