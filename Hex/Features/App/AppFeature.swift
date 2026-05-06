@@ -88,7 +88,8 @@ struct AppFeature {
         
       case .pasteLastTranscript:
         @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
-        guard let lastTranscript = transcriptionHistory.history.first?.text else {
+        guard let lastTranscript = transcriptionHistory.history
+          .first(where: { $0.resolvedStatus == .completed })?.text else {
           return .none
         }
         return .run { _ in

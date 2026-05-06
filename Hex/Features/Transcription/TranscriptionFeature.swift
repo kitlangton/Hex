@@ -27,6 +27,13 @@ struct TranscriptionFeature {
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
     var sourceAppBundleID: String?
     var sourceAppName: String?
+    /// URL of the audio file currently being transcribed. Set after `recording.stopRecording()`
+    /// returns inside `handleStopRecording`'s effect, cleared on every terminal action so a
+    /// late-arriving result/error from a cancelled transcription can be detected and dropped.
+    var activeTranscriptionAudioURL: URL?
+    /// Recording duration captured at stop time (does NOT include transcription latency).
+    /// Paired with `activeTranscriptionAudioURL`; both set and cleared together.
+    var activeTranscriptionDuration: TimeInterval?
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
@@ -50,6 +57,7 @@ struct TranscriptionFeature {
     case discard  // Silent discard (too short/accidental)
 
     // Transcription result flow
+    case transcriptionAudioCaptured(URL, TimeInterval)
     case transcriptionResult(String, URL)
     case transcriptionError(Error, URL?)
 
@@ -59,7 +67,12 @@ struct TranscriptionFeature {
 
   enum CancelID {
     case metering
+    /// Trivial cleanup work that owns no temp WAV (the discard path's removeItem call).
+    /// Safe to cancel when a new recording starts.
     case recordingCleanup
+    /// Post-stop work that owns a temp WAV and persists it through transcriptPersistence.
+    /// Must NOT be cancelled by handleStartRecording or we leak the temp file or lose the row.
+    case recordingFinalize
     case transcription
   }
 
@@ -115,6 +128,11 @@ struct TranscriptionFeature {
         return handleStopRecording(&state)
 
       // MARK: - Transcription Results
+
+      case let .transcriptionAudioCaptured(audioURL, duration):
+        state.activeTranscriptionAudioURL = audioURL
+        state.activeTranscriptionDuration = duration
+        return .none
 
       case let .transcriptionResult(result, audioURL):
         return handleTranscriptionResult(&state, result: result, audioURL: audioURL)
@@ -336,15 +354,30 @@ private extension TranscriptionFeature {
     )
 
     guard decision == .proceedToTranscription else {
-      // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
-      // discard the audio to avoid accidental triggers.
-      transcriptionFeatureLogger.notice("Discarding short recording per decision \(String(describing: decision))")
-      return .run { _ in
+      // Recording was below minimum duration. If it captured at least 1.0s of audio we still
+      // persist it as a cancelled entry so the user can retry; otherwise discard silently
+      // (covers accidental modifier-only taps).
+      transcriptionFeatureLogger.notice("Short recording per decision \(String(describing: decision)); duration=\(String(format: "%.3f", duration))s")
+      let sourceAppBundleID = state.sourceAppBundleID
+      let sourceAppName = state.sourceAppName
+      let transcriptionHistory = state.$transcriptionHistory
+      return .run { [duration, sleepManagement] _ in
+        await sleepManagement.allowSleep()
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
-        try? FileManager.default.removeItem(at: url)
+        await persistOrDiscard(
+          status: .cancelled,
+          audioURL: url,
+          duration: duration,
+          sourceAppBundleID: sourceAppBundleID,
+          sourceAppName: sourceAppName,
+          transcriptionHistory: transcriptionHistory
+        )
       }
-      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+      // Don't cancelInFlight here: a second finalize firing (rare hotkey-release + ESC
+      // race) must not abort an already-running persist between recording.stopRecording()
+      // and persistOrDiscard completing, or we leak the temp WAV / lose the row.
+      .cancellable(id: CancelID.recordingFinalize)
     }
 
     // Otherwise, proceed to transcription
@@ -355,7 +388,7 @@ private extension TranscriptionFeature {
 
     state.isPrewarming = true
 
-    return .run { [sleepManagement] send in
+    return .run { [duration, sleepManagement] send in
       // Allow system to sleep again
       await sleepManagement.allowSleep()
 
@@ -366,6 +399,10 @@ private extension TranscriptionFeature {
         soundEffect.play(.stopRecording)
         audioURL = capturedURL
 
+        // Synchronously plumb the captured URL + accurate duration into state so cancel
+        // and ownership-guard paths can see them.
+        await send(.transcriptionAudioCaptured(capturedURL, duration))
+
         // Create transcription options with the selected language
         // Note: cap concurrency to avoid audio I/O overloads on some Macs
         let decodeOptions = DecodingOptions(
@@ -373,13 +410,13 @@ private extension TranscriptionFeature {
           detectLanguage: language == nil, // Only auto-detect if no language specified
           chunkingStrategy: .vad,
         )
-        
+
         let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
-        
-        transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
+
+        transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent, privacy: .private) to text length \(result.count)")
         await send(.transcriptionResult(result, capturedURL))
       } catch {
-        transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
+        transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription, privacy: .private)")
         await send(.transcriptionError(error, audioURL))
       }
     }
@@ -395,6 +432,18 @@ private extension TranscriptionFeature {
     result: String,
     audioURL: URL
   ) -> Effect<Action> {
+    // Ownership guard MUST be first: drop late-arriving results from a cancelled transcription
+    // before any state mutation, force-quit detection, empty-result handling, post-processing,
+    // or side effects.
+    guard state.activeTranscriptionAudioURL == audioURL else {
+      return .none
+    }
+    let duration = state.activeTranscriptionDuration
+      ?? state.recordingStartTime.map { now.timeIntervalSince($0) }
+      ?? 0
+    state.activeTranscriptionAudioURL = nil
+    state.activeTranscriptionDuration = nil
+
     state.isTranscribing = false
     state.isPrewarming = false
 
@@ -409,59 +458,45 @@ private extension TranscriptionFeature {
       }
     }
 
-    // If empty text, nothing else to do
+    // Empty raw text: clean up the temp WAV so we don't leak files for silent recordings.
     guard !result.isEmpty else {
-      return .none
+      return .run { _ in
+        try? FileManager.default.removeItem(at: audioURL)
+      }
     }
 
-    let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-
-    transcriptionFeatureLogger.info("Raw transcription: '\(result)'")
-    let remappings = state.hexSettings.wordRemappings
-    let removalsEnabled = state.hexSettings.wordRemovalsEnabled
-    let removals = state.hexSettings.wordRemovals
-    let modifiedResult: String
-    if state.isRemappingScratchpadFocused {
-      modifiedResult = result
+    transcriptionFeatureLogger.info("Raw transcription: '\(result, privacy: .private)'")
+    let modifiedResult = TranscriptTextProcessor.process(
+      result,
+      settings: state.hexSettings,
+      bypassFilters: state.isRemappingScratchpadFocused
+    )
+    if modifiedResult != result {
+      transcriptionFeatureLogger.info("Applied word filters; processed length=\(modifiedResult.count)")
+    } else if state.isRemappingScratchpadFocused {
       transcriptionFeatureLogger.info("Scratchpad focused; skipping word modifications")
-    } else {
-      var output = result
-      if removalsEnabled {
-        let removedResult = WordRemovalApplier.apply(output, removals: removals)
-        if removedResult != output {
-          let enabledRemovalCount = removals.filter(\.isEnabled).count
-          transcriptionFeatureLogger.info("Applied \(enabledRemovalCount) word removal(s)")
-        }
-        output = removedResult
-      }
-      let remappedResult = WordRemappingApplier.apply(output, remappings: remappings)
-      if remappedResult != output {
-        transcriptionFeatureLogger.info("Applied \(remappings.count) word remapping(s)")
-      }
-      modifiedResult = remappedResult
     }
 
+    // Empty after post-processing: same cleanup as empty raw.
     guard !modifiedResult.isEmpty else {
-      return .none
+      return .run { _ in
+        try? FileManager.default.removeItem(at: audioURL)
+      }
     }
 
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
 
-    return .run { send in
-      do {
-        try await finalizeRecordingAndStoreTranscript(
-          result: modifiedResult,
-          duration: duration,
-          sourceAppBundleID: sourceAppBundleID,
-          sourceAppName: sourceAppName,
-          audioURL: audioURL,
-          transcriptionHistory: transcriptionHistory
-        )
-      } catch {
-        await send(.transcriptionError(error, audioURL))
-      }
+    return .run { _ in
+      await finalizeRecordingAndStoreTranscript(
+        result: modifiedResult,
+        duration: duration,
+        sourceAppBundleID: sourceAppBundleID,
+        sourceAppName: sourceAppName,
+        audioURL: audioURL,
+        transcriptionHistory: transcriptionHistory
+      )
     }
     .cancellable(id: CancelID.transcription)
   }
@@ -471,18 +506,46 @@ private extension TranscriptionFeature {
     error: Error,
     audioURL: URL?
   ) -> Effect<Action> {
+    // Ownership guard FIRST: drop late-arriving errors that don't belong to the
+    // active session. Symmetric optional comparison covers all four nil/non-nil
+    // pairings — most importantly it stops a stale nil-URL error from clearing
+    // a newer session's activeTranscriptionAudioURL.
+    guard state.activeTranscriptionAudioURL == audioURL else {
+      return .none
+    }
+    let duration = state.activeTranscriptionDuration
+      ?? state.recordingStartTime.map { now.timeIntervalSince($0) }
+      ?? 0
+    state.activeTranscriptionAudioURL = nil
+    state.activeTranscriptionDuration = nil
+
     state.isTranscribing = false
     state.isPrewarming = false
     state.error = error.localizedDescription
-    
-    if let audioURL {
-      try? FileManager.default.removeItem(at: audioURL)
+
+    guard let audioURL else {
+      return .none
     }
 
-    return .none
+    let sourceAppBundleID = state.sourceAppBundleID
+    let sourceAppName = state.sourceAppName
+    let transcriptionHistory = state.$transcriptionHistory
+
+    return .run { _ in
+      await persistOrDiscard(
+        status: .failed,
+        audioURL: audioURL,
+        duration: duration,
+        sourceAppBundleID: sourceAppBundleID,
+        sourceAppName: sourceAppName,
+        transcriptionHistory: transcriptionHistory
+      )
+    }
   }
 
   /// Move file to permanent location, create a transcript record, paste text, and play sound.
+  /// Storage failures are logged but do not block the paste — the transcription succeeded
+  /// from the user's perspective and they should still get their text.
   func finalizeRecordingAndStoreTranscript(
     result: String,
     duration: TimeInterval,
@@ -490,30 +553,28 @@ private extension TranscriptionFeature {
     sourceAppName: String?,
     audioURL: URL,
     transcriptionHistory: Shared<TranscriptionHistory>
-  ) async throws {
+  ) async {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
     if hexSettings.saveTranscriptionHistory {
-      let transcript = try await transcriptPersistence.save(
-        result,
-        audioURL,
-        duration,
-        sourceAppBundleID,
-        sourceAppName
-      )
-
-      transcriptionHistory.withLock { history in
-        history.history.insert(transcript, at: 0)
-
-        if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
-          while history.history.count > maxEntries {
-            if let removedTranscript = history.history.popLast() {
-              Task {
-                 try? await transcriptPersistence.deleteAudio(removedTranscript)
-              }
-            }
-          }
-        }
+      do {
+        _ = try await persistHistoryEntry(
+          text: result,
+          audioURL: audioURL,
+          duration: duration,
+          sourceAppBundleID: sourceAppBundleID,
+          sourceAppName: sourceAppName,
+          status: .completed,
+          transcriptionHistory: transcriptionHistory
+        )
+      } catch {
+        // Storage failure on the success path: log, clean up the temp file (still at original
+        // location since save threw before move-item completed), but DO NOT mark as failed —
+        // the transcription itself succeeded and the user should still get their text.
+        transcriptionFeatureLogger.error(
+          "Failed to persist completed transcript: \(error.localizedDescription, privacy: .private)"
+        )
+        try? FileManager.default.removeItem(at: audioURL)
       }
     } else {
       try? FileManager.default.removeItem(at: audioURL)
@@ -521,6 +582,91 @@ private extension TranscriptionFeature {
 
     await pasteboard.paste(result)
     soundEffect.play(.pasteTranscript)
+  }
+
+  /// Persist an entry in history (move audio + insert + prune to maxHistoryEntries).
+  /// Returns nil if `saveTranscriptionHistory` is disabled (caller is responsible for cleanup).
+  /// Throws on storage failure.
+  func persistHistoryEntry(
+    text: String,
+    audioURL: URL,
+    duration: TimeInterval,
+    sourceAppBundleID: String?,
+    sourceAppName: String?,
+    status: TranscriptStatus,
+    transcriptionHistory: Shared<TranscriptionHistory>
+  ) async throws -> Transcript? {
+    @Shared(.hexSettings) var hexSettings: HexSettings
+
+    guard hexSettings.saveTranscriptionHistory else { return nil }
+
+    let transcript = try await transcriptPersistence.save(
+      text,
+      audioURL,
+      duration,
+      sourceAppBundleID,
+      sourceAppName,
+      status
+    )
+
+    transcriptionHistory.withLock { history in
+      history.history.insert(transcript, at: 0)
+
+      if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
+        while history.history.count > maxEntries {
+          if let removedTranscript = history.history.popLast() {
+            Task { [transcriptPersistence] in
+              try? await transcriptPersistence.deleteAudio(removedTranscript)
+            }
+          }
+        }
+      }
+    }
+    return transcript
+  }
+
+  /// Persist an incomplete recording (cancelled or failed) when duration meets the 1.0s
+  /// threshold and history is enabled; otherwise delete the temp WAV. Storage failures
+  /// fall back to deleting the temp file so we don't leak.
+  func persistOrDiscard(
+    status: TranscriptStatus,
+    audioURL: URL,
+    duration: TimeInterval,
+    sourceAppBundleID: String?,
+    sourceAppName: String?,
+    transcriptionHistory: Shared<TranscriptionHistory>
+  ) async {
+    @Shared(.hexSettings) var hexSettings: HexSettings
+
+    // Floor at the user's minimumKeyTime so high-threshold users don't see sub-threshold
+    // recordings persisted, with 1.0s as an absolute lower bound to keep storage bounded
+    // against rapid modifier taps from users with very low minimumKeyTime values.
+    let meetsMinimumDuration = duration >= max(hexSettings.minimumKeyTime, 1.0)
+    let shouldPersist = meetsMinimumDuration
+      && hexSettings.saveTranscriptionHistory
+      && hexSettings.saveCancelledRecordings
+
+    guard shouldPersist else {
+      try? FileManager.default.removeItem(at: audioURL)
+      return
+    }
+
+    do {
+      _ = try await persistHistoryEntry(
+        text: "",
+        audioURL: audioURL,
+        duration: duration,
+        sourceAppBundleID: sourceAppBundleID,
+        sourceAppName: sourceAppName,
+        status: status,
+        transcriptionHistory: transcriptionHistory
+      )
+    } catch {
+      transcriptionFeatureLogger.error(
+        "Failed to persist incomplete transcript (\(String(describing: status))): \(error.localizedDescription, privacy: .private)"
+      )
+      try? FileManager.default.removeItem(at: audioURL)
+    }
   }
 }
 
@@ -532,18 +678,55 @@ private extension TranscriptionFeature {
     state.isRecording = false
     state.isPrewarming = false
 
+    // Snapshot any captured transcription metadata before clearing — handleCancel during
+    // transcription owns the audio file because the in-flight transcribe effect is being killed.
+    let activeURL = state.activeTranscriptionAudioURL
+    let activeDuration = state.activeTranscriptionDuration
+    state.activeTranscriptionAudioURL = nil
+    state.activeTranscriptionDuration = nil
+
+    // Capture the cancel time at action-processing time so the duration reflects
+    // when the user pressed cancel, not when the .run block actually executes.
+    // Also keeps the timing path test-injectable via @Dependency(\.date.now).
+    let cancelTime = now
+    let recordingStartTime = state.recordingStartTime
+    let sourceAppBundleID = state.sourceAppBundleID
+    let sourceAppName = state.sourceAppName
+    let transcriptionHistory = state.$transcriptionHistory
+
     return .merge(
       .cancel(id: CancelID.transcription),
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
-        // Stop the recording to release microphone access
-        let url = await recording.stopRecording()
-        guard !Task.isCancelled else { return }
-        try? FileManager.default.removeItem(at: url)
         soundEffect.play(.cancel)
+
+        if let activeURL {
+          // Cancel during transcription — recording was already stopped, persist the captured URL.
+          await persistOrDiscard(
+            status: .cancelled,
+            audioURL: activeURL,
+            duration: activeDuration ?? 0,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            transcriptionHistory: transcriptionHistory
+          )
+        } else {
+          // Cancel during recording — stop recording to get the temp URL.
+          let url = await recording.stopRecording()
+          guard !Task.isCancelled else { return }
+          let duration = recordingStartTime.map { cancelTime.timeIntervalSince($0) } ?? 0
+          await persistOrDiscard(
+            status: .cancelled,
+            audioURL: url,
+            duration: duration,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            transcriptionHistory: transcriptionHistory
+          )
+        }
       }
-      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+      .cancellable(id: CancelID.recordingFinalize)
     )
   }
 
