@@ -45,6 +45,11 @@ struct TranscriptionFeature {
     case startRecording
     case stopRecording
 
+    // Automation URL flow
+    case automationStartRecording
+    case automationStopRecording
+    case automationToggleRecording
+
     // Cancel/discard flow
     case cancel   // Explicit cancellation with sound
     case discard  // Silent discard (too short/accidental)
@@ -113,6 +118,27 @@ struct TranscriptionFeature {
 
       case .stopRecording:
         return handleStopRecording(&state)
+
+      case .automationStartRecording:
+        guard !state.isRecording, !state.isTranscribing else {
+          return .none
+        }
+        return handleStartRecording(&state)
+
+      case .automationStopRecording:
+        guard state.isRecording else {
+          return .none
+        }
+        return handleStopRecording(&state)
+
+      case .automationToggleRecording:
+        if state.isRecording {
+          return handleStopRecording(&state)
+        }
+        guard !state.isTranscribing else {
+          return .none
+        }
+        return handleStartRecording(&state)
 
       // MARK: - Transcription Results
 

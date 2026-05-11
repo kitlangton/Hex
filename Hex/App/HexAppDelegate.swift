@@ -150,6 +150,55 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		return true
 	}
 
+	func application(_: NSApplication, open urls: [URL]) {
+		for url in urls {
+			handleAutomationURL(url)
+		}
+	}
+
+	private func handleAutomationURL(_ url: URL) {
+		guard url.scheme?.lowercased() == "hex" else {
+			return
+		}
+
+		let command: String? = {
+			let host = url.host?.lowercased()
+			let pathComponents = url.pathComponents
+				.filter { $0 != "/" }
+				.map { $0.lowercased() }
+
+			if host == "recording", let action = pathComponents.first {
+				return action
+			}
+
+			switch host {
+			case "toggle-recording", "toggle":
+				return "toggle"
+			case "start-recording", "start":
+				return "start"
+			case "stop-recording", "stop":
+				return "stop"
+			default:
+				return pathComponents.first
+			}
+		}()
+
+		appLogger.notice("Received automation URL command=\(command ?? "nil", privacy: .public) url=\(url.absoluteString, privacy: .public)")
+
+		Task { @MainActor in
+			switch command {
+			case "start":
+				HexApp.appStore.send(.transcription(.automationStartRecording))
+			case "stop":
+				HexApp.appStore.send(.transcription(.automationStopRecording))
+			case "toggle":
+				HexApp.appStore.send(.transcription(.automationToggleRecording))
+			default:
+				appLogger.error("Unknown automation URL command=\(command ?? "nil", privacy: .public)")
+			}
+		}
+	}
+
 	func applicationWillTerminate(_: Notification) {
 		Task {
 			await recording.cleanup()
