@@ -21,6 +21,8 @@ jobs:
             -scheme Hex \
             -configuration Release \
             -derivedDataPath build/DerivedData \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             build
 
