@@ -323,6 +323,145 @@ struct HotKeyProcessorTests {
         )
     }
 
+    // MARK: - Double-Tap Only (Key + Modifier)
+
+    @Test
+    func doubleTapOnly_standard_singlePressIgnored() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_standard_requiresSecondPress() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .doubleTapLock)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_standard_releaseAfterLockDoesNotStop() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.4, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 1.0, key: .a, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    // MARK: - Double-Tap Only (Modifier-Only)
+
+    @Test
+    func doubleTapOnly_modifierOnly_requiresSecondPress() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                // First press — no recording yet
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // First release — still no recording, just records release time
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Second press within threshold — starts recording in lock mode
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_stopsOnThirdPress() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Release after lock — should NOT stop (modifier-only lock persists)
+                ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true),
+                // Third press — stops recording
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_slowDoubleTapIgnored() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                // First press
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // First release
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Second press too slow (> 0.3s after release)
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // Release — nothing happens
+                ScenarioStep(time: 0.6, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_singlePressIgnored() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                // Single press — no recording
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // Release — no recording
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_slowFirstHoldDoesNotArm() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.5, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.6, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_multipleModifiersPartialReleaseArmsSecondPress() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.option, .command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.4, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock)
+            ]
+        )
+    }
+
     // MARK: - Edge Cases
 
     // Tests that after pressing a key with option, releasing the key but keeping option pressed
