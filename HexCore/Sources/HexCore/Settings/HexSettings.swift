@@ -3,6 +3,7 @@ import Foundation
 public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Sendable {
 	case pauseMedia
 	case mute
+	case reduceVolume
 	case doNothing
 }
 
@@ -10,6 +11,9 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
 	public static let baseSoundEffectsVolume: Double = HexCoreConstants.baseSoundEffectsVolume
+	public static let defaultRecordingReducedVolume: Double = 0.2
+	public static let defaultRecordingVolumeFadeDuration: Double = 0
+	public static let maximumRecordingVolumeFadeDuration: Double = 2
 	public static let defaultWordRemovals: [WordRemoval] = [
 		.init(pattern: "uh+"),
 		.init(pattern: "um+"),
@@ -32,6 +36,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var useClipboardPaste: Bool
 	public var preventSystemSleep: Bool
 	public var recordingAudioBehavior: RecordingAudioBehavior
+	public var recordingReducedVolume: Double
+	public var recordingVolumeFadeOutDuration: Double
+	public var recordingVolumeFadeInDuration: Double
 	public var minimumKeyTime: Double
 	public var copyToClipboard: Bool
 	public var superFastModeEnabled: Bool
@@ -54,6 +61,20 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		}
 	}
 
+	private mutating func normalizeRecordingAudioSettings() {
+		recordingReducedVolume = Self.clampVolume(recordingReducedVolume)
+		recordingVolumeFadeOutDuration = Self.clampFadeDuration(recordingVolumeFadeOutDuration)
+		recordingVolumeFadeInDuration = Self.clampFadeDuration(recordingVolumeFadeInDuration)
+	}
+
+	public static func clampVolume(_ volume: Double) -> Double {
+		min(1, max(0, volume))
+	}
+
+	public static func clampFadeDuration(_ duration: Double) -> Double {
+		min(maximumRecordingVolumeFadeDuration, max(0, duration))
+	}
+
 	public init(
 		soundEffectsEnabled: Bool = true,
 		soundEffectsVolume: Double = HexSettings.baseSoundEffectsVolume,
@@ -64,6 +85,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
+		recordingReducedVolume: Double = HexSettings.defaultRecordingReducedVolume,
+		recordingVolumeFadeOutDuration: Double = HexSettings.defaultRecordingVolumeFadeDuration,
+		recordingVolumeFadeInDuration: Double = HexSettings.defaultRecordingVolumeFadeDuration,
 		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
 		copyToClipboard: Bool = false,
 		superFastModeEnabled: Bool = true,
@@ -89,6 +113,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.useClipboardPaste = useClipboardPaste
 		self.preventSystemSleep = preventSystemSleep
 		self.recordingAudioBehavior = recordingAudioBehavior
+		self.recordingReducedVolume = recordingReducedVolume
+		self.recordingVolumeFadeOutDuration = recordingVolumeFadeOutDuration
+		self.recordingVolumeFadeInDuration = recordingVolumeFadeInDuration
 		self.minimumKeyTime = minimumKeyTime
 		self.copyToClipboard = copyToClipboard
 		self.superFastModeEnabled = superFastModeEnabled
@@ -105,6 +132,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
 		normalizeDoubleTapSettings()
+		normalizeRecordingAudioSettings()
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -114,6 +142,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 			try field.decode(into: &self, from: container)
 		}
 		normalizeDoubleTapSettings()
+		normalizeRecordingAudioSettings()
 	}
 
 	public func encode(to encoder: Encoder) throws {
@@ -136,6 +165,9 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case useClipboardPaste
 	case preventSystemSleep
 	case recordingAudioBehavior
+	case recordingReducedVolume
+	case recordingVolumeFadeOutDuration
+	case recordingVolumeFadeInDuration
 	case pauseMediaOnRecord // Legacy
 	case minimumKeyTime
 	case copyToClipboard
@@ -234,6 +266,9 @@ private enum HexSettingsSchema {
 				return defaultValue
 			}
 		).eraseToAny(),
+		SettingsField(.recordingReducedVolume, keyPath: \.recordingReducedVolume, default: defaults.recordingReducedVolume).eraseToAny(),
+		SettingsField(.recordingVolumeFadeOutDuration, keyPath: \.recordingVolumeFadeOutDuration, default: defaults.recordingVolumeFadeOutDuration).eraseToAny(),
+		SettingsField(.recordingVolumeFadeInDuration, keyPath: \.recordingVolumeFadeInDuration, default: defaults.recordingVolumeFadeInDuration).eraseToAny(),
 		SettingsField(.minimumKeyTime, keyPath: \.minimumKeyTime, default: defaults.minimumKeyTime).eraseToAny(),
 		SettingsField(.copyToClipboard, keyPath: \.copyToClipboard, default: defaults.copyToClipboard).eraseToAny(),
 		SettingsField(.superFastModeEnabled, keyPath: \.superFastModeEnabled, default: false).eraseToAny(),

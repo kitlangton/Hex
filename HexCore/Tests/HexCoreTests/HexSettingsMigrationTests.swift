@@ -14,6 +14,9 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.selectedModel, "whisper-large-v3")
 		XCTAssertEqual(decoded.useClipboardPaste, false)
 		XCTAssertEqual(decoded.preventSystemSleep, true)
+		XCTAssertEqual(decoded.recordingReducedVolume, HexSettings.defaultRecordingReducedVolume)
+		XCTAssertEqual(decoded.recordingVolumeFadeOutDuration, HexSettings.defaultRecordingVolumeFadeDuration)
+		XCTAssertEqual(decoded.recordingVolumeFadeInDuration, HexSettings.defaultRecordingVolumeFadeDuration)
 		XCTAssertEqual(decoded.minimumKeyTime, 0.25)
 		XCTAssertEqual(decoded.copyToClipboard, true)
 		XCTAssertFalse(decoded.superFastModeEnabled)
@@ -36,6 +39,40 @@ final class HexSettingsMigrationTests: XCTestCase {
 
 	func testNewSettingsEnableSuperFastModeByDefault() {
 		XCTAssertTrue(HexSettings().superFastModeEnabled)
+	}
+
+	func testNewSettingsDefaultRecordingReducedVolume() {
+		XCTAssertEqual(HexSettings().recordingReducedVolume, 0.2)
+	}
+
+	func testInitClampsRecordingReducedVolume() {
+		XCTAssertEqual(HexSettings(recordingReducedVolume: -1).recordingReducedVolume, 0)
+		XCTAssertEqual(HexSettings(recordingReducedVolume: 2).recordingReducedVolume, 1)
+	}
+
+	func testInitClampsRecordingVolumeFadeDurations() {
+		let settings = HexSettings(
+			recordingVolumeFadeOutDuration: -1,
+			recordingVolumeFadeInDuration: 5
+		)
+
+		XCTAssertEqual(settings.recordingVolumeFadeOutDuration, 0)
+		XCTAssertEqual(settings.recordingVolumeFadeInDuration, HexSettings.maximumRecordingVolumeFadeDuration)
+	}
+
+	func testDecodeClampsRecordingReducedVolume() throws {
+		let payload = "{\"recordingAudioBehavior\":\"reduceVolume\",\"recordingReducedVolume\":1.5,\"recordingVolumeFadeOutDuration\":5,\"recordingVolumeFadeInDuration\":-1}"
+		guard let data = payload.data(using: .utf8) else {
+			XCTFail("Failed to encode JSON payload")
+			return
+		}
+
+		let decoded = try JSONDecoder().decode(HexSettings.self, from: data)
+
+		XCTAssertEqual(decoded.recordingAudioBehavior, .reduceVolume)
+		XCTAssertEqual(decoded.recordingReducedVolume, 1)
+		XCTAssertEqual(decoded.recordingVolumeFadeOutDuration, HexSettings.maximumRecordingVolumeFadeDuration)
+		XCTAssertEqual(decoded.recordingVolumeFadeInDuration, 0)
 	}
 
 	func testInitNormalizesDoubleTapOnlyWhenLockDisabled() {

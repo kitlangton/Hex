@@ -84,6 +84,9 @@
     "Audio Behavior while Recording" : {
 
     },
+    "After recording ends" : {
+
+    },
     "Become a Sponsor" : {
 
     },
@@ -308,6 +311,15 @@
         }
       }
     },
+    "At recording start" : {
+
+    },
+    "Fade In" : {
+
+    },
+    "Fade Out" : {
+
+    },
     "General" : {
       "comment" : "General section in Settings Header.",
       "localizations" : {
@@ -491,6 +503,9 @@
     "Pause Media" : {
 
     },
+    "Playback level while recording" : {
+
+    },
     "Pause Media while Recording" : {
       "comment" : "Label for general setting whether to pause media while recording.",
       "extractionState" : "stale",
@@ -540,6 +555,12 @@
 
     },
     "Quit" : {
+
+    },
+    "Reduce Volume" : {
+
+    },
+    "Reduced Volume" : {
 
     },
     "Refresh available input devices" : {

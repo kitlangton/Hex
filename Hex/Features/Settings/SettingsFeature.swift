@@ -74,6 +74,9 @@ struct SettingsFeature {
     case toggleShowDockIcon(Bool)
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
+    case setRecordingReducedVolume(Double)
+    case setRecordingVolumeFadeOutDuration(Double)
+    case setRecordingVolumeFadeInDuration(Double)
     case toggleSuperFastMode(Bool)
     case setUseClipboardPaste(Bool)
     case setCopyToClipboard(Bool)
@@ -463,6 +466,18 @@ struct SettingsFeature {
 
       case let .setRecordingAudioBehavior(behavior):
         state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
+        return .none
+
+      case let .setRecordingReducedVolume(volume):
+        state.$hexSettings.withLock { $0.recordingReducedVolume = HexSettings.clampVolume(volume) }
+        return .none
+
+      case let .setRecordingVolumeFadeOutDuration(duration):
+        state.$hexSettings.withLock { $0.recordingVolumeFadeOutDuration = HexSettings.clampFadeDuration(duration) }
+        return .none
+
+      case let .setRecordingVolumeFadeInDuration(duration):
+        state.$hexSettings.withLock { $0.recordingVolumeFadeInDuration = HexSettings.clampFadeDuration(duration) }
         return .none
 
       case let .toggleSuperFastMode(enabled):
