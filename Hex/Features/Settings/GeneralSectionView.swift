@@ -83,21 +83,90 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
-				HStack(alignment: .center) {
-					Text("Audio Behavior while Recording")
-				Spacer()
-					Picker("", selection: Binding(
-						get: { store.hexSettings.recordingAudioBehavior },
-						set: { store.send(.setRecordingAudioBehavior($0)) }
-					)) {
-						Label("Pause Media", systemImage: "pause")
-							.tag(RecordingAudioBehavior.pauseMedia)
-						Label("Mute Volume", systemImage: "speaker.slash")
-							.tag(RecordingAudioBehavior.mute)
-						Label("Do Nothing", systemImage: "hand.raised.slash")
-							.tag(RecordingAudioBehavior.doNothing)
+				VStack(alignment: .leading, spacing: 8) {
+					HStack(alignment: .center) {
+						Text("Audio Behavior while Recording")
+						Spacer()
+						Picker("", selection: Binding(
+							get: { store.hexSettings.recordingAudioBehavior },
+							set: { store.send(.setRecordingAudioBehavior($0)) }
+						)) {
+							Label("Pause Media", systemImage: "pause")
+								.tag(RecordingAudioBehavior.pauseMedia)
+							Label("Mute Volume", systemImage: "speaker.slash")
+								.tag(RecordingAudioBehavior.mute)
+							Label("Reduce Volume", systemImage: "speaker.wave.1")
+								.tag(RecordingAudioBehavior.reduceVolume)
+							Label("Do Nothing", systemImage: "hand.raised.slash")
+								.tag(RecordingAudioBehavior.doNothing)
+						}
+						.pickerStyle(.menu)
 					}
-					.pickerStyle(.menu)
+
+					if store.hexSettings.recordingAudioBehavior == .reduceVolume {
+						VStack(alignment: .leading, spacing: 8) {
+							HStack(alignment: .top) {
+								VStack(alignment: .leading, spacing: 2) {
+									Text("Reduced Volume")
+									Text("Playback level while recording")
+										.recordingVolumeDescriptionStyle()
+								}
+								Spacer()
+								Text(formattedRecordingVolume(store.hexSettings.recordingReducedVolume))
+									.foregroundStyle(.secondary)
+									.monospacedDigit()
+							}
+							Slider(
+								value: Binding(
+									get: { store.hexSettings.recordingReducedVolume },
+									set: { store.send(.setRecordingReducedVolume($0)) }
+								),
+								in: 0...1,
+								step: 0.05
+							)
+
+							HStack(alignment: .top) {
+								VStack(alignment: .leading, spacing: 2) {
+									Text("Fade Out")
+									Text("At recording start")
+										.recordingVolumeDescriptionStyle()
+								}
+								Spacer()
+								Text(formattedFadeDuration(store.hexSettings.recordingVolumeFadeOutDuration))
+									.foregroundStyle(.secondary)
+									.monospacedDigit()
+							}
+							Slider(
+								value: Binding(
+									get: { store.hexSettings.recordingVolumeFadeOutDuration },
+									set: { store.send(.setRecordingVolumeFadeOutDuration($0)) }
+								),
+								in: 0...HexSettings.maximumRecordingVolumeFadeDuration,
+								step: 0.05
+							)
+
+							HStack(alignment: .top) {
+								VStack(alignment: .leading, spacing: 2) {
+									Text("Fade In")
+									Text("After recording ends")
+										.recordingVolumeDescriptionStyle()
+								}
+								Spacer()
+								Text(formattedFadeDuration(store.hexSettings.recordingVolumeFadeInDuration))
+									.foregroundStyle(.secondary)
+									.monospacedDigit()
+							}
+							Slider(
+								value: Binding(
+									get: { store.hexSettings.recordingVolumeFadeInDuration },
+									set: { store.send(.setRecordingVolumeFadeInDuration($0)) }
+								),
+								in: 0...HexSettings.maximumRecordingVolumeFadeDuration,
+								step: 0.05
+							)
+						}
+						.padding(.top, 10)
+					}
 				}
 			} icon: {
 				Image(systemName: "speaker.wave.2")
@@ -106,5 +175,23 @@ struct GeneralSectionView: View {
 			Text("General")
 		}
 		.enableInjection()
+	}
+}
+
+private func formattedRecordingVolume(_ volume: Double) -> String {
+	let clampedVolume = HexSettings.clampVolume(volume)
+	return "\(Int(round(clampedVolume * 100)))%"
+}
+
+private func formattedFadeDuration(_ duration: Double) -> String {
+	let clampedDuration = HexSettings.clampFadeDuration(duration)
+	return String(format: "%.2fs", clampedDuration)
+}
+
+private extension Text {
+	func recordingVolumeDescriptionStyle() -> some View {
+		self
+			.font(.subheadline)
+			.foregroundStyle(.secondary)
 	}
 }

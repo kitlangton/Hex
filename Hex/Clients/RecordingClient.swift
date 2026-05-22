@@ -16,6 +16,8 @@ import HexCore
 
 private let recordingLogger = HexLog.recording
 private let mediaLogger = HexLog.media
+// Ignore tiny differences from Core Audio rounding while still detecting normal volume-key steps.
+private let volumeAdjustmentThreshold: Float = 0.025
 private typealias CoreAudioPropertyListenerBlock = @convention(block) (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
 
 /// Represents an audio input device
@@ -337,6 +339,9 @@ actor RecordingClientLive {
   private var deferredCaptureRestartReason: String?
   private var environmentChangeDebounceTask: Task<Void, Never>?
   private var mediaControlTask: Task<Void, Never>?
+  private var volumeFadeTask: Task<Void, Never>?
+  private var volumeMonitorTask: Task<Void, Never>?
+  private var volumeControlGeneration: UInt64 = 0
   private let recorderSettings: [String: Any] = [
     AVFormatIDKey: Int(kAudioFormatLinearPCM),
     AVSampleRateKey: 16000.0,
@@ -372,8 +377,10 @@ actor RecordingClientLive {
   /// Tracks which specific media players were paused
   private var pausedPlayers: [String] = []
 
-  /// Tracks previous system volume when muted for recording
+  /// Tracks previous system volume when volume is changed for recording
   private var previousVolume: Float?
+  /// Tracks the last output volume Hex intentionally applied during recording volume control.
+  private var lastAppliedRecordingVolume: Float?
 
   // Cache to store already-processed device information
   private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
@@ -960,18 +967,267 @@ actor RecordingClientLive {
 
   // MARK: - Volume Control
 
-  /// Mutes system volume and returns the previous volume level
-  private func muteSystemVolume() async -> Float {
+  /// Mutes system volume and stores the previous volume for the active session.
+  private func muteSystemVolume(sessionID: UUID) {
+    guard recordingSessionID == sessionID else { return }
+    let didStart = beginVolumeRamp(to: 0, fadeDuration: 0, sessionID: sessionID)
+    if didStart {
+      recordingLogger.notice("Muted system volume")
+    }
+  }
+
+  /// Lowers system volume to the user's target and stores the previous volume for the active session.
+  private func reduceSystemVolume(to targetVolume: Double, fadeDuration: Double, sessionID: UUID) {
+    guard recordingSessionID == sessionID else { return }
+    let clampedTarget = Float(HexSettings.clampVolume(targetVolume))
     let currentVolume = getSystemVolume()
-    setSystemVolume(0)
-    recordingLogger.notice("Muted system volume (was \(String(format: "%.2f", currentVolume)))")
-    return currentVolume
+    guard currentVolume > clampedTarget + 0.005 else {
+      if adoptCurrentVolumeForRecording(sessionID: sessionID) {
+        mediaLogger.notice(
+          "Keeping recording volume duck at \(String(format: "%.2f", currentVolume)); target is \(String(format: "%.2f", clampedTarget))"
+        )
+        return
+      }
+      mediaLogger.notice(
+        "Keeping system volume at \(String(format: "%.2f", currentVolume)); target is \(String(format: "%.2f", clampedTarget))"
+      )
+      return
+    }
+
+    guard beginVolumeRamp(to: clampedTarget, fadeDuration: fadeDuration, sessionID: sessionID) else { return }
+    mediaLogger.notice(
+      "Reduced system volume to \(String(format: "%.2f", clampedTarget)) (was \(String(format: "%.2f", currentVolume)))"
+    )
+  }
+
+  private func adoptCurrentVolumeForRecording(sessionID: UUID) -> Bool {
+    guard recordingSessionID == sessionID, previousVolume != nil else {
+      return false
+    }
+
+    volumeFadeTask?.cancel()
+    volumeFadeTask = nil
+    let generation = advanceVolumeControlGeneration()
+    lastAppliedRecordingVolume = getSystemVolume()
+    startRecordingVolumeMonitor(sessionID: sessionID, generation: generation)
+    return true
   }
 
   /// Restores system volume to the specified level
-  private func restoreSystemVolume(_ volume: Float) async {
-    setSystemVolume(volume)
-    recordingLogger.notice("Restored system volume to \(String(format: "%.2f", volume))")
+  private func restoreSystemVolume(_ volume: Float, fadeDuration: Double) {
+    stopRecordingVolumeMonitor()
+    let currentVolume = getSystemVolume()
+    let rampGeneration = startVolumeRamp(
+      from: currentVolume,
+      to: volume,
+      duration: fadeDuration,
+      sessionID: nil,
+      clearRestoreVolume: volume
+    )
+    if rampGeneration != nil {
+      recordingLogger.notice("Restoring system volume to \(String(format: "%.2f", volume))")
+    } else {
+      clearVolumeRestoreState(expectedVolume: volume)
+    }
+  }
+
+  @discardableResult
+  private func beginVolumeRamp(to targetVolume: Float, fadeDuration: Double, sessionID: UUID) -> Bool {
+    let currentVolume = getSystemVolume()
+    let hadPreviousVolume = previousVolume != nil
+    if previousVolume == nil {
+      previousVolume = currentVolume
+    }
+    // Preserve the original restore target if a double-tap lock session overlaps
+    // a prior stop grace period while volume is already ducked. (#220)
+    lastAppliedRecordingVolume = currentVolume
+    let rampGeneration = startVolumeRamp(
+      from: currentVolume,
+      to: targetVolume,
+      duration: fadeDuration,
+      sessionID: sessionID,
+      clearRestoreVolume: nil
+    )
+    if rampGeneration == nil, !hadPreviousVolume {
+      previousVolume = nil
+      lastAppliedRecordingVolume = nil
+    }
+    if let rampGeneration {
+      startRecordingVolumeMonitor(sessionID: sessionID, generation: rampGeneration)
+    }
+    return rampGeneration != nil
+  }
+
+  private func startRecordingVolumeMonitor(sessionID: UUID, generation: UInt64) {
+    volumeMonitorTask?.cancel()
+    volumeMonitorTask = Task {
+      await self.monitorRecordingVolume(sessionID: sessionID, generation: generation)
+    }
+  }
+
+  private func stopRecordingVolumeMonitor() {
+    volumeMonitorTask?.cancel()
+    volumeMonitorTask = nil
+  }
+
+  private func monitorRecordingVolume(sessionID: UUID, generation: UInt64) async {
+    try? await Task.sleep(for: .milliseconds(150))
+
+    while !Task.isCancelled {
+      guard isCurrentVolumeControl(generation: generation, sessionID: sessionID) else { return }
+      guard previousVolume != nil, let expectedVolume = lastAppliedRecordingVolume else { return }
+
+      let currentVolume = getSystemVolume()
+      if abs(currentVolume - expectedVolume) > volumeAdjustmentThreshold {
+        releaseRecordingVolumeDuck(
+          manualVolume: currentVolume,
+          expectedVolume: expectedVolume,
+          sessionID: sessionID,
+          generation: generation
+        )
+        return
+      }
+
+      try? await Task.sleep(for: .milliseconds(75))
+    }
+  }
+
+  private func releaseRecordingVolumeDuck(
+    manualVolume: Float,
+    expectedVolume: Float,
+    sessionID: UUID,
+    generation: UInt64
+  ) {
+    guard isCurrentVolumeControl(generation: generation, sessionID: sessionID) else { return }
+
+    volumeFadeTask?.cancel()
+    volumeFadeTask = nil
+    stopRecordingVolumeMonitor()
+    advanceVolumeControlGeneration()
+
+    previousVolume = nil
+    lastAppliedRecordingVolume = nil
+
+    mediaLogger.notice(
+      "Released recording volume duck after manual volume change; current=\(String(format: "%.2f", manualVolume)) expected=\(String(format: "%.2f", expectedVolume))"
+    )
+  }
+
+  private func hasManualVolumeAdjustment() -> Bool {
+    let currentVolume = getSystemVolume()
+    guard let lastAppliedRecordingVolume else {
+      return false
+    }
+
+    let adjustment = currentVolume - lastAppliedRecordingVolume
+    return abs(adjustment) > volumeAdjustmentThreshold
+  }
+
+  private func startVolumeRamp(
+    from startVolume: Float,
+    to targetVolume: Float,
+    duration: Double,
+    sessionID: UUID?,
+    clearRestoreVolume: Float?
+  ) -> UInt64? {
+    volumeFadeTask?.cancel()
+    volumeFadeTask = nil
+    let generation = advanceVolumeControlGeneration()
+
+    let clampedTarget = min(1, max(0, targetVolume))
+    let clampedDuration = HexSettings.clampFadeDuration(duration)
+    guard clampedDuration > 0 else {
+      let didSetVolume = setSystemVolumeAndTrack(clampedTarget)
+      if didSetVolume, let clearRestoreVolume {
+        finishVolumeRestore(expectedVolume: clearRestoreVolume, generation: generation)
+      }
+      return didSetVolume ? generation : nil
+    }
+
+    volumeFadeTask = Task {
+      await self.fadeSystemVolume(
+        from: startVolume,
+        to: clampedTarget,
+        duration: clampedDuration,
+        sessionID: sessionID,
+        clearRestoreVolume: clearRestoreVolume,
+        generation: generation
+      )
+    }
+    return generation
+  }
+
+  private func fadeSystemVolume(
+    from startVolume: Float,
+    to targetVolume: Float,
+    duration: Double,
+    sessionID: UUID?,
+    clearRestoreVolume: Float?,
+    generation: UInt64
+  ) async {
+    let stepInterval = 0.025
+    let stepCount = max(1, Int(ceil(duration / stepInterval)))
+
+    for step in 1...stepCount {
+      if Task.isCancelled { return }
+      guard isCurrentVolumeControl(generation: generation, sessionID: sessionID) else { return }
+
+      let progress = Float(step) / Float(stepCount)
+      let volume = startVolume + ((targetVolume - startVolume) * progress)
+      guard setSystemVolumeAndTrack(volume) else {
+        if let clearRestoreVolume {
+          finishVolumeRestore(expectedVolume: clearRestoreVolume, generation: generation)
+        }
+        return
+      }
+
+      if step < stepCount {
+        try? await Task.sleep(for: .milliseconds(Int((stepInterval * 1000).rounded())))
+      }
+    }
+
+    if let clearRestoreVolume {
+      finishVolumeRestore(expectedVolume: clearRestoreVolume, generation: generation)
+    } else if volumeControlGeneration == generation {
+      volumeFadeTask = nil
+    }
+  }
+
+  private func finishVolumeRestore(expectedVolume: Float, generation: UInt64) {
+    guard volumeControlGeneration == generation else { return }
+    if previousVolume == expectedVolume {
+      previousVolume = nil
+    }
+    lastAppliedRecordingVolume = nil
+    volumeFadeTask = nil
+  }
+
+  private func clearVolumeRestoreState(expectedVolume: Float) {
+    if previousVolume == expectedVolume {
+      previousVolume = nil
+    }
+    lastAppliedRecordingVolume = nil
+    volumeFadeTask = nil
+  }
+
+  @discardableResult
+  private func advanceVolumeControlGeneration() -> UInt64 {
+    volumeControlGeneration &+= 1
+    return volumeControlGeneration
+  }
+
+  private func isCurrentVolumeControl(generation: UInt64, sessionID: UUID?) -> Bool {
+    guard volumeControlGeneration == generation else { return false }
+    if let sessionID {
+      return recordingSessionID == sessionID
+    }
+    return true
+  }
+
+  private func setSystemVolumeAndTrack(_ volume: Float) -> Bool {
+    guard setSystemVolume(volume) else { return false }
+    lastAppliedRecordingVolume = getSystemVolume()
+    return true
   }
 
   /// Gets the default output device ID
@@ -1025,12 +1281,13 @@ actor RecordingClientLive {
   }
 
   /// Sets the system output volume (0.0 to 1.0)
-  private func setSystemVolume(_ volume: Float) {
+  @discardableResult
+  private func setSystemVolume(_ volume: Float) -> Bool {
     guard let deviceID = getDefaultOutputDevice() else {
-      return
+      return false
     }
 
-    var newVolume = volume
+    var newVolume = min(1, max(0, volume))
     let size = UInt32(MemoryLayout<Float32>.size)
     var address = audioPropertyAddress(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)
 
@@ -1045,7 +1302,9 @@ actor RecordingClientLive {
 
     if status != 0 {
       recordingLogger.error("Failed to set system volume: \(status)")
+      return false
     }
+    return true
   }
 
   func startRecording() async {
@@ -1088,12 +1347,12 @@ actor RecordingClientLive {
       }
 
     case .mute:
-      // Mute system volume in background
-      mediaControlTask = Task { [sessionID] in
-        guard await self.isCurrentSession(sessionID) else { return }
-        let volume = await self.muteSystemVolume()
-        await self.setPreviousVolume(volume, sessionID: sessionID)
-      }
+      muteSystemVolume(sessionID: sessionID)
+
+    case .reduceVolume:
+      let targetVolume = hexSettings.recordingReducedVolume
+      let fadeOutDuration = hexSettings.recordingVolumeFadeOutDuration
+      reduceSystemVolume(to: targetVolume, fadeDuration: fadeOutDuration, sessionID: sessionID)
 
     case .doNothing:
       // No audio handling
@@ -1129,7 +1388,7 @@ actor RecordingClientLive {
       let recordCallStartedAt = Date()
       guard recorder.record() else {
         recordingLogger.error("AVAudioRecorder refused to start recording")
-        endRecordingSession()
+        await abortRecordingStart()
         return
       }
       let startedAt = Date()
@@ -1144,9 +1403,14 @@ actor RecordingClientLive {
       )
     } catch {
       recordingLogger.error("Failed to start recording: \(error.localizedDescription)")
-      clearActiveRecordingMetadata()
-      endRecordingSession()
+      await abortRecordingStart()
     }
+  }
+
+  private func abortRecordingStart() async {
+    clearActiveRecordingMetadata()
+    endRecordingSession()
+    await resumeMediaIfNeeded()
   }
 
   func stopRecording() async -> URL {
@@ -1251,15 +1515,26 @@ actor RecordingClientLive {
     let shouldResumeMedia = didPauseMedia
     let shouldResumeViaMediaRemote = didPauseViaMediaRemote
     let volumeToRestore = previousVolume
+    let volumeFadeInDuration = hexSettings.recordingVolumeFadeInDuration
+
+    if let volume = volumeToRestore {
+      if hasManualVolumeAdjustment() {
+        stopRecordingVolumeMonitor()
+        volumeFadeTask?.cancel()
+        volumeFadeTask = nil
+        advanceVolumeControlGeneration()
+        previousVolume = nil
+        lastAppliedRecordingVolume = nil
+        mediaLogger.notice("Skipped recording volume restore after manual volume change")
+      } else {
+        restoreSystemVolume(volume, fadeDuration: volumeFadeInDuration)
+      }
+    }
 
     if !playersToResume.isEmpty || shouldResumeMedia || shouldResumeViaMediaRemote || volumeToRestore != nil {
       Task {
-        // Restore volume if it was muted
-        if let volume = volumeToRestore {
-          await self.restoreSystemVolume(volume)
-        }
         // Resume media if we previously paused specific players
-        else if !playersToResume.isEmpty {
+        if !playersToResume.isEmpty {
           mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "))")
           await resumeMediaApplications(playersToResume)
         }
@@ -1322,16 +1597,10 @@ actor RecordingClientLive {
     didPauseViaMediaRemote = value
   }
 
-  private func setPreviousVolume(_ volume: Float, sessionID: UUID) {
-    guard recordingSessionID == sessionID else { return }
-    previousVolume = volume
-  }
-
   private func clearMediaState() {
     pausedPlayers = []
     didPauseMedia = false
     didPauseViaMediaRemote = false
-    previousVolume = nil
   }
 
   @discardableResult
@@ -1463,6 +1732,23 @@ actor RecordingClientLive {
   /// Release recorder resources. Call on app termination.
   func cleanup() {
     endRecordingSession()
+    stopRecordingVolumeMonitor()
+    volumeFadeTask?.cancel()
+    volumeFadeTask = nil
+    if let volume = previousVolume {
+      if hasManualVolumeAdjustment() {
+        previousVolume = nil
+        lastAppliedRecordingVolume = nil
+        recordingLogger.notice("Skipped volume restore during cleanup after manual volume change")
+      } else if setSystemVolume(volume) {
+        previousVolume = nil
+        lastAppliedRecordingVolume = nil
+        recordingLogger.notice("Restored system volume during recording cleanup")
+      } else {
+        recordingLogger.error("Failed to restore system volume during recording cleanup")
+      }
+    }
+    clearMediaState()
     stopObservingSystemChanges()
     stopCaptureController(reason: "cleanup")
     releaseRecorder(reason: "cleanup")
