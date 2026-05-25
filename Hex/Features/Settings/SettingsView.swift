@@ -6,10 +6,11 @@ import SwiftUI
 struct SettingsView: View {
 	@ObserveInjection var inject
 	@Bindable var store: StoreOf<SettingsFeature>
+	@Bindable var coachStore: StoreOf<CoachFeature>
 	let microphonePermission: PermissionStatus
 	let accessibilityPermission: PermissionStatus
 	let inputMonitoringPermission: PermissionStatus
-  
+
 	var body: some View {
 		Form {
 			if microphonePermission != .granted
@@ -30,7 +31,7 @@ struct SettingsView: View {
 			}
 
 			HotKeySectionView(store: store)
-          
+
 			if microphonePermission == .granted {
 				MicrophoneSelectionSectionView(store: store)
 			}
@@ -38,6 +39,7 @@ struct SettingsView: View {
 			SoundSectionView(store: store)
 			GeneralSectionView(store: store)
 			HistorySectionView(store: store)
+			CoachSettingsView(store: coachStore)
 		}
 		.formStyle(.grouped)
 		.task {
