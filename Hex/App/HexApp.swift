@@ -1,7 +1,8 @@
+import AppKit
 import ComposableArchitecture
+import HexCore
 import Inject
 import Sparkle
-import AppKit
 import SwiftUI
 
 @main
@@ -11,42 +12,10 @@ struct HexApp: App {
 	}
 
 	@NSApplicationDelegateAdaptor(HexAppDelegate.self) var appDelegate
-  
-    var body: some Scene {
-        MenuBarExtra {
-            CheckForUpdatesView()
 
-            // Copy last transcript to clipboard
-            MenuBarCopyLastTranscriptButton()
-
-            Button("Settings...") {
-                appDelegate.presentSettingsView()
-            }.keyboardShortcut(",")
-			
-			Divider()
-			
-			Button("Quit") {
-				NSApplication.shared.terminate(nil)
-			}.keyboardShortcut("q")
-		} label: {
-			let image: NSImage = {
-				let ratio = $0.size.height / $0.size.width
-				$0.size.height = 18
-				$0.size.width = 18 / ratio
-				return $0
-			}(NSImage(named: "HexIcon")!)
-			Image(nsImage: image)
-		}
-		.commands {
-			CommandGroup(after: .appInfo) {
-				CheckForUpdatesView()
-
-				Button("Settings...") {
-					appDelegate.presentSettingsView()
-				}.keyboardShortcut(",")
-			}
-
-			CommandGroup(replacing: .help) {}
-		}
+	var body: some Scene {
+		// HexAppDelegate creates the menu-bar status item and popover directly.
+		// We expose only an empty Settings scene so SwiftUI has a Scene to drive.
+		Settings { EmptyView() }
 	}
 }
