@@ -51,7 +51,7 @@ struct FileTranscriptionFeature {
     "mov",
     "mp3",
     "mp4",
-    "wav",
+    "wav"
   ]
 
   var body: some ReducerOf<Self> {
@@ -184,8 +184,8 @@ struct FileTranscriptionFeature {
         }
       }
 
-        do {
-          fileTranscriptionLogger.notice("Transcribing imported audio file=\(url.lastPathComponent)")
+      do {
+        fileTranscriptionLogger.notice("Transcribing imported audio file=\(url.lastPathComponent, privacy: .private)")
         let duration = try await Self.audioDuration(for: url)
         let decodeOptions = DecodingOptions(
           language: language,
@@ -222,7 +222,7 @@ struct FileTranscriptionFeature {
 
         await send(.jobCompleted(id, text, transcript))
       } catch {
-        fileTranscriptionLogger.error("Imported audio transcription failed: \(error.localizedDescription)")
+        fileTranscriptionLogger.error("Imported audio transcription failed: \(error.localizedDescription, privacy: .private)")
         await send(.jobFailed(id, error.localizedDescription))
       }
     }

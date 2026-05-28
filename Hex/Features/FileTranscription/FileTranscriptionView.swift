@@ -5,6 +5,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct FileTranscriptionView: View {
+  private enum DroppedFileURLResult {
+    case success(URL)
+    case failure(String)
+  }
+
   @ObserveInjection var inject
   @Bindable var store: StoreOf<FileTranscriptionFeature>
   @State private var isImporterPresented = false
@@ -120,37 +125,48 @@ struct FileTranscriptionView: View {
   }
 
   private func loadDroppedFileURLs(from providers: [NSItemProvider]) {
-    let group = DispatchGroup()
-    let lock = NSLock()
-    var droppedURLs: [URL] = []
+    Task { @MainActor in
+      let result = await Self.droppedFileURLs(from: providers)
+      if !result.urls.isEmpty {
+        store.send(.addFiles(result.urls))
+      } else if let firstError = result.firstError {
+        store.send(.importFailed(firstError))
+      }
+    }
+  }
+
+  private static func droppedFileURLs(from providers: [NSItemProvider]) async -> (urls: [URL], firstError: String?) {
+    var urls: [URL] = []
     var firstError: String?
 
     for provider in providers {
-      group.enter()
-      provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-        defer { group.leave() }
-
-        lock.withLock {
-          if let error {
-            firstError = firstError ?? error.localizedDescription
-            return
-          }
-
-          guard let url = Self.fileURL(from: item) else {
-            firstError = firstError ?? "Could not read the dropped file URL."
-            return
-          }
-
-          droppedURLs.append(url)
+      switch await loadDroppedFileURL(from: provider) {
+      case let .success(url):
+        urls.append(url)
+      case let .failure(message):
+        if firstError == nil {
+          firstError = message
         }
       }
     }
 
-    group.notify(queue: .main) {
-      if !droppedURLs.isEmpty {
-        store.send(.addFiles(droppedURLs))
-      } else if let firstError {
-        store.send(.importFailed(firstError))
+    return (urls, firstError)
+  }
+
+  private static func loadDroppedFileURL(from provider: NSItemProvider) async -> DroppedFileURLResult {
+    await withCheckedContinuation { continuation in
+      provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+        if let error {
+          continuation.resume(returning: .failure(error.localizedDescription))
+          return
+        }
+
+        guard let url = fileURL(from: item) else {
+          continuation.resume(returning: .failure("Could not read the dropped file URL."))
+          return
+        }
+
+        continuation.resume(returning: .success(url))
       }
     }
   }
