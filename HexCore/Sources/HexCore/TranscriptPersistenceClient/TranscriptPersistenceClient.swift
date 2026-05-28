@@ -21,7 +21,8 @@ extension TranscriptPersistenceClient: DependencyKey {
                 let recordingsFolder = try URL.hexApplicationSupport.appendingPathComponent("Recordings", isDirectory: true)
                 try fm.createDirectory(at: recordingsFolder, withIntermediateDirectories: true)
                 
-                let filename = "\(Date().timeIntervalSince1970).wav"
+                let fileExtension = audioURL.pathExtension.isEmpty ? "wav" : audioURL.pathExtension
+                let filename = "\(Date().timeIntervalSince1970).\(fileExtension)"
                 let finalURL = recordingsFolder.appendingPathComponent(filename)
                 try fm.moveItem(at: audioURL, to: finalURL)
                 

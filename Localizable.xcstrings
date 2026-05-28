@@ -143,6 +143,12 @@
         }
       }
     },
+    "Choose Audio" : {
+
+    },
+    "Clear Finished" : {
+
+    },
     "Clear shortcut" : {
 
     },
@@ -274,6 +280,9 @@
       }
     },
     "Downloading… %lld%%" : {
+
+    },
+    "Drop audio files to transcribe" : {
 
     },
     "Enable double-tap lock" : {
@@ -551,6 +560,9 @@
     "Remove filler words using case-insensitive regex patterns." : {
 
     },
+    "Remove from this list" : {
+
+    },
     "Remove or replace words in every transcript. Removals use regex patterns and match whole words." : {
 
     },
@@ -576,6 +588,9 @@
 
     },
     "Save transcriptions and audio recordings for later access" : {
+
+    },
+    "Saving transcript..." : {
 
     },
     "Say something…" : {
@@ -693,7 +708,16 @@
     "Support the developer" : {
 
     },
+    "Supported: %@" : {
+
+    },
     "Transcript Modifications" : {
+
+    },
+    "Transcribe" : {
+
+    },
+    "Transcribing audio..." : {
 
     },
     "Transcription history is currently disabled." : {
@@ -742,6 +766,9 @@
       }
     },
     "Use double-tap only" : {
+
+    },
+    "Uses the selected transcription model and saves results to History when history is enabled." : {
 
     },
     "Version" : {
