@@ -15,6 +15,7 @@ import SwiftUI
 struct AppFeature {
   enum ActiveTab: Equatable {
     case settings
+    case fileTranscription
     case remappings
     case history
     case about
@@ -23,6 +24,7 @@ struct AppFeature {
 	@ObservableState
 	struct State {
 		var transcription: TranscriptionFeature.State = .init()
+    var fileTranscription: FileTranscriptionFeature.State = .init()
 		var settings: SettingsFeature.State = .init()
 		var history: HistoryFeature.State = .init()
 		var activeTab: ActiveTab = .settings
@@ -38,6 +40,7 @@ struct AppFeature {
   enum Action: BindableAction {
     case binding(BindingAction<State>)
     case transcription(TranscriptionFeature.Action)
+    case fileTranscription(FileTranscriptionFeature.Action)
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
     case setActiveTab(ActiveTab)
@@ -64,6 +67,10 @@ struct AppFeature {
 
     Scope(state: \.transcription, action: \.transcription) {
       TranscriptionFeature()
+    }
+
+    Scope(state: \.fileTranscription, action: \.fileTranscription) {
+      FileTranscriptionFeature()
     }
 
     Scope(state: \.settings, action: \.settings) {
@@ -109,6 +116,9 @@ struct AppFeature {
         }
 
       case .transcription:
+        return .none
+
+      case .fileTranscription:
         return .none
 
       case .settings:
@@ -271,6 +281,14 @@ struct AppView: View {
         .tag(AppFeature.ActiveTab.settings)
 
         Button {
+          store.send(.setActiveTab(.fileTranscription))
+        } label: {
+          Label("Transcribe", systemImage: "waveform")
+        }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.fileTranscription)
+
+        Button {
           store.send(.setActiveTab(.remappings))
         } label: {
           Label("Transforms", systemImage: "text.badge.plus")
@@ -304,6 +322,9 @@ struct AppView: View {
           inputMonitoringPermission: store.inputMonitoringPermission
         )
         .navigationTitle("Settings")
+      case .fileTranscription:
+        FileTranscriptionView(store: store.scope(state: \.fileTranscription, action: \.fileTranscription))
+          .navigationTitle("Transcribe")
       case .remappings:
         WordRemappingsView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("Transforms")

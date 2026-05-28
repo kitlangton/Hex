@@ -243,6 +243,10 @@ struct TranscriptView: View {
 							Text(appName)
 						}
 						Text("•")
+					} else if let sourceName = transcript.sourceAppName {
+						Image(systemName: "doc")
+						Text(sourceName)
+						Text("•")
 					}
 					
 					Image(systemName: "clock")

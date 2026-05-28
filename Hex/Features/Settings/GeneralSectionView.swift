@@ -82,25 +82,26 @@ struct GeneralSectionView: View {
 				Image(systemName: "bolt.circle")
 			}
 
-			Label {
-				HStack(alignment: .center) {
-					Text("Audio Behavior while Recording")
-				Spacer()
-					Picker("", selection: Binding(
-						get: { store.hexSettings.recordingAudioBehavior },
-						set: { store.send(.setRecordingAudioBehavior($0)) }
-					)) {
-						Label("Pause Media", systemImage: "pause")
-							.tag(RecordingAudioBehavior.pauseMedia)
-						Label("Mute Volume", systemImage: "speaker.slash")
-							.tag(RecordingAudioBehavior.mute)
-						Label("Do Nothing", systemImage: "hand.raised.slash")
-							.tag(RecordingAudioBehavior.doNothing)
-					}
-					.pickerStyle(.menu)
-				}
-			} icon: {
+			HStack(alignment: .center, spacing: 10) {
 				Image(systemName: "speaker.wave.2")
+					.foregroundStyle(.secondary)
+					.frame(width: 18)
+				Text("Audio Behavior while Recording")
+					.lineLimit(1)
+				Spacer()
+				Picker("", selection: Binding(
+					get: { store.hexSettings.recordingAudioBehavior },
+					set: { store.send(.setRecordingAudioBehavior($0)) }
+				)) {
+					Label("Pause Media", systemImage: "pause")
+						.tag(RecordingAudioBehavior.pauseMedia)
+					Label("Mute Volume", systemImage: "speaker.slash")
+						.tag(RecordingAudioBehavior.mute)
+					Label("Do Nothing", systemImage: "hand.raised.slash")
+						.tag(RecordingAudioBehavior.doNothing)
+				}
+				.labelsHidden()
+				.pickerStyle(.menu)
 			}
 		} header: {
 			Text("General")
