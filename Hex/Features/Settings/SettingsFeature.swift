@@ -116,7 +116,6 @@ struct SettingsFeature {
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
-  @Dependency(\.continuousClock) var clock
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
   @Dependency(\.soundEffects) var soundEffects
@@ -258,17 +257,6 @@ struct SettingsFeature {
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
 
-          // Set up periodic refresh of available devices (every 120 seconds)
-          // Using a longer interval to reduce resource usage
-          let deviceRefreshTask = Task { @MainActor in
-            for await _ in clock.timer(interval: .seconds(120)) {
-              // Only refresh when the app is active to save resources
-              if NSApplication.shared.isActive {
-                await send(.loadAvailableInputDevices)
-              }
-            }
-          }
-
           // Listen for device connection/disconnection notifications
           // Using a simpler debounced approach with a single task
           var deviceUpdateTask: Task<Void, Never>?
@@ -341,7 +329,6 @@ struct SettingsFeature {
 
           // Be sure to clean up resources when the task is finished
           defer {
-            deviceRefreshTask.cancel()
             deviceUpdateTask?.cancel()
             NotificationCenter.default.removeObserver(deviceConnectionObserver)
             NotificationCenter.default.removeObserver(deviceDisconnectionObserver)
@@ -537,7 +524,9 @@ struct SettingsFeature {
       case let .availableInputDevicesLoaded(devices, defaultName):
         if let selectedMicrophoneID = state.hexSettings.selectedMicrophoneID,
            let device = devices.first(where: { $0.legacyID == selectedMicrophoneID }) {
-          state.$hexSettings.withLock { $0.selectedMicrophoneID = device.id }
+          state.availableInputDevices = devices
+          state.defaultInputDeviceName = defaultName
+          return .send(.setSelectedMicrophoneID(device.id))
         }
         state.availableInputDevices = devices
         state.defaultInputDeviceName = defaultName

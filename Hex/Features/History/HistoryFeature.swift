@@ -57,16 +57,13 @@ extension URL {
 
 class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
 	private var player: AVAudioPlayer?
-	private let lock = NSLock()
-	private var playbackFinished = false
-	private var playbackFinishedContinuations: [CheckedContinuation<Void, Never>] = []
+	private let (playbackFinishedStream, playbackFinishedContinuation) = AsyncStream<Void>.makeStream()
 
-	func play(url: URL) throws -> AVAudioPlayer {
+	func play(url: URL) throws {
 		let player = try AVAudioPlayer(contentsOf: url)
 		player.delegate = self
 		self.player = player
 		player.play()
-		return player
 	}
 
 	func stop() {
@@ -76,16 +73,7 @@ class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
 	}
 
 	func waitForPlaybackToFinish() async {
-		await withCheckedContinuation { continuation in
-			lock.lock()
-			guard !playbackFinished else {
-				lock.unlock()
-				continuation.resume()
-				return
-			}
-			playbackFinishedContinuations.append(continuation)
-			lock.unlock()
-		}
+		for await _ in playbackFinishedStream {}
 	}
 
 	// AVAudioPlayerDelegate method
@@ -96,16 +84,7 @@ class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
 	}
 
 	private func finishPlayback() {
-		lock.lock()
-		guard !playbackFinished else {
-			lock.unlock()
-			return
-		}
-		playbackFinished = true
-		let continuations = playbackFinishedContinuations
-		playbackFinishedContinuations.removeAll()
-		lock.unlock()
-		continuations.forEach { $0.resume() }
+		playbackFinishedContinuation.finish()
 	}
 }
 
@@ -118,12 +97,10 @@ struct HistoryFeature {
 		@Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
 		var playingTranscriptID: UUID?
 		var playbackID: UUID?
-		var audioPlayer: AVAudioPlayer?
 		var audioPlayerController: AudioPlayerController?
 
 		mutating func stopAudioPlayback() {
 			audioPlayerController?.stop()
-			audioPlayer = nil
 			audioPlayerController = nil
 			playingTranscriptID = nil
 			playbackID = nil
@@ -172,10 +149,9 @@ struct HistoryFeature {
 
 				do {
 					let controller = AudioPlayerController()
-					let player = try controller.play(url: transcript.audioPath)
+					try controller.play(url: transcript.audioPath)
 					let playbackID = UUID()
 
-					state.audioPlayer = player
 					state.audioPlayerController = controller
 					state.playingTranscriptID = id
 					state.playbackID = playbackID

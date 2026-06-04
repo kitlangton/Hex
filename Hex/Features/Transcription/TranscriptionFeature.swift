@@ -349,16 +349,7 @@ private extension TranscriptionFeature {
       // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
       // discard the audio to avoid accidental triggers.
       transcriptionFeatureLogger.notice("Discarding short recording per decision \(String(describing: decision))")
-      return .merge(
-        .cancel(id: CancelID.recordingStart),
-        .run { [sleepManagement] _ in
-          await sleepManagement.allowSleep()
-          let url = await recording.stopRecording()
-          guard !Task.isCancelled else { return }
-          try? FileManager.default.removeItem(at: url)
-        }
-        .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
-      )
+      return handleDiscard(&state)
     }
 
     // Otherwise, proceed to transcription
@@ -376,10 +367,9 @@ private extension TranscriptionFeature {
         await sleepManagement.allowSleep()
 
         var audioURL: URL?
-        var didTransferAudio = false
         defer {
-          if let audioURL, !didTransferAudio {
-            try? FileManager.default.removeItem(at: audioURL)
+          if let audioURL {
+            FileManager.default.removeItemIfExists(at: audioURL)
           }
         }
         do {
@@ -399,7 +389,7 @@ private extension TranscriptionFeature {
           let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
 
           transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
-          didTransferAudio = true
+          audioURL = nil
           await send(.transcriptionResult(result, capturedURL, duration))
         } catch {
           transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
@@ -427,7 +417,7 @@ private extension TranscriptionFeature {
     if ForceQuitCommandDetector.matches(result) {
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
       return .run { _ in
-        try? FileManager.default.removeItem(at: audioURL)
+        FileManager.default.removeItemIfExists(at: audioURL)
         await MainActor.run {
           NSApp.terminate(nil)
         }
@@ -437,7 +427,7 @@ private extension TranscriptionFeature {
     // If empty text, nothing else to do
     guard !result.isEmpty else {
       return .run { _ in
-        try? FileManager.default.removeItem(at: audioURL)
+        FileManager.default.removeItemIfExists(at: audioURL)
       }
     }
 
@@ -468,7 +458,7 @@ private extension TranscriptionFeature {
 
     guard !modifiedResult.isEmpty else {
       return .run { _ in
-        try? FileManager.default.removeItem(at: audioURL)
+        FileManager.default.removeItemIfExists(at: audioURL)
       }
     }
 
@@ -503,7 +493,7 @@ private extension TranscriptionFeature {
     state.error = error.localizedDescription
     
     if let audioURL {
-      try? FileManager.default.removeItem(at: audioURL)
+      FileManager.default.removeItemIfExists(at: audioURL)
     }
 
     return .none
@@ -543,7 +533,7 @@ private extension TranscriptionFeature {
         }
       }
     } else {
-      try? FileManager.default.removeItem(at: audioURL)
+      FileManager.default.removeItemIfExists(at: audioURL)
     }
 
     await pasteboard.paste(result)
@@ -573,7 +563,7 @@ private extension TranscriptionFeature {
         // Stop the recording to release microphone access
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
-        try? FileManager.default.removeItem(at: url)
+        FileManager.default.removeItemIfExists(at: url)
         soundEffect.play(.cancel)
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
@@ -592,7 +582,7 @@ private extension TranscriptionFeature {
         await sleepManagement.allowSleep()
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
-        try? FileManager.default.removeItem(at: url)
+        FileManager.default.removeItemIfExists(at: url)
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
     )

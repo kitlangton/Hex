@@ -771,20 +771,38 @@ actor RecordingClientLive {
 
   private func resolvePreferredInputDevice() -> AudioDeviceID? {
     guard let selectedMicrophoneID = hexSettings.selectedMicrophoneID else { return nil }
-    let devices = getAllAudioDevices()
-    if let deviceID = devices.first(where: { getDeviceUID(deviceID: $0) == selectedMicrophoneID }),
+    if let deviceID = getDeviceID(uid: selectedMicrophoneID),
        deviceHasInput(deviceID: deviceID) {
       return deviceID
     }
 
     if let legacyDeviceID = AudioDeviceID(selectedMicrophoneID),
-       devices.contains(legacyDeviceID),
        deviceHasInput(deviceID: legacyDeviceID) {
       return legacyDeviceID
     }
 
     recordingLogger.notice("Selected device \(selectedMicrophoneID) missing; using system default")
     return nil
+  }
+
+  private func getDeviceID(uid: String) -> AudioDeviceID? {
+    var address = audioPropertyAddress(kAudioHardwarePropertyDeviceForUID)
+    var deviceUID = uid as CFString
+    var deviceID = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    let status = withUnsafePointer(to: &deviceUID) { pointer in
+      AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        UInt32(MemoryLayout<CFString>.size),
+        pointer,
+        &size,
+        &deviceID
+      )
+    }
+
+    guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+    return deviceID
   }
 
   private func formatDuration(_ duration: TimeInterval?) -> String {
@@ -1198,11 +1216,7 @@ actor RecordingClientLive {
     endRecordingSession()
     clearActiveRecordingMetadata()
     lastRecordingEndedAt = stoppedAt
-    if wasRecording {
-      recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
-    } else {
-      recordingLogger.notice("stopRecording() called while recorder was idle")
-    }
+    recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
 
     var exportedURL = recordingURL
     var didCopyRecording = false
@@ -1216,9 +1230,7 @@ actor RecordingClientLive {
 
     if didCopyRecording {
       do {
-        if session.backend == .recorderFallback {
-          try primeRecorderForNextSession()
-        }
+        try primeRecorderForNextSession()
       } catch {
         isRecorderPrimedForNextSession = false
         recordingLogger.error("Failed to prime recorder fallback: \(error.localizedDescription)")
