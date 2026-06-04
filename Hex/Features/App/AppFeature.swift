@@ -111,6 +111,15 @@ struct AppFeature {
       case .transcription:
         return .none
 
+      case .settings(.requestMicrophone):
+        return .send(.requestMicrophone)
+
+      case .settings(.requestAccessibility):
+        return .send(.requestAccessibility)
+
+      case .settings(.requestInputMonitoring):
+        return .send(.requestInputMonitoring)
+
       case .settings:
         return .none
 

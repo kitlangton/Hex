@@ -119,7 +119,6 @@ struct SettingsFeature {
   @Dependency(\.continuousClock) var clock
   @Dependency(\.transcription) var transcription
   @Dependency(\.recording) var recording
-  @Dependency(\.permissions) var permissions
   @Dependency(\.soundEffects) var soundEffects
   @Dependency(\.transcriptPersistence) var transcriptPersistence
 
@@ -342,6 +341,7 @@ struct SettingsFeature {
 
           // Be sure to clean up resources when the task is finished
           defer {
+            deviceRefreshTask.cancel()
             deviceUpdateTask?.cancel()
             NotificationCenter.default.removeObserver(deviceConnectionObserver)
             NotificationCenter.default.removeObserver(deviceDisconnectionObserver)
@@ -366,7 +366,6 @@ struct SettingsFeature {
             await send(.keyEvent(keyEvent))
           }
           
-          deviceRefreshTask.cancel()
         }
 
       case .startSettingHotKey:
@@ -496,7 +495,9 @@ struct SettingsFeature {
 
       case let .setSelectedMicrophoneID(deviceID):
         state.$hexSettings.withLock { $0.selectedMicrophoneID = deviceID }
-        return .none
+        return .run { _ in
+          await recording.warmUpRecorder()
+        }
 
       case let .setSoundEffectsEnabled(enabled):
         state.$hexSettings.withLock { $0.soundEffectsEnabled = enabled }
@@ -511,31 +512,17 @@ struct SettingsFeature {
       // Permission requests
       case .requestMicrophone:
         settingsLogger.info("User requested microphone permission from settings")
-        return .run { _ in
-          _ = await permissions.requestMicrophone()
-        }
+        return .none
 
       case .requestAccessibility:
         settingsLogger.info("User requested accessibility permission from settings")
-        return .run { _ in
-          await permissions.requestAccessibility()
-        }
+        return .none
 
       case .requestInputMonitoring:
         settingsLogger.info("User requested input monitoring permission from settings")
-        return .run { _ in
-          _ = await permissions.requestInputMonitoring()
-        }
-
-      // Model Management
-      case let .modelDownload(.selectModel(newModel)):
-        // Also store it in hexSettings:
-        state.$hexSettings.withLock {
-          $0.selectedModel = newModel
-        }
-        // Then continue with the child's normal logic:
         return .none
 
+      // Model Management
       case .modelDownload:
         return .none
       
@@ -548,6 +535,10 @@ struct SettingsFeature {
         }
         
       case let .availableInputDevicesLoaded(devices, defaultName):
+        if let selectedMicrophoneID = state.hexSettings.selectedMicrophoneID,
+           let device = devices.first(where: { $0.legacyID == selectedMicrophoneID }) {
+          state.$hexSettings.withLock { $0.selectedMicrophoneID = device.id }
+        }
         state.availableInputDevices = devices
         state.defaultInputDeviceName = defaultName
         return .none

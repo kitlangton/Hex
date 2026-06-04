@@ -50,7 +50,7 @@ struct TranscriptionFeature {
     case discard  // Silent discard (too short/accidental)
 
     // Transcription result flow
-    case transcriptionResult(String, URL)
+    case transcriptionResult(String, URL, TimeInterval)
     case transcriptionError(Error, URL?)
 
     // Model availability
@@ -59,6 +59,7 @@ struct TranscriptionFeature {
 
   enum CancelID {
     case metering
+    case recordingStart
     case recordingCleanup
     case transcription
   }
@@ -116,8 +117,8 @@ struct TranscriptionFeature {
 
       // MARK: - Transcription Results
 
-      case let .transcriptionResult(result, audioURL):
-        return handleTranscriptionResult(&state, result: result, audioURL: audioURL)
+      case let .transcriptionResult(result, audioURL, duration):
+        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration)
 
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
@@ -264,9 +265,11 @@ private extension TranscriptionFeature {
 private extension TranscriptionFeature {
   func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
     // If already transcribing, cancel first. Otherwise start recording immediately.
-    let maybeCancel = isTranscribing ? Effect.send(Action.cancel) : .none
-    let startRecording = Effect.send(Action.startRecording)
-    return .merge(maybeCancel, startRecording)
+    guard isTranscribing else { return .send(.startRecording) }
+    return .concatenate(
+      .send(.cancel),
+      .send(.startRecording)
+    )
   }
 
   func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
@@ -306,8 +309,15 @@ private extension TranscriptionFeature {
         if preventSleep {
           await sleepManagement.preventSleep(reason: "Hex Voice Recording")
         }
+        guard !Task.isCancelled else {
+          if preventSleep {
+            await sleepManagement.allowSleep()
+          }
+          return
+        }
         await recording.startRecording()
       }
+      .cancellable(id: CancelID.recordingStart, cancelInFlight: true)
     )
   }
 
@@ -339,12 +349,16 @@ private extension TranscriptionFeature {
       // If the user recorded for less than minimumKeyTime and the hotkey is modifier-only,
       // discard the audio to avoid accidental triggers.
       transcriptionFeatureLogger.notice("Discarding short recording per decision \(String(describing: decision))")
-      return .run { _ in
-        let url = await recording.stopRecording()
-        guard !Task.isCancelled else { return }
-        try? FileManager.default.removeItem(at: url)
-      }
-      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+      return .merge(
+        .cancel(id: CancelID.recordingStart),
+        .run { [sleepManagement] _ in
+          await sleepManagement.allowSleep()
+          let url = await recording.stopRecording()
+          guard !Task.isCancelled else { return }
+          try? FileManager.default.removeItem(at: url)
+        }
+        .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+      )
     }
 
     // Otherwise, proceed to transcription
@@ -355,35 +369,45 @@ private extension TranscriptionFeature {
 
     state.isPrewarming = true
 
-    return .run { [sleepManagement] send in
-      // Allow system to sleep again
-      await sleepManagement.allowSleep()
+    return .merge(
+      .cancel(id: CancelID.recordingStart),
+      .run { [sleepManagement] send in
+        // Allow system to sleep again
+        await sleepManagement.allowSleep()
 
-      var audioURL: URL?
-      do {
-        let capturedURL = await recording.stopRecording()
-        guard !Task.isCancelled else { return }
-        soundEffect.play(.stopRecording)
-        audioURL = capturedURL
+        var audioURL: URL?
+        var didTransferAudio = false
+        defer {
+          if let audioURL, !didTransferAudio {
+            try? FileManager.default.removeItem(at: audioURL)
+          }
+        }
+        do {
+          let capturedURL = await recording.stopRecording()
+          audioURL = capturedURL
+          guard !Task.isCancelled else { return }
+          soundEffect.play(.stopRecording)
 
-        // Create transcription options with the selected language
-        // Note: cap concurrency to avoid audio I/O overloads on some Macs
-        let decodeOptions = DecodingOptions(
-          language: language,
-          detectLanguage: language == nil, // Only auto-detect if no language specified
-          chunkingStrategy: .vad,
-        )
-        
-        let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
-        
-        transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
-        await send(.transcriptionResult(result, capturedURL))
-      } catch {
-        transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
-        await send(.transcriptionError(error, audioURL))
+          // Create transcription options with the selected language
+          // Note: cap concurrency to avoid audio I/O overloads on some Macs
+          let decodeOptions = DecodingOptions(
+            language: language,
+            detectLanguage: language == nil, // Only auto-detect if no language specified
+            chunkingStrategy: .vad,
+          )
+
+          let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
+
+          transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
+          didTransferAudio = true
+          await send(.transcriptionResult(result, capturedURL, duration))
+        } catch {
+          transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
+          await send(.transcriptionError(error, nil))
+        }
       }
-    }
-    .cancellable(id: CancelID.transcription)
+      .cancellable(id: CancelID.transcription)
+    )
   }
 }
 
@@ -393,7 +417,8 @@ private extension TranscriptionFeature {
   func handleTranscriptionResult(
     _ state: inout State,
     result: String,
-    audioURL: URL
+    audioURL: URL,
+    duration: TimeInterval
   ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
@@ -411,12 +436,12 @@ private extension TranscriptionFeature {
 
     // If empty text, nothing else to do
     guard !result.isEmpty else {
-      return .none
+      return .run { _ in
+        try? FileManager.default.removeItem(at: audioURL)
+      }
     }
 
-    let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-
-    transcriptionFeatureLogger.info("Raw transcription: '\(result)'")
+    transcriptionFeatureLogger.info("Raw transcription: '\(result, privacy: .private)'")
     let remappings = state.hexSettings.wordRemappings
     let removalsEnabled = state.hexSettings.wordRemovalsEnabled
     let removals = state.hexSettings.wordRemovals
@@ -442,7 +467,9 @@ private extension TranscriptionFeature {
     }
 
     guard !modifiedResult.isEmpty else {
-      return .none
+      return .run { _ in
+        try? FileManager.default.removeItem(at: audioURL)
+      }
     }
 
     let sourceAppBundleID = state.sourceAppBundleID
@@ -528,15 +555,21 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
+    let wasRecording = state.isRecording
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
 
     return .merge(
       .cancel(id: CancelID.transcription),
+      .cancel(id: CancelID.recordingStart),
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
+        guard wasRecording else {
+          soundEffect.play(.cancel)
+          return
+        }
         // Stop the recording to release microphone access
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
@@ -552,14 +585,17 @@ private extension TranscriptionFeature {
     state.isPrewarming = false
 
     // Silently discard - no sound effect
-    return .run { [sleepManagement] _ in
-      // Allow system to sleep again
-      await sleepManagement.allowSleep()
-      let url = await recording.stopRecording()
-      guard !Task.isCancelled else { return }
-      try? FileManager.default.removeItem(at: url)
-    }
-    .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+    return .merge(
+      .cancel(id: CancelID.recordingStart),
+      .run { [sleepManagement] _ in
+        // Allow system to sleep again
+        await sleepManagement.allowSleep()
+        let url = await recording.stopRecording()
+        guard !Task.isCancelled else { return }
+        try? FileManager.default.removeItem(at: url)
+      }
+      .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
+    )
   }
 }
 
