@@ -48,9 +48,6 @@ struct AppFeature {
     case checkPermissions
     case permissionsUpdated(mic: PermissionStatus, acc: PermissionStatus, input: PermissionStatus)
     case appActivated
-    case requestMicrophone
-    case requestAccessibility
-    case requestInputMonitoring
     case modelStatusEvaluated(Bool)
   }
 
@@ -111,6 +108,31 @@ struct AppFeature {
       case .transcription:
         return .none
 
+      case .settings(.requestMicrophone):
+        return .run { send in
+          _ = await permissions.requestMicrophone()
+          await send(.checkPermissions)
+        }
+
+      case .settings(.requestAccessibility):
+        return .run { send in
+          await permissions.requestAccessibility()
+          // Poll for status change (macOS doesn't provide callback)
+          for _ in 0..<10 {
+            try? await Task.sleep(for: .seconds(1))
+            await send(.checkPermissions)
+          }
+        }
+
+      case .settings(.requestInputMonitoring):
+        return .run { send in
+          _ = await permissions.requestInputMonitoring()
+          for _ in 0..<10 {
+            try? await Task.sleep(for: .seconds(1))
+            await send(.checkPermissions)
+          }
+        }
+
       case .settings:
         return .none
 
@@ -141,31 +163,6 @@ struct AppFeature {
       case .appActivated:
         // App became active - re-check permissions
         return .send(.checkPermissions)
-
-      case .requestMicrophone:
-        return .run { send in
-          _ = await permissions.requestMicrophone()
-          await send(.checkPermissions)
-        }
-
-      case .requestAccessibility:
-        return .run { send in
-          await permissions.requestAccessibility()
-          // Poll for status change (macOS doesn't provide callback)
-          for _ in 0..<10 {
-            try? await Task.sleep(for: .seconds(1))
-            await send(.checkPermissions)
-          }
-        }
-
-      case .requestInputMonitoring:
-        return .run { send in
-          _ = await permissions.requestInputMonitoring()
-          for _ in 0..<10 {
-            try? await Task.sleep(for: .seconds(1))
-            await send(.checkPermissions)
-          }
-        }
 
       case .modelStatusEvaluated:
         return .none

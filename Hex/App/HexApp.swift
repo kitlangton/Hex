@@ -14,34 +14,36 @@ struct HexApp: App {
   
     var body: some Scene {
         MenuBarExtra {
-            CheckForUpdatesView()
-
-            // Copy last transcript to clipboard
             MenuBarCopyLastTranscriptButton()
 
-            Button("Settings...") {
+            Button("Settings…") {
                 appDelegate.presentSettingsView()
             }.keyboardShortcut(",")
+
+            CheckForUpdatesView()
 			
 			Divider()
 			
-			Button("Quit") {
+			Button("Quit Hex") {
 				NSApplication.shared.terminate(nil)
 			}.keyboardShortcut("q")
 		} label: {
-			let image: NSImage = {
+			if let image = NSImage(named: "HexIcon").map({
 				let ratio = $0.size.height / $0.size.width
 				$0.size.height = 18
 				$0.size.width = 18 / ratio
 				return $0
-			}(NSImage(named: "HexIcon")!)
-			Image(nsImage: image)
+			}) {
+				Image(nsImage: image)
+			} else {
+				Image(systemName: "hexagon")
+			}
 		}
 		.commands {
 			CommandGroup(after: .appInfo) {
 				CheckForUpdatesView()
 
-				Button("Settings...") {
+				Button("Settings…") {
 					appDelegate.presentSettingsView()
 				}.keyboardShortcut(",")
 			}
