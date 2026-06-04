@@ -353,11 +353,12 @@ actor RecordingClientLive {
     meterContinuation: meterContinuation,
     onEngineConfigurationChange: { [weak self] in
       Task {
-        await self?.enqueueCaptureEnvironmentChange(reason: "capture-engine-configuration-changed", forceRestart: true)
+        await self?.enqueueCaptureEnvironmentChange(reason: "capture-engine-configuration-changed")
       }
     }
   )
   private var captureControllerDeviceID: AudioDeviceID?
+  private var captureControllerNeedsRestartReason: String?
   private var notificationObservers: [NSObjectProtocol] = []
   private var audioHardwareObservers: [AudioHardwareObserver] = []
   private var isObservingSystemChanges = false
@@ -426,7 +427,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "system-wake", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "system-wake") }
       }
     )
     notificationObservers.append(
@@ -435,7 +436,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "display-wake", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "display-wake") }
       }
     )
 
@@ -446,7 +447,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-connected", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-connected") }
       }
     )
     notificationObservers.append(
@@ -455,7 +456,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-disconnected", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-disconnected") }
       }
     )
 
@@ -480,7 +481,7 @@ actor RecordingClientLive {
     reason: String
   ) {
     let listener: CoreAudioPropertyListenerBlock = { _, _ in
-      Task { await self.enqueueCaptureEnvironmentChange(reason: reason, forceRestart: true) }
+      Task { await self.enqueueCaptureEnvironmentChange(reason: reason) }
     }
 
     var address = audioPropertyAddress(selector)
@@ -500,12 +501,12 @@ actor RecordingClientLive {
     }
   }
 
-  private func enqueueCaptureEnvironmentChange(reason: String, forceRestart: Bool) {
+  private func enqueueCaptureEnvironmentChange(reason: String) {
     environmentChangeDebounceTask?.cancel()
     environmentChangeDebounceTask = Task { [self] in
       try? await Task.sleep(for: .milliseconds(250))
       guard !Task.isCancelled else { return }
-      await handleCaptureEnvironmentChange(reason: reason, forceRestart: forceRestart)
+      await handleCaptureEnvironmentChange(reason: reason)
     }
   }
 
@@ -536,7 +537,7 @@ actor RecordingClientLive {
     audioHardwareObservers.removeAll()
   }
 
-  private func handleCaptureEnvironmentChange(reason: String, forceRestart: Bool) async {
+  private func handleCaptureEnvironmentChange(reason: String) async {
     let currentInputDevice = getDefaultInputDevice()
     let currentOutputDevice = getDefaultOutputDevice()
     let isRecorderRecording = recorder?.isRecording == true
@@ -555,46 +556,24 @@ actor RecordingClientLive {
     }
 
     deferredCaptureRestartReason = nil
-    let activeInputDevice = applyPreferredInputDevice()
-
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "environment-change-\(reason)")
-      do {
-        try ensureCaptureControllerReady(
-          for: activeInputDevice,
-          reason: reason,
-          forceRestart: forceRestart
-        )
-      } catch {
-        recordingLogger.error("Failed to restart capture engine after \(reason): \(error.localizedDescription)")
-      }
+      captureControllerNeedsRestartReason = reason
+      captureController.clearWarmBuffer()
+      recordingLogger.notice("Deferring capture engine rebuild until next recording reason=\(reason)")
       return
     }
 
+    _ = applyPreferredInputDevice()
     stopCaptureController(reason: reason)
-    let shouldReprimeRecorder = recorder != nil || isRecorderPrimedForNextSession
     releaseRecorder(reason: "environment-change-\(reason)")
-
-    guard shouldReprimeRecorder else {
-      recordingLogger.debug("No warm recorder state to rebuild after reason=\(reason)")
-      return
-    }
-
-    do {
-      try primeRecorderForNextSession()
-      recordingLogger.notice("Recorder re-primed after reason=\(reason)")
-    } catch {
-      recordingLogger.error("Failed to re-prime recorder after \(reason): \(error.localizedDescription)")
-    }
+    recordingLogger.debug("Standard mode uses on-demand capture startup after reason=\(reason)")
   }
 
   private func flushDeferredCaptureRestartIfNeeded() async {
     guard let deferredCaptureRestartReason else { return }
     recordingLogger.notice("Applying deferred capture restart reason=\(deferredCaptureRestartReason)")
-    await handleCaptureEnvironmentChange(
-      reason: "deferred-\(deferredCaptureRestartReason)",
-      forceRestart: true
-    )
+    await handleCaptureEnvironmentChange(reason: "deferred-\(deferredCaptureRestartReason)")
   }
 
   /// Get all available audio devices
@@ -890,6 +869,19 @@ actor RecordingClientLive {
     captureControllerDeviceID = deviceID
   }
 
+  private func ensureCaptureControllerReadyAfterDeferredRestart(
+    for deviceID: AudioDeviceID?,
+    reason: String
+  ) throws {
+    let deferredReason = captureControllerNeedsRestartReason
+    try ensureCaptureControllerReady(
+      for: deviceID,
+      reason: deferredReason.map { "deferred-\($0)-\(reason)" } ?? reason,
+      forceRestart: deferredReason != nil
+    )
+    captureControllerNeedsRestartReason = nil
+  }
+
   private func stopCaptureController(reason: String) {
     captureController.stop(reason: reason)
     captureControllerDeviceID = nil
@@ -1104,7 +1096,7 @@ actor RecordingClientLive {
     let startRequestAt = Date()
 
     do {
-      try ensureCaptureControllerReady(for: activeInputDevice, reason: "startRecording")
+      try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "startRecording")
       let recordingURL = makeCaptureRecordingURL()
       try captureController.beginRecording(to: recordingURL, requestedAt: startRequestAt, mode: mode)
       let startedAt = Date()
@@ -1219,23 +1211,13 @@ actor RecordingClientLive {
     recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
 
     var exportedURL = recordingURL
-    var didCopyRecording = false
     do {
       exportedURL = try duplicateCurrentRecording()
-      didCopyRecording = true
     } catch {
       isRecorderPrimedForNextSession = false
       recordingLogger.error("Failed to copy recording: \(error.localizedDescription)")
     }
-
-    if didCopyRecording {
-      do {
-        try primeRecorderForNextSession()
-      } catch {
-        isRecorderPrimedForNextSession = false
-        recordingLogger.error("Failed to prime recorder fallback: \(error.localizedDescription)")
-      }
-    }
+    releaseRecorder(reason: "fallback-stop")
 
     if !hexSettings.superFastModeEnabled {
       stopCaptureController(reason: "standard-stop")
@@ -1449,7 +1431,7 @@ actor RecordingClientLive {
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "warm-up-super-fast")
       do {
-        try ensureCaptureControllerReady(for: activeInputDevice, reason: "warmUpRecorder")
+        try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "warmUpRecorder")
       } catch {
         recordingLogger.error("Failed to arm capture engine for super fast mode: \(error.localizedDescription)")
       }
