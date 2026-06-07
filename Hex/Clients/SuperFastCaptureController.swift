@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import HexCore
+import HexCore
 
 private final class FloatRingBuffer {
   private let lock = NSLock()
@@ -150,6 +151,7 @@ final class SuperFastCaptureController {
   private var recentBufferDurations: [TimeInterval] = []
   private var previewSamples: [Float] = []
   private var didLogPreviewSampleCap = false
+  private var sessionSpeechMetrics = SpeechActivityMetrics.zero
   private var lastArmedAt: Date?
   private let onEngineConfigurationChange: @Sendable () -> Void
 
@@ -183,6 +185,16 @@ final class SuperFastCaptureController {
     processingQueue.sync {
       guard activeRecording != nil || isLiveMonitoring else { return 0 }
       return Double(previewSamples.count) / SuperFastCaptureConstants.sampleRate
+    }
+  }
+
+  func recordingSpeechMetrics() -> SpeechActivityMetrics {
+    processingQueue.sync { sessionSpeechMetrics }
+  }
+
+  func resetSessionSpeechMetrics() {
+    processingQueue.sync {
+      sessionSpeechMetrics = .zero
     }
   }
 
@@ -471,6 +483,7 @@ final class SuperFastCaptureController {
         )
         previewSamples = ringBuffer.recentSamples(count: previewPreRollFrameCount)
         didLogPreviewSampleCap = false
+        sessionSpeechMetrics = .zero
 
         logger.notice(
           "Capture engine recording file opened prepended=\(String(format: "%.3f", prependedDuration))s requestedPreRoll=\(String(format: "%.3f", preRollDuration))s"
@@ -558,7 +571,11 @@ final class SuperFastCaptureController {
     }
 
     if activeRecording != nil {
-      meterContinuation.yield(meter(for: samples, count: sampleCount))
+      let level = meter(for: samples, count: sampleCount)
+      meterContinuation.yield(level)
+      sessionSpeechMetrics.merge(
+        SpeechActivityMetrics(peakRMS: level.averagePower, peakSample: level.peakPower)
+      )
     }
 
     if activeRecording != nil || isLiveMonitoring {

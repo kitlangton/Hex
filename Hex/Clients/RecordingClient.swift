@@ -37,6 +37,7 @@ struct RecordingClient {
   var setLiveAudioConsumer: @Sendable ((@Sendable (AVAudioPCMBuffer) async -> Void)?) async -> Void = { _ in }
   var snapshotRecordingForPreview: @Sendable () async -> URL? = { nil }
   var previewRecordingDuration: @Sendable () async -> TimeInterval = { 0 }
+  var recordingSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
   var getDefaultInputDeviceName: @Sendable () async -> String? = { nil }
   var warmUpRecorder: @Sendable () async -> Void = {}
@@ -61,6 +62,7 @@ extension RecordingClient: DependencyKey {
       setLiveAudioConsumer: { await live.setLiveAudioConsumer($0) },
       snapshotRecordingForPreview: { await live.snapshotRecordingForPreview() },
       previewRecordingDuration: { await live.previewRecordingDuration() },
+      recordingSpeechMetrics: { await live.recordingSpeechMetrics() },
       getAvailableInputDevices: { await live.getAvailableInputDevices() },
       getDefaultInputDeviceName: { await live.getDefaultInputDeviceName() },
       warmUpRecorder: { await live.warmUpRecorder() },
@@ -348,6 +350,7 @@ actor RecordingClientLive {
   private var lastPrimedDeviceID: AudioDeviceID?
   private var recordingSessionID: UUID?
   private var activeRecordingSession: ActiveRecordingSession?
+  private var sessionSpeechMetrics = SpeechActivityMetrics.zero
   private var lastRecordingEndedAt: Date?
   private var deferredCaptureRestartReason: String?
   private var isLiveMonitoringActive = false
@@ -1187,6 +1190,8 @@ actor RecordingClientLive {
     // prior recording is ignored once the user starts again during the stop grace window.
     let sessionID = UUID()
     recordingSessionID = sessionID
+    sessionSpeechMetrics = .zero
+    captureController.resetSessionSpeechMetrics()
     mediaControlTask?.cancel()
     mediaControlTask = nil
 
@@ -1626,7 +1631,13 @@ actor RecordingClientLive {
         let averageNormalized = pow(10, averagePower / 20.0)
         let peakPower = r.peakPower(forChannel: 0)
         let peakNormalized = pow(10, peakPower / 20.0)
-        meterContinuation.yield(Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized)))
+        let meter = Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized))
+        meterContinuation.yield(meter)
+        if activeRecordingSession != nil {
+          sessionSpeechMetrics.merge(
+            SpeechActivityMetrics(peakRMS: meter.averagePower, peakSample: meter.peakPower)
+          )
+        }
         try? await Task.sleep(for: .milliseconds(100))
       }
     }
@@ -1670,6 +1681,12 @@ actor RecordingClientLive {
 
   func previewRecordingDuration() -> TimeInterval {
     captureController.previewCaptureDuration
+  }
+
+  func recordingSpeechMetrics() -> SpeechActivityMetrics {
+    var metrics = sessionSpeechMetrics
+    metrics.merge(captureController.recordingSpeechMetrics())
+    return metrics
   }
 
   func warmUpRecorder() async {

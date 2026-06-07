@@ -65,7 +65,7 @@ struct TranscriptionFeature {
     case discard  // Silent discard (too short/accidental)
 
     // Transcription result flow
-    case transcriptionResult(String, URL, TimeInterval)
+    case transcriptionResult(String, URL, TimeInterval, SpeechActivityMetrics)
     case transcriptionError(Error, URL?)
 
     // Model availability
@@ -140,8 +140,14 @@ struct TranscriptionFeature {
 
       // MARK: - Transcription Results
 
-      case let .transcriptionResult(result, audioURL, duration):
-        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration)
+      case let .transcriptionResult(result, audioURL, duration, speechMetrics):
+        return handleTranscriptionResult(
+          &state,
+          result: result,
+          audioURL: audioURL,
+          duration: duration,
+          speechMetrics: speechMetrics
+        )
 
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
@@ -541,6 +547,12 @@ private extension TranscriptionFeature {
       guard !inFlightTranscribe else { continue }
       guard !keystrokeBusy else { continue }
 
+      let speechMetrics = await recording.recordingSpeechMetrics()
+      guard SpeechActivityGate.hasSpeechActivity(speechMetrics) else {
+        try? await Task.sleep(for: .milliseconds(200))
+        continue
+      }
+
       let currentDuration = await recording.previewRecordingDuration()
       guard transcribeScheduler.shouldScheduleTranscribe(
         snapshotDuration: currentDuration,
@@ -575,6 +587,13 @@ private extension TranscriptionFeature {
 
       let nowDuration = await recording.previewRecordingDuration()
       guard let text, !text.isEmpty else { continue }
+
+      guard SilentTranscriptionFilter.shouldAcceptTranscription(text: text, metrics: speechMetrics) else {
+        transcriptionFeatureLogger.debug(
+          "Rejected live preview — likely silent-audio hallucination chars=\(text.count)"
+        )
+        continue
+      }
 
       if transcribeScheduler.shouldApplyResult(
         resultDuration: capturedDuration,
@@ -643,7 +662,8 @@ private extension TranscriptionFeature {
     _ state: inout State,
     result: String,
     audioURL: URL,
-    duration: TimeInterval
+    duration: TimeInterval,
+    speechMetrics _: SpeechActivityMetrics
   ) -> Effect<Action> {
     state.setTranscribing(false)
     state.isPrewarming = false
