@@ -113,6 +113,11 @@ public enum LiveTextInsertionLogic {
 
 /// Debounces live ASR preview updates to reduce cursor flicker from transient revisions.
 public struct LivePreviewUpdateGate: Equatable, Sendable {
+  /// Ignore very short first previews — padded 1s clips often hallucinate 1–4 chars.
+  public static let minimumInitialApplyLength = 8
+  /// When a prior apply was shorter than this, allow a fuller transcript to replace it.
+  public static let shortPreviewRecoveryThreshold = 8
+
   public private(set) var lastApplied: String = ""
   private var pendingShrinkCandidate: String?
 
@@ -123,13 +128,48 @@ public struct LivePreviewUpdateGate: Equatable, Sendable {
     guard !next.isEmpty else { return false }
     guard next != lastApplied else { return false }
 
-    guard !lastApplied.isEmpty else { return true }
+    if lastApplied.isEmpty {
+      return next.count >= Self.minimumInitialApplyLength
+    }
 
     if next.count >= lastApplied.count {
+      if next.hasPrefix(lastApplied) {
+        pendingShrinkCandidate = nil
+        return true
+      }
+      // Growing snapshot re-transcription often rewrites earlier words — allow refreshes
+      // that are materially longer than what is already at the cursor.
+      if lastApplied.count >= Self.minimumInitialApplyLength {
+        let sharedPrefixLength = lastApplied.commonPrefix(with: next).count
+        if next.count >= lastApplied.count + 15,
+           sharedPrefixLength >= max(4, lastApplied.count / 4)
+        {
+          pendingShrinkCandidate = nil
+          return true
+        }
+        if next.count >= lastApplied.count + 30 {
+          pendingShrinkCandidate = nil
+          return true
+        }
+        if next.count * 20 >= lastApplied.count * 21,
+           sharedPrefixLength >= max(8, lastApplied.count / 4)
+        {
+          pendingShrinkCandidate = nil
+          return true
+        }
+      }
       let sharedPrefixLength = lastApplied.commonPrefix(with: next).count
-      // Short padded preview clips often hallucinate unrelated longer strings.
-      // Require growth to mostly extend the prior transcript instead of rewriting it.
-      let minimumStablePrefix = max(1, (lastApplied.count * 2) / 3)
+      let minimumStablePrefix = max(4, lastApplied.count / 2)
+      // A tiny early preview (e.g. "Te") often diverges from the real transcript — replace it.
+      if lastApplied.count <= Self.shortPreviewRecoveryThreshold,
+         next.count >= 20,
+         sharedPrefixLength < minimumStablePrefix
+      {
+        pendingShrinkCandidate = nil
+        return true
+      }
+      // Reject unrelated growth (common on very short padded clips) while allowing
+      // normal ASR rewrites that share roughly half the prior preview text.
       guard sharedPrefixLength >= minimumStablePrefix else { return false }
       pendingShrinkCandidate = nil
       return true
@@ -139,6 +179,12 @@ public struct LivePreviewUpdateGate: Equatable, Sendable {
     guard sharedPrefixLength >= next.count else {
       pendingShrinkCandidate = nil
       return false
+    }
+
+    // Allow small ASR trim revisions without waiting for a second identical shrink.
+    if lastApplied.count - next.count <= 2 {
+      pendingShrinkCandidate = nil
+      return true
     }
 
     if pendingShrinkCandidate == next {
@@ -164,9 +210,10 @@ public struct LivePreviewUpdateGate: Equatable, Sendable {
 /// Throttles live preview Parakeet passes and decides when to skip stale results.
 public struct LivePreviewTranscriptionScheduler: Equatable, Sendable {
   public static let minimumAudioBeforeTranscribe: TimeInterval = 0.45
-  public static let minimumNewAudioBetweenTranscribes: TimeInterval = 0.22
+  public static let minimumNewAudioBetweenTranscribes: TimeInterval = 0.40
   /// Ignore preview results that lag the live capture by more than this.
-  public static let maxStaleResultDelta: TimeInterval = 0.5
+  /// Must exceed capture callback cadence (~0.51s) plus typical Parakeet latency.
+  public static let maxStaleResultDelta: TimeInterval = 1.25
 
   public private(set) var lastTranscribedDuration: TimeInterval = 0
 
@@ -177,11 +224,11 @@ public struct LivePreviewTranscriptionScheduler: Equatable, Sendable {
     case ..<3:
       minimumNewAudioBetweenTranscribes
     case ..<8:
-      0.50
+      0.55
     case ..<15:
-      0.85
+      0.75
     default:
-      1.25
+      1.00
     }
   }
 

@@ -36,19 +36,154 @@ public struct SpeechActivityMetrics: Equatable, Sendable {
 
 /// Detects whether captured audio likely contains speech vs silence/noise.
 public enum SpeechActivityGate {
-  /// Both must be met — Bluetooth idle noise often spikes peak without sustained RMS.
-  public static let minimumPeakRMS: Double = 0.018
-  public static let minimumPeakSample: Double = 0.055
+  /// Both must be met for normal speech — Bluetooth idle noise often spikes peak without sustained RMS.
+  public static let minimumPeakRMS: Double = 0.015
+  public static let minimumPeakSample: Double = 0.050
+  /// Quieter speech still needs both RMS and peak to avoid BT spike false positives.
+  public static let whisperPeakRMS: Double = 0.008
+  public static let whisperPeakSample: Double = 0.038
   /// Louder evidence required before accepting hallucination-prone short phrases.
   public static let strongPeakRMS: Double = 0.030
   public static let strongPeakSample: Double = 0.10
+  /// Trailing window used to detect current speech vs earlier audio in a growing preview buffer.
+  public static let previewRecentWindow: TimeInterval = 0.75
+  /// Longer window — keeps transcribing through brief between-word pauses.
+  public static let previewHoldWindow: TimeInterval = 1.5
+  /// Window size for estimating a noise floor from the quietest segments.
+  public static let noiseAnalysisWindow: TimeInterval = 0.25
+  /// Recent speech RMS must exceed the noise floor by this factor (weak speech only).
+  public static let minimumSpeechToNoiseRatio: Double = 1.6
+
+  public static func hasWhisperActivity(_ metrics: SpeechActivityMetrics) -> Bool {
+    guard metrics.peakRMS >= whisperPeakRMS, metrics.peakSample >= whisperPeakSample else {
+      return false
+    }
+    // Require sustained energy — BT idle noise often spikes peak without RMS.
+    return metrics.peakRMS >= metrics.peakSample * 0.12
+  }
 
   public static func hasSpeechActivity(_ metrics: SpeechActivityMetrics) -> Bool {
-    metrics.peakRMS >= minimumPeakRMS && metrics.peakSample >= minimumPeakSample
+    hasWhisperActivity(metrics)
+      || (metrics.peakRMS >= minimumPeakRMS && metrics.peakSample >= minimumPeakSample)
   }
 
   public static func hasStrongSpeechActivity(_ metrics: SpeechActivityMetrics) -> Bool {
-    metrics.peakRMS >= strongPeakRMS || metrics.peakSample >= strongPeakSample
+    metrics.peakRMS >= strongPeakRMS && metrics.peakSample >= strongPeakSample
+  }
+
+  /// Returns metrics for the trailing window and whether preview transcription should run.
+  public static func evaluatePreviewActivity(
+    samples: [Float],
+    sampleRate: Double = 16_000
+  ) -> (metrics: SpeechActivityMetrics, hasActivity: Bool) {
+    let recentSamples = recentSlice(
+      samples,
+      sampleRate: sampleRate,
+      windowDuration: previewRecentWindow
+    )
+    let recentMetrics = SpeechActivityMetrics.analyze(samples: recentSamples)
+
+    if windowHasSpeechActivity(
+      samples: samples,
+      sampleRate: sampleRate,
+      windowDuration: previewRecentWindow,
+      metrics: recentMetrics
+    ) {
+      return (recentMetrics, true)
+    }
+
+    let holdSamples = recentSlice(
+      samples,
+      sampleRate: sampleRate,
+      windowDuration: previewHoldWindow
+    )
+    let holdMetrics = SpeechActivityMetrics.analyze(samples: holdSamples)
+    if windowHasSpeechActivity(
+      samples: samples,
+      sampleRate: sampleRate,
+      windowDuration: previewHoldWindow,
+      metrics: holdMetrics
+    ) {
+      return (recentMetrics, true)
+    }
+
+    return (recentMetrics, false)
+  }
+
+  private static func windowHasSpeechActivity(
+    samples: [Float],
+    sampleRate: Double,
+    windowDuration: TimeInterval,
+    metrics: SpeechActivityMetrics
+  ) -> Bool {
+    guard hasSpeechActivity(metrics) else { return false }
+
+    if hasStrongSpeechActivity(metrics) || hasWhisperActivity(metrics) {
+      return true
+    }
+
+    if metrics.peakSample >= 0.10, metrics.peakRMS >= minimumPeakRMS {
+      return true
+    }
+
+    let noiseFloor = estimatedNoiseFloorRMS(
+      samples: samples,
+      sampleRate: sampleRate,
+      analysisDuration: min(windowDuration * 4, Double(samples.count) / sampleRate)
+    )
+    let requiredRMS = max(minimumPeakRMS, noiseFloor * minimumSpeechToNoiseRatio)
+    return metrics.peakRMS >= requiredRMS
+  }
+
+  public static func recentSlice(
+    _ samples: [Float],
+    sampleRate: Double,
+    windowDuration: TimeInterval
+  ) -> [Float] {
+    let windowSamples = max(1, Int((windowDuration * sampleRate).rounded(.up)))
+    guard !samples.isEmpty else { return [] }
+    let startIndex = max(0, samples.count - windowSamples)
+    return Array(samples[startIndex...])
+  }
+
+  /// 25th-percentile RMS of overlapping windows — approximates background noise floor.
+  public static func estimatedNoiseFloorRMS(
+    samples: [Float],
+    sampleRate: Double = 16_000,
+    windowDuration: TimeInterval = noiseAnalysisWindow,
+    analysisDuration: TimeInterval? = nil
+  ) -> Double {
+    let analysisSamples: [Float]
+    if let analysisDuration {
+      analysisSamples = recentSlice(
+        samples,
+        sampleRate: sampleRate,
+        windowDuration: analysisDuration
+      )
+    } else {
+      analysisSamples = samples
+    }
+
+    let windowSamples = max(1, Int((windowDuration * sampleRate).rounded(.up)))
+    let hopSamples = max(1, windowSamples / 2)
+    guard analysisSamples.count >= windowSamples else {
+      return SpeechActivityMetrics.analyze(samples: analysisSamples).peakRMS
+    }
+
+    var windowLevels: [Double] = []
+    windowLevels.reserveCapacity(analysisSamples.count / hopSamples)
+    var startIndex = 0
+    while startIndex + windowSamples <= analysisSamples.count {
+      let window = Array(analysisSamples[startIndex ..< startIndex + windowSamples])
+      windowLevels.append(SpeechActivityMetrics.analyze(samples: window).peakRMS)
+      startIndex += hopSamples
+    }
+
+    guard !windowLevels.isEmpty else { return 0 }
+    windowLevels.sort()
+    // Use the quietest 10% of windows — 25th percentile stays too high during speech.
+    let quietIndex = max(0, windowLevels.count / 10)
+    return windowLevels[quietIndex]
   }
 }
 

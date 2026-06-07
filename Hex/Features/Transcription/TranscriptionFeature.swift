@@ -70,6 +70,9 @@ struct TranscriptionFeature {
 
     // Model availability
     case modelMissing
+
+    /// Transcription + paste/finalize pipeline finished; safe to start another recording.
+    case transcriptionPostProcessingDidFinish
   }
 
   enum CancelID {
@@ -155,6 +158,12 @@ struct TranscriptionFeature {
       case .modelMissing:
         return .none
 
+      case .transcriptionPostProcessingDidFinish:
+        state.setTranscribing(false)
+        return .run { _ in
+          await recording.resumeMediaIfNeeded()
+        }
+
       // MARK: - Cancel/Discard Flow
 
       case .cancel:
@@ -205,21 +214,19 @@ private extension TranscriptionFeature {
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
       @Shared(.isTranscriptionBusy) var isTranscriptionBusy: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
-      var hotKeyProcessor: HotKeyProcessor = .init(hotkey: hexSettings.hotkey)
+      let initialSettings = $hexSettings.withLock { $0 }
+      let monitorState = HotKeyMonitorState(hotkey: initialSettings.hotkey)
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
         // Skip if the user is currently setting a hotkey
-        if isSettingHotKey {
+        if $isSettingHotKey.withLock({ $0 }) {
           return false
         }
 
-        // Always keep hotKeyProcessor in sync with current user hotkey preference
-        hotKeyProcessor.hotkey = hexSettings.hotkey
-        let useDoubleTapOnly = hexSettings.doubleTapLockEnabled && hexSettings.useDoubleTapOnly
-        hotKeyProcessor.doubleTapLockEnabled = hexSettings.doubleTapLockEnabled
-        hotKeyProcessor.useDoubleTapOnly = useDoubleTapOnly
-        hotKeyProcessor.minimumKeyTime = hexSettings.minimumKeyTime
+        let settings = $hexSettings.withLock { $0 }
+        monitorState.syncSettings(from: settings)
+        let useDoubleTapOnly = settings.doubleTapLockEnabled && settings.useDoubleTapOnly
 
         // Skip hotkey state while Hex is injecting live preview keystrokes.
         if liveTextInsertion.isKeystrokeUpdateInFlight() {
@@ -230,20 +237,21 @@ private extension TranscriptionFeature {
         case .keyboard(let keyEvent):
           // If Escape is pressed with no modifiers while idle, let's treat that as `cancel`.
           if keyEvent.key == .escape, keyEvent.modifiers.isEmpty,
-             hotKeyProcessor.state == .idle
+             monitorState.state == .idle
           {
             Task { await send(.cancel) }
             return false
           }
 
           // Process the key event
-          switch hotKeyProcessor.process(keyEvent: keyEvent) {
+          switch monitorState.process(keyEvent: keyEvent) {
           case .startRecording:
-            guard !isTranscriptionBusy else { return false }
-            let isDoubleTapLock = hotKeyProcessor.state == .doubleTapLock
+            guard !$isTranscriptionBusy.withLock({ $0 }) else { return false }
+            let isDoubleTapLock = monitorState.state == .doubleTapLock
+            let livePreviewDisplayMode = settings.livePreviewDisplayMode
             Task {
               await recording.prewarmCapture()
-              if hexSettings.livePreviewDisplayMode == .cursor {
+              if livePreviewDisplayMode == .cursor {
                 _ = liveTextInsertion.prepareNow()
               }
               if isDoubleTapLock {
@@ -270,9 +278,10 @@ private extension TranscriptionFeature {
 
           case .none:
             // If we detect repeated same chord, maybe intercept.
+            let hotkey = monitorState.hotkey
             if let pressedKey = keyEvent.key,
-               pressedKey == hotKeyProcessor.hotkey.key,
-               keyEvent.modifiers == hotKeyProcessor.hotkey.modifiers
+               pressedKey == hotkey.key,
+               keyEvent.modifiers == hotkey.modifiers
             {
               return true
             }
@@ -281,7 +290,7 @@ private extension TranscriptionFeature {
 
         case .mouseClick:
           // Process mouse click - for modifier-only hotkeys, this may cancel/discard
-          switch hotKeyProcessor.processMouseClick() {
+          switch monitorState.processMouseClick() {
           case .cancel:
             Task { await send(.cancel) }
             return false // Don't intercept the click itself
@@ -445,6 +454,7 @@ private extension TranscriptionFeature {
           }
         }
         do {
+          let speechMetrics = await recording.recordingSpeechMetrics()
           let capturedURL = await recording.stopRecording()
           audioURL = capturedURL
           guard !Task.isCancelled else { return }
@@ -479,7 +489,7 @@ private extension TranscriptionFeature {
             "Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)"
           )
           audioURL = nil
-          await send(.transcriptionResult(result, capturedURL, duration))
+          await send(.transcriptionResult(result, capturedURL, duration, speechMetrics))
         } catch {
           transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
           await send(.transcriptionError(error, nil))
@@ -547,8 +557,12 @@ private extension TranscriptionFeature {
       guard !inFlightTranscribe else { continue }
       guard !keystrokeBusy else { continue }
 
-      let snapshotMetrics = await recording.previewSpeechMetrics()
-      guard SpeechActivityGate.hasSpeechActivity(snapshotMetrics) else {
+      let previewEvaluation = await recording.previewSpeechEvaluation()
+      let snapshotMetrics = previewEvaluation.metrics
+      guard previewEvaluation.hasActivity else {
+        transcriptionFeatureLogger.debug(
+          "Skipping preview transcribe — no recent speech above noise floor peakRMS=\(String(format: "%.4f", snapshotMetrics.peakRMS)) peakSample=\(String(format: "%.4f", snapshotMetrics.peakSample))"
+        )
         try? await Task.sleep(for: .milliseconds(200))
         continue
       }
@@ -638,7 +652,13 @@ private extension TranscriptionFeature {
     previewGate: inout LivePreviewUpdateGate,
     send: Send<Action>
   ) async {
-    guard previewGate.shouldApply(next: text) else { return }
+    let lastAppliedCount = previewGate.lastApplied.count
+    guard previewGate.shouldApply(next: text) else {
+      transcriptionFeatureLogger.debug(
+        "Skipped live preview update — gate rejected revision chars=\(text.count) lastApplied=\(lastAppliedCount)"
+      )
+      return
+    }
 
     if insertAtCursor {
       guard await liveTextInsertion.update(text) else {
@@ -655,6 +675,51 @@ private extension TranscriptionFeature {
   }
 }
 
+// MARK: - Hot Key Monitor State
+
+/// Thread-safe wrapper for hotkey state machine used from the key event monitor callback.
+private final class HotKeyMonitorState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var processor: HotKeyProcessor
+
+  init(hotkey: HotKey) {
+    processor = HotKeyProcessor(hotkey: hotkey)
+  }
+
+  var state: HotKeyProcessor.State {
+    lock.lock()
+    defer { lock.unlock() }
+    return processor.state
+  }
+
+  var hotkey: HotKey {
+    lock.lock()
+    defer { lock.unlock() }
+    return processor.hotkey
+  }
+
+  func syncSettings(from settings: HexSettings) {
+    lock.lock()
+    defer { lock.unlock() }
+    processor.hotkey = settings.hotkey
+    processor.doubleTapLockEnabled = settings.doubleTapLockEnabled
+    processor.useDoubleTapOnly = settings.doubleTapLockEnabled && settings.useDoubleTapOnly
+    processor.minimumKeyTime = settings.minimumKeyTime
+  }
+
+  func process(keyEvent: KeyEvent) -> HotKeyProcessor.Output? {
+    lock.lock()
+    defer { lock.unlock() }
+    return processor.process(keyEvent: keyEvent)
+  }
+
+  func processMouseClick() -> HotKeyProcessor.Output? {
+    lock.lock()
+    defer { lock.unlock() }
+    return processor.processMouseClick()
+  }
+}
+
 // MARK: - Transcription Handlers
 
 private extension TranscriptionFeature {
@@ -663,28 +728,51 @@ private extension TranscriptionFeature {
     result: String,
     audioURL: URL,
     duration: TimeInterval,
-    speechMetrics _: SpeechActivityMetrics
+    speechMetrics: SpeechActivityMetrics
   ) -> Effect<Action> {
-    state.setTranscribing(false)
     state.isPrewarming = false
     state.liveTranscript = ""
 
     // Check for force quit command (emergency escape hatch)
     if ForceQuitCommandDetector.matches(result) {
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
-      return .run { _ in
+      return .run { send in
         FileManager.default.removeItemIfExists(at: audioURL)
         await MainActor.run {
           NSApp.terminate(nil)
         }
+        await send(.transcriptionPostProcessingDidFinish)
       }
     }
 
     // If empty text, revert any live preview that was inserted at the cursor.
     guard !result.isEmpty else {
-      return .run { _ in
+      return .run { send in
         await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
         FileManager.default.removeItemIfExists(at: audioURL)
+        await send(.transcriptionPostProcessingDidFinish)
+      }
+    }
+
+    guard SpeechActivityGate.hasSpeechActivity(speechMetrics) else {
+      transcriptionFeatureLogger.notice(
+        "Discarding transcription — no speech detected peakRMS=\(String(format: "%.4f", speechMetrics.peakRMS)) peakSample=\(String(format: "%.4f", speechMetrics.peakSample))"
+      )
+      return .run { send in
+        await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
+        FileManager.default.removeItemIfExists(at: audioURL)
+        await send(.transcriptionPostProcessingDidFinish)
+      }
+    }
+
+    guard SilentTranscriptionFilter.shouldAcceptTranscription(text: result, metrics: speechMetrics) else {
+      transcriptionFeatureLogger.notice(
+        "Discarding transcription — likely noise hallucination peakRMS=\(String(format: "%.4f", speechMetrics.peakRMS)) peakSample=\(String(format: "%.4f", speechMetrics.peakSample))"
+      )
+      return .run { send in
+        await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
+        FileManager.default.removeItemIfExists(at: audioURL)
+        await send(.transcriptionPostProcessingDidFinish)
       }
     }
 
@@ -714,9 +802,10 @@ private extension TranscriptionFeature {
     }
 
     guard !modifiedResult.isEmpty else {
-      return .run { _ in
+      return .run { send in
         await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
         FileManager.default.removeItemIfExists(at: audioURL)
+        await send(.transcriptionPostProcessingDidFinish)
       }
     }
 
@@ -740,6 +829,7 @@ private extension TranscriptionFeature {
       } catch {
         await send(.transcriptionError(error, audioURL))
       }
+      await send(.transcriptionPostProcessingDidFinish)
     }
     .cancellable(id: CancelID.transcription)
   }
@@ -760,6 +850,7 @@ private extension TranscriptionFeature {
 
     return .run { _ in
       await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
+      await recording.resumeMediaIfNeeded()
     }
   }
 
@@ -844,6 +935,7 @@ private extension TranscriptionFeature {
         await sleepManagement.allowSleep()
         guard wasRecording else {
           soundEffect.play(.cancel)
+          await recording.resumeMediaIfNeeded()
           return
         }
         // Stop the recording to release microphone access
@@ -851,6 +943,7 @@ private extension TranscriptionFeature {
         guard !Task.isCancelled else { return }
         FileManager.default.removeItemIfExists(at: url)
         soundEffect.play(.cancel)
+        await recording.resumeMediaIfNeeded()
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
     )
@@ -873,6 +966,7 @@ private extension TranscriptionFeature {
         let url = await recording.stopRecording()
         guard !Task.isCancelled else { return }
         FileManager.default.removeItemIfExists(at: url)
+        await recording.resumeMediaIfNeeded()
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
     )

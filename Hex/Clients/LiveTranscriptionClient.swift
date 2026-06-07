@@ -66,7 +66,9 @@ actor LiveTranscriptionClientLive {
   private var fedBufferCount = 0
 
   init() {
-    resetUpdateStream()
+    let (stream, continuation) = AsyncStream<LiveTranscriptionUpdate>.makeStream()
+    updateStream = stream
+    updateContinuation = continuation
   }
 
   private func resetUpdateStream() {

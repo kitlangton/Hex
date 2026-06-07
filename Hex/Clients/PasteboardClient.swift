@@ -350,26 +350,17 @@ struct PasteboardClientLive {
             guard !suffix.isEmpty else { return true }
             return await pasteTextAtCursor(suffix, delayMs: 3)
         case let .shrinkBackspaces(count):
-            await selectBackwardAndDelete(count)
+            postBackspaces(count)
+            let settleMs = min(200, max(15, count * 2))
+            try? await Task.sleep(for: .milliseconds(settleMs))
             return true
         case let .replaceTail(backspaces, insert):
             if backspaces > 0 {
-                if preferFullReplace {
-                    postBackspaces(backspaces)
-                    let settleMs = min(200, max(15, backspaces * 2))
-                    try? await Task.sleep(for: .milliseconds(settleMs))
-                } else {
-                    await selectBackward(backspaces)
-                    let settleMs = min(120, max(10, backspaces / 4))
-                    try? await Task.sleep(for: .milliseconds(settleMs))
-                }
+                postBackspaces(backspaces)
+                let settleMs = min(200, max(15, backspaces * 2))
+                try? await Task.sleep(for: .milliseconds(settleMs))
             }
-            guard !insert.isEmpty else {
-                if backspaces > 0, !preferFullReplace {
-                    postBackspaces(1)
-                }
-                return true
-            }
+            guard !insert.isEmpty else { return true }
             return await pasteTextAtCursor(insert, delayMs: 3)
         }
     }

@@ -63,6 +63,7 @@ final class LiveTextInsertionClientLive {
   }
 
   @MainActor private var session: Session?
+  @MainActor private var sessionID = UUID()
   @MainActor private var insertedText = ""
   @MainActor private var keystrokeUpdateChain: Task<Bool, Never>?
   @MainActor private var keystrokeUpdateGeneration = 0
@@ -75,9 +76,8 @@ final class LiveTextInsertionClientLive {
     "com.kitlangton.Hex.debug",
   ]
 
-  /// Keystroke fallback means Accessibility insertion failed; incremental edits are
-  /// unreliable in Electron/web-wrapper apps (WhatsApp, Slack, Cursor, etc.).
-  private static let prefersFullKeystrokeReplace: Bool = true
+  /// Prefer incremental append/revision during live preview; escalate to full replace on failure.
+  private static let prefersFullKeystrokeReplace: Bool = false
 
   @MainActor
   func prepareNow() -> Bool {
@@ -87,6 +87,7 @@ final class LiveTextInsertionClientLive {
   @MainActor
   func prepare() -> Bool {
     resetSessionImmediately()
+    sessionID = UUID()
 
     if let captured = FocusedTextFieldEditor.captureFromFrontmostApp(
       excludingBundleIdentifiers: Self.hexBundleIdentifiers
@@ -240,6 +241,7 @@ final class LiveTextInsertionClientLive {
   @MainActor
   func finalize(_ text: String) async -> Bool {
     guard let session else { return false }
+    let expectedSessionID = sessionID
 
     pendingKeystrokeText = nil
     keystrokeUpdateGeneration &+= 1
@@ -249,8 +251,15 @@ final class LiveTextInsertionClientLive {
     keystrokeUpdateChain = nil
     isKeystrokeUpdateInFlight = false
 
+    guard sessionID == expectedSessionID else {
+      liveTextInsertionLogger.notice(
+        "Live text insertion finalize skipped — session superseded by a newer recording"
+      )
+      return false
+    }
+
     switch session {
-    case let .accessibility(element, bundleID, state):
+    case let .accessibility(element, _, state):
       var mutableState = state
       let previousInsertedLength = mutableState.insertedText.count
       let newValue = mutableState.update(with: text)

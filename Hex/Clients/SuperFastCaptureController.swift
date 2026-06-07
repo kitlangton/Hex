@@ -192,10 +192,22 @@ final class SuperFastCaptureController {
     processingQueue.sync { sessionSpeechMetrics }
   }
 
-  /// Speech levels in the current in-memory preview buffer (not cumulative session peak).
+  /// Speech levels in the recent trailing preview window (ignores earlier audio).
   func previewSpeechMetrics() -> SpeechActivityMetrics {
+    previewSpeechEvaluation().metrics
+  }
+
+  /// Whether the recent preview window contains speech above the estimated noise floor.
+  func previewHasSpeechActivity() -> Bool {
+    previewSpeechEvaluation().hasActivity
+  }
+
+  func previewSpeechEvaluation() -> (metrics: SpeechActivityMetrics, hasActivity: Bool) {
     processingQueue.sync {
-      SpeechActivityMetrics.analyze(samples: previewSamples)
+      SpeechActivityGate.evaluatePreviewActivity(
+        samples: previewSamples,
+        sampleRate: SuperFastCaptureConstants.sampleRate
+      )
     }
   }
 

@@ -39,11 +39,15 @@ struct RecordingClient {
   var previewRecordingDuration: @Sendable () async -> TimeInterval = { 0 }
   var recordingSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
   var previewSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
+  var previewHasSpeechActivity: @Sendable () async -> Bool = { false }
+  var previewSpeechEvaluation: @Sendable () async -> (metrics: SpeechActivityMetrics, hasActivity: Bool) = { (.zero, false) }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
   var getDefaultInputDeviceName: @Sendable () async -> String? = { nil }
   var warmUpRecorder: @Sendable () async -> Void = {}
   /// Arms the capture engine without starting a recording (call on hotkey press).
   var prewarmCapture: @Sendable () async -> Void = {}
+  /// Restores volume / resumes media paused or muted for the active recording session.
+  var resumeMediaIfNeeded: @Sendable () async -> Void = {}
   var cleanup: @Sendable () async -> Void = {}
 }
 
@@ -65,10 +69,13 @@ extension RecordingClient: DependencyKey {
       previewRecordingDuration: { await live.previewRecordingDuration() },
       recordingSpeechMetrics: { await live.recordingSpeechMetrics() },
       previewSpeechMetrics: { await live.previewSpeechMetrics() },
+      previewHasSpeechActivity: { await live.previewHasSpeechActivity() },
+      previewSpeechEvaluation: { await live.previewSpeechEvaluation() },
       getAvailableInputDevices: { await live.getAvailableInputDevices() },
       getDefaultInputDeviceName: { await live.getDefaultInputDeviceName() },
       warmUpRecorder: { await live.warmUpRecorder() },
       prewarmCapture: { await live.prewarmCapture() },
+      resumeMediaIfNeeded: { await live.resumeMediaIfNeeded() },
       cleanup: { await live.cleanup() }
     )
   }
@@ -1342,7 +1349,6 @@ actor RecordingClientLive {
       }
 
       await flushDeferredCaptureRestartIfNeeded()
-      scheduleResumeMediaIfNeeded()
       return captureURL
     }
 
@@ -1361,7 +1367,6 @@ actor RecordingClientLive {
       clearActiveRecordingMetadata()
       lastRecordingEndedAt = stoppedAt
       await flushDeferredCaptureRestartIfNeeded()
-      scheduleResumeMediaIfNeeded()
       return makeIgnoredStopURL()
     }
     recorder?.stop()
@@ -1385,7 +1390,6 @@ actor RecordingClientLive {
     }
 
     await flushDeferredCaptureRestartIfNeeded()
-    scheduleResumeMediaIfNeeded()
 
     return exportedURL
   }
@@ -1444,6 +1448,10 @@ actor RecordingClientLive {
       return
     }
     setPreviousVolume(volume, sessionID: sessionID)
+  }
+
+  func resumeMediaIfNeeded() {
+    scheduleResumeMediaIfNeeded()
   }
 
   private func scheduleResumeMediaIfNeeded() {
@@ -1693,6 +1701,14 @@ actor RecordingClientLive {
 
   func previewSpeechMetrics() -> SpeechActivityMetrics {
     captureController.previewSpeechMetrics()
+  }
+
+  func previewHasSpeechActivity() -> Bool {
+    captureController.previewHasSpeechActivity()
+  }
+
+  func previewSpeechEvaluation() -> (metrics: SpeechActivityMetrics, hasActivity: Bool) {
+    captureController.previewSpeechEvaluation()
   }
 
   func warmUpRecorder() async {
