@@ -384,13 +384,27 @@
 
     },
     "Insert at cursor" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am Cursor einfügen"
+          }
+        }
+      }
     },
     "Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed." : {
 
     },
     "Live Preview" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau"
+          }
+        }
+      }
     },
     "Match" : {
 
@@ -483,7 +497,14 @@
       }
     },
     "Overlay" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overlay"
+          }
+        }
+      }
     },
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
 
@@ -546,7 +567,14 @@
 
     },
     "Quit Hex" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hex beenden"
+          }
+        }
+      }
     },
     "Refresh available input devices" : {
 
@@ -660,6 +688,16 @@
     },
     "Show live transcription at the text cursor, or in Hex's floating overlay while recording." : {
 
+    },
+    "Show live transcription at the text cursor, or in Hex's floating overlay while recording. Requires a Parakeet model and Super Fast Mode." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die Live-Transkription am Textcursor oder in Hexs schwebendem Overlay während der Aufnahme. Erfordert ein Parakeet-Modell und den Super-Schnell-Modus."
+          }
+        }
+      }
     },
     "Show more" : {
 

@@ -102,6 +102,8 @@ struct PasteboardClientLive {
             if let finalText, !finalText.isEmpty {
                 pasteboard.clearContents()
                 pasteboard.setString(finalText, forType: .string)
+            } else {
+                liveKeystrokePasteboardSession.userSnapshot?.restore(to: pasteboard)
             }
             return
         }
@@ -307,7 +309,8 @@ struct PasteboardClientLive {
     func replaceLiveText(
         targetBundleID: String?,
         previousText: String,
-        newText: String
+        newText: String,
+        preferFullReplace: Bool = false
     ) async -> Bool {
         guard previousText != newText else { return true }
 
@@ -316,7 +319,11 @@ struct PasteboardClientLive {
             try? await Task.sleep(for: .milliseconds(12))
         }
 
-        let action = LiveTextInsertionLogic.keystrokeUpdateAction(previous: previousText, new: newText)
+        let action = LiveTextInsertionLogic.keystrokeUpdateAction(
+            previous: previousText,
+            new: newText,
+            preferFullReplace: preferFullReplace
+        )
         switch action {
         case .none:
             return true
@@ -400,12 +407,8 @@ struct PasteboardClientLive {
             succeeded = (try? Self.insertTextAtCursor(text)) != nil
         }
 
-        if !hexSettings.copyToClipboard && succeeded {
-            if let snapshot = liveKeystrokePasteboardSession.userSnapshot {
-                try? await Task.sleep(for: .milliseconds(500))
-                snapshot.restore(to: pasteboard)
-            }
-        }
+        // Clipboard restore is deferred to endLiveKeystrokePasteboardSession so live
+        // preview updates are not blocked by a 500ms wait on every keystroke paste.
 
         return succeeded
     }

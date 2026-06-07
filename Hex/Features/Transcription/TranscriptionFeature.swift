@@ -362,7 +362,7 @@ private extension TranscriptionFeature {
 
         await withTaskGroup(of: Void.self) { group in
           group.addTask {
-            await recording.startRecording(requiresLiveAudio: false)
+            await recording.startRecording(requiresLiveAudio: useLiveTranscription)
           }
 
           if useLiveTranscription {
@@ -432,16 +432,8 @@ private extension TranscriptionFeature {
         await transcription.waitForParakeetIdle()
         try? await transcription.resetParakeetTranscriberState()
 
-        var previewSnapshotURL: URL?
-        if useLiveTranscription {
-          previewSnapshotURL = await recording.snapshotRecordingForPreview()
-        }
-
         var audioURL: URL?
         defer {
-          if let previewSnapshotURL {
-            FileManager.default.removeItemIfExists(at: previewSnapshotURL)
-          }
           if let audioURL {
             FileManager.default.removeItemIfExists(at: audioURL)
           }
@@ -459,18 +451,10 @@ private extension TranscriptionFeature {
           )
 
           var result = ""
-          if useLiveTranscription, let previewSnapshotURL {
-            transcriptionFeatureLogger.notice(
-              "Final Parakeet transcribing preview snapshot file=\(previewSnapshotURL.lastPathComponent)"
-            )
-            result = try await transcription.transcribe(previewSnapshotURL, model, decodeOptions) { _ in }
-          }
-          if result.isEmpty {
-            transcriptionFeatureLogger.notice(
-              "Final Parakeet transcribing capture file file=\(capturedURL.lastPathComponent)"
-            )
-            result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
-          }
+          transcriptionFeatureLogger.notice(
+            "Final Parakeet transcribing capture file file=\(capturedURL.lastPathComponent)"
+          )
+          result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
           if result.isEmpty, !liveTranscriptSnapshot.isEmpty {
             result = liveTranscriptSnapshot
             transcriptionFeatureLogger.notice(
@@ -534,7 +518,13 @@ private extension TranscriptionFeature {
     var inFlightTranscribe = false
 
     while !Task.isCancelled {
-      let pollDelayMs = previewGate.lastApplied.isEmpty ? 60 : (insertAtCursor ? 180 : 220)
+      let keystrokeBusy = liveTextInsertion.isKeystrokeUpdateInFlight()
+      let pollDelayMs: Int = {
+        if previewGate.lastApplied.isEmpty { return 60 }
+        if keystrokeBusy { return 300 }
+        if insertAtCursor { return 220 }
+        return 240
+      }()
       if pollCount > 0 {
         try? await Task.sleep(for: .milliseconds(pollDelayMs))
       }
@@ -542,6 +532,7 @@ private extension TranscriptionFeature {
 
       guard !Task.isCancelled else { break }
       guard !inFlightTranscribe else { continue }
+      guard !keystrokeBusy else { continue }
 
       let currentDuration = await recording.previewRecordingDuration()
       guard transcribeScheduler.shouldScheduleTranscribe(

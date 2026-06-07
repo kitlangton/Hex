@@ -17,6 +17,15 @@ final class LivePreviewLogicTests: XCTestCase {
     XCTAssertEqual(action, .replaceTail(backspaces: 1, insert: "ld"))
   }
 
+  func testKeystrokeUpdateActionPrefersFullReplace() {
+    let action = LiveTextInsertionLogic.keystrokeUpdateAction(
+      previous: "hello",
+      new: "hello world",
+      preferFullReplace: true
+    )
+    XCTAssertEqual(action, .replaceTail(backspaces: 5, insert: "hello world"))
+  }
+
   func testLivePreviewUpdateGateRequiresDoubleShrink() {
     var gate = LivePreviewUpdateGate()
     XCTAssertTrue(gate.shouldApply(next: "hello"))

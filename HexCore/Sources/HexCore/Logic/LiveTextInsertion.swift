@@ -58,8 +58,16 @@ public enum LiveTextInsertionLogic {
   }
 
   /// Plans minimal keystroke edits when ASR preview text changes (append, trim suffix, or full replace).
-  public static func keystrokeUpdateAction(previous: String, new: String) -> KeystrokeUpdateAction {
+  public static func keystrokeUpdateAction(
+    previous: String,
+    new: String,
+    preferFullReplace: Bool = false
+  ) -> KeystrokeUpdateAction {
     guard previous != new else { return .none }
+
+    if preferFullReplace, !previous.isEmpty {
+      return .replaceTail(backspaces: previous.count, insert: new)
+    }
 
     if new.isEmpty {
       guard !previous.isEmpty else { return .none }

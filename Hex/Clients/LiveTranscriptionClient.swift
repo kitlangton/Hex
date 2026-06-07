@@ -59,17 +59,29 @@ actor LiveTranscriptionClientLive {
   private let logger = HexLog.parakeet
   private var manager: StreamingAsrManager?
   private var bridgeTask: Task<Void, Never>?
-  private let (updateStream, updateContinuation) = AsyncStream<LiveTranscriptionUpdate>.makeStream()
+  private var updateStream: AsyncStream<LiveTranscriptionUpdate>?
+  private var updateContinuation: AsyncStream<LiveTranscriptionUpdate>.Continuation?
   private var cachedModels: AsrModels?
   private var cachedVariant: ParakeetModel?
   private var fedBufferCount = 0
+
+  init() {
+    resetUpdateStream()
+  }
+
+  private func resetUpdateStream() {
+    updateContinuation?.finish()
+    let (stream, continuation) = AsyncStream<LiveTranscriptionUpdate>.makeStream()
+    updateStream = stream
+    updateContinuation = continuation
+  }
 
   func isSupported(_ modelName: String) -> Bool {
     ParakeetModel(rawValue: modelName) != nil
   }
 
   func observeUpdates() -> AsyncStream<LiveTranscriptionUpdate> {
-    updateStream
+    updateStream ?? AsyncStream { _ in }
   }
 
   func prepare(modelName: String) async throws {
@@ -95,6 +107,7 @@ actor LiveTranscriptionClientLive {
 
   func start(modelName: String) async throws {
     await cancelSessionOnly()
+    resetUpdateStream()
 
     guard let variant = ParakeetModel(rawValue: modelName) else {
       throw NSError(
@@ -114,6 +127,7 @@ actor LiveTranscriptionClientLive {
     logger.notice("Live transcription started variant=\(variant.identifier)")
 
     bridgeTask = Task { [updateContinuation, logger] in
+      guard let updateContinuation else { return }
       var updateCount = 0
       for await update in await manager.transcriptionUpdates {
         guard !Task.isCancelled else { break }
@@ -171,6 +185,7 @@ actor LiveTranscriptionClientLive {
     await manager?.cancel()
     manager = nil
     fedBufferCount = 0
+    resetUpdateStream()
   }
 
   private func streamingConfig(for variant: ParakeetModel) -> StreamingAsrConfig {

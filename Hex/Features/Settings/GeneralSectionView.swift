@@ -73,7 +73,7 @@ struct GeneralSectionView: View {
 				HStack(alignment: .center) {
 					Text("Live Preview")
 					Spacer()
-					Picker("", selection: Binding(
+					Picker("Live Preview", selection: Binding(
 						get: { store.hexSettings.livePreviewDisplayMode },
 						set: { store.send(.setLivePreviewDisplayMode($0)) }
 					)) {

@@ -180,7 +180,7 @@ final class SuperFastCaptureController {
 
   var previewCaptureDuration: TimeInterval {
     processingQueue.sync {
-      guard activeRecording != nil else { return 0 }
+      guard activeRecording != nil || isLiveMonitoring else { return 0 }
       return Double(previewSamples.count) / SuperFastCaptureConstants.sampleRate
     }
   }
@@ -190,44 +190,47 @@ final class SuperFastCaptureController {
   func makePreviewSnapshotURL(
     minimumDuration: TimeInterval = SuperFastCaptureConstants.previewMinimumDuration
   ) -> URL? {
-    processingQueue.sync {
-      guard activeRecording != nil else { return nil }
+    let snapshotData = processingQueue.sync { () -> (samples: [Float], duration: TimeInterval)? in
+      guard activeRecording != nil || isLiveMonitoring else { return nil }
 
       let duration = Double(previewSamples.count) / SuperFastCaptureConstants.sampleRate
       guard duration >= minimumDuration else { return nil }
+      return (previewSamples, duration)
+    }
 
-      let snapshotURL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("hex-preview-\(UUID().uuidString).wav")
+    guard let snapshotData else { return nil }
+    let (samples, duration) = snapshotData
 
-      do {
-        if FileManager.default.fileExists(atPath: snapshotURL.path) {
-          try FileManager.default.removeItem(at: snapshotURL)
-        }
+    let snapshotURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("hex-preview-\(UUID().uuidString).wav")
 
-        let file = try AVAudioFile(
-          forWriting: snapshotURL,
-          settings: [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: SuperFastCaptureConstants.sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: true,
-          ],
-          commonFormat: .pcmFormatFloat32,
-          interleaved: false
-        )
-        try write(samples: previewSamples, to: file)
-        let sampleCount = previewSamples.count
-        logger.debug(
-          "Preview snapshot written duration=\(String(format: "%.3f", duration))s samples=\(sampleCount) file=\(snapshotURL.lastPathComponent)"
-        )
-        return snapshotURL
-      } catch {
-        logger.debug("Failed to write preview snapshot: \(error.localizedDescription)")
-        return nil
+    do {
+      if FileManager.default.fileExists(atPath: snapshotURL.path) {
+        try FileManager.default.removeItem(at: snapshotURL)
       }
+
+      let file = try AVAudioFile(
+        forWriting: snapshotURL,
+        settings: [
+          AVFormatIDKey: Int(kAudioFormatLinearPCM),
+          AVSampleRateKey: SuperFastCaptureConstants.sampleRate,
+          AVNumberOfChannelsKey: 1,
+          AVLinearPCMBitDepthKey: 32,
+          AVLinearPCMIsFloatKey: true,
+          AVLinearPCMIsBigEndianKey: false,
+          AVLinearPCMIsNonInterleaved: true,
+        ],
+        commonFormat: .pcmFormatFloat32,
+        interleaved: false
+      )
+      try write(samples: samples, to: file)
+      logger.debug(
+        "Preview snapshot written duration=\(String(format: "%.3f", duration))s samples=\(samples.count) file=\(snapshotURL.lastPathComponent)"
+      )
+      return snapshotURL
+    } catch {
+      logger.debug("Failed to write preview snapshot: \(error.localizedDescription)")
+      return nil
     }
   }
 
@@ -493,6 +496,8 @@ final class SuperFastCaptureController {
     processingQueue.sync {
       isLiveMonitoring = true
       didLogFirstLiveBuffer = false
+      previewSamples.removeAll(keepingCapacity: true)
+      didLogPreviewSampleCap = false
     }
     logger.notice("Capture engine live monitoring started")
   }
@@ -565,7 +570,7 @@ final class SuperFastCaptureController {
       }
     }
 
-    if activeRecording != nil {
+    if activeRecording != nil || isLiveMonitoring {
       let maxPreviewSamples = Int(
         SuperFastCaptureConstants.previewMaximumDuration * SuperFastCaptureConstants.sampleRate
       )

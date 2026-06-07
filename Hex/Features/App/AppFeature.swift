@@ -138,8 +138,7 @@ struct AppFeature {
 
       case .settings(.revealAppInFinder):
         return .run { _ in
-          guard let url = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent() as URL? else { return }
-          NSWorkspace.shared.activateFileViewerSelecting([url])
+          NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         }
 
       case .settings:
@@ -233,7 +232,9 @@ struct AppFeature {
           return false
         }
 
-        Task { await send(.settings(.keyEvent(keyEvent))) }
+        MainActor.assumeIsolated {
+          send(.settings(.keyEvent(keyEvent)))
+        }
         return true
       }
 

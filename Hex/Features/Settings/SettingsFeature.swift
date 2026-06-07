@@ -199,12 +199,7 @@ struct SettingsFeature {
     }
 
     if target == .recording, !updatedModifiers.isEmpty {
-      // Confirm modifier-only hotkeys with Return or after all modifiers are released.
-      if keyEvent.key == .return {
-        applyCapturedHotKey(key: nil, modifiers: updatedModifiers, for: target, state: &state)
-        endCapture(target, state: &state)
-        return .none
-      }
+      // Confirm modifier-only hotkeys after all modifiers are released.
       if keyEvent.key == nil, keyEvent.modifiers.isEmpty {
         applyCapturedHotKey(key: nil, modifiers: updatedModifiers, for: target, state: &state)
         endCapture(target, state: &state)

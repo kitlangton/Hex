@@ -87,6 +87,7 @@ actor TranscriptionClientLive {
   private var parakeet: ParakeetClient = ParakeetClient()
   private var parakeetPipelineHeld = false
   private var parakeetPipelineWaiters: [CheckedContinuation<Void, Never>] = []
+  private var parakeetPipelineIdleWaiters: [CheckedContinuation<Void, Never>] = []
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -297,6 +298,11 @@ actor TranscriptionClientLive {
 
   func waitForParakeetIdle() async {
     await parakeet.waitUntilTranscribeIdle()
+    if parakeetPipelineHeld {
+      await withCheckedContinuation { continuation in
+        parakeetPipelineIdleWaiters.append(continuation)
+      }
+    }
   }
 
   func resetParakeetTranscriberState() async throws {
@@ -335,6 +341,9 @@ actor TranscriptionClientLive {
   private func releaseParakeetPipeline() {
     if parakeetPipelineWaiters.isEmpty {
       parakeetPipelineHeld = false
+      let idleWaiters = parakeetPipelineIdleWaiters
+      parakeetPipelineIdleWaiters.removeAll()
+      idleWaiters.forEach { $0.resume() }
       return
     }
     parakeetPipelineWaiters.removeFirst().resume()

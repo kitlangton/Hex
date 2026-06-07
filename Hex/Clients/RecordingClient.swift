@@ -1183,19 +1183,34 @@ actor RecordingClientLive {
     resumeMediaTask?.cancel()
     resumeMediaTask = nil
 
+    // Assign the session ID before any early return so an in-flight stop from a
+    // prior recording is ignored once the user starts again during the stop grace window.
+    let sessionID = UUID()
+    recordingSessionID = sessionID
+    mediaControlTask?.cancel()
+    mediaControlTask = nil
+
     if isCaptureActive {
-      recordingLogger.notice("Ignoring duplicate startRecording while capture is active")
-      return
+      recordingLogger.notice("Waiting for prior capture to finish before starting new recording")
+      let deadline = Date().addingTimeInterval(
+        captureController.stopTimingEstimate.gracePeriod + 0.05
+      )
+      while isCaptureActive, Date() < deadline {
+        try? await Task.sleep(for: .milliseconds(5))
+        guard isCurrentSession(sessionID) else {
+          recordingLogger.notice("New recording session superseded while waiting for prior capture")
+          return
+        }
+      }
+      if isCaptureActive {
+        recordingLogger.notice("Prior capture still active; cannot start new recording")
+        return
+      }
     }
 
     if hasActiveMediaControlState {
       await resumeMediaImmediately()
     }
-
-    let sessionID = UUID()
-    recordingSessionID = sessionID
-    mediaControlTask?.cancel()
-    mediaControlTask = nil
 
     // Defer pause/mute until the recording survives the minimum hold threshold.
     // This avoids pause/play and volume flicker on accidental or fluttering hotkey presses.
