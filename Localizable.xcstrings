@@ -4,9 +4,6 @@
     "" : {
       "shouldTranslate" : false
     },
-    "(%@)" : {
-
-    },
     "%@ %@" : {
       "localizations" : {
         "en" : {
@@ -386,7 +383,13 @@
     "Input Monitoring is required so Hex can listen for your hotkey." : {
 
     },
+    "Insert at cursor" : {
+
+    },
     "Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed." : {
+
+    },
+    "Live Preview" : {
 
     },
     "Match" : {
@@ -479,6 +482,9 @@
         }
       }
     },
+    "Overlay" : {
+
+    },
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
 
     },
@@ -539,7 +545,7 @@
     "Preview" : {
 
     },
-    "Quit" : {
+    "Quit Hex" : {
 
     },
     "Refresh available input devices" : {
@@ -612,6 +618,7 @@
     },
     "Settings..." : {
       "comment" : "button in top bar for opening settings",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -620,6 +627,9 @@
           }
         }
       }
+    },
+    "Settings…" : {
+
     },
     "Show Changelog" : {
       "localizations" : {
@@ -646,6 +656,9 @@
 
     },
     "Show less" : {
+
+    },
+    "Show live transcription at the text cursor, or in Hex's floating overlay while recording." : {
 
     },
     "Show more" : {
@@ -711,6 +724,9 @@
       }
     },
     "Transforms" : {
+
+    },
+    "Unavailable Device" : {
 
     },
     "Unlimited" : {

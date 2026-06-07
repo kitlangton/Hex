@@ -24,6 +24,15 @@ struct TranscriptionClient {
   /// Reports transcription progress via `progressCallback`.
   var transcribe: @Sendable (URL, String, DecodingOptions, @escaping (Progress) -> Void) async throws -> String
 
+  /// Fast Parakeet preview on a growing capture file while recording is in progress.
+  var transcribePreview: @Sendable (URL, String) async throws -> String = { _, _ in "" }
+
+  /// Waits until preview and final Parakeet transcribes are not in flight.
+  var waitForParakeetIdle: @Sendable () async -> Void = {}
+
+  /// Clears FluidAudio decoder state between preview and final passes.
+  var resetParakeetTranscriberState: @Sendable () async throws -> Void = {}
+
   /// Ensures a model is downloaded (if missing) and loaded into memory, reporting progress via `progressCallback`.
   var downloadModel: @Sendable (String, @escaping (Progress) -> Void) async throws -> Void
 
@@ -45,6 +54,9 @@ extension TranscriptionClient: DependencyKey {
     let live = TranscriptionClientLive()
     return Self(
       transcribe: { try await live.transcribe(url: $0, model: $1, options: $2, progressCallback: $3) },
+      transcribePreview: { try await live.transcribePreview(url: $0, model: $1) },
+      waitForParakeetIdle: { await live.waitForParakeetIdle() },
+      resetParakeetTranscriberState: { try await live.resetParakeetTranscriberState() },
       downloadModel: { try await live.downloadAndLoadModel(variant: $0, progressCallback: $1) },
       deleteModel: { try await live.deleteModel(variant: $0) },
       isModelDownloaded: { await live.isModelDownloaded($0) },
@@ -73,6 +85,8 @@ actor TranscriptionClientLive {
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
   private var parakeet: ParakeetClient = ParakeetClient()
+  private var parakeetPipelineHeld = false
+  private var parakeetPipelineWaiters: [CheckedContinuation<Void, Never>] = []
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -229,6 +243,9 @@ actor TranscriptionClientLive {
   ) async throws -> String {
     let startAll = Date()
     if isParakeet(model) {
+      await acquireParakeetPipeline()
+      defer { releaseParakeetPipeline() }
+
       transcriptionLogger.notice("Transcribing with Parakeet model=\(model) file=\(url.lastPathComponent)")
       let startLoad = Date()
       try await downloadAndLoadModel(variant: model) { p in
@@ -276,6 +293,51 @@ actor TranscriptionClientLive {
     // Concatenate results from all segments.
     let text = results.map(\.text).joined(separator: " ")
     return text
+  }
+
+  func waitForParakeetIdle() async {
+    await parakeet.waitUntilTranscribeIdle()
+  }
+
+  func resetParakeetTranscriberState() async throws {
+    try await parakeet.resetTranscriberState()
+  }
+
+  /// Lightweight Parakeet pass for live preview while a capture file is still growing.
+  func transcribePreview(url: URL, model: String) async throws -> String {
+    try Task.checkCancellation()
+    await acquireParakeetPipeline()
+    defer { releaseParakeetPipeline() }
+
+    guard isParakeet(model) else { return "" }
+    guard FileManager.default.fileExists(atPath: url.path) else { return "" }
+
+    try await parakeet.ensureLoaded(modelName: model) { _ in }
+    let preparedClip = try ParakeetClipPreparer.ensureMinimumDuration(
+      url: url,
+      minimumDuration: ParakeetClipPreparer.previewMinimumDuration,
+      logger: parakeetLogger
+    )
+    defer { preparedClip.cleanup() }
+    return try await parakeet.transcribe(preparedClip.url)
+  }
+
+  private func acquireParakeetPipeline() async {
+    if !parakeetPipelineHeld {
+      parakeetPipelineHeld = true
+      return
+    }
+    await withCheckedContinuation { continuation in
+      parakeetPipelineWaiters.append(continuation)
+    }
+  }
+
+  private func releaseParakeetPipeline() {
+    if parakeetPipelineWaiters.isEmpty {
+      parakeetPipelineHeld = false
+      return
+    }
+    parakeetPipelineWaiters.removeFirst().resume()
   }
 
   // MARK: - Private Helpers

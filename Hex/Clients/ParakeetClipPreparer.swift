@@ -36,6 +36,8 @@ enum ParakeetClipPreparer {
   // FluidAudio's LastChunkHandling guidance recommends chunk_duration 1.5s,
   // so pad to at least that window to avoid decoder errors.
   static let defaultMinimumDuration: TimeInterval = 1.5
+  /// Shorter padding for live preview snapshots to reduce first-token latency.
+  static let previewMinimumDuration: TimeInterval = 0.5
 
   static func ensureMinimumDuration(
     url: URL,

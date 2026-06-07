@@ -15,6 +15,13 @@ import WhisperKit
 
 private let transcriptionFeatureLogger = HexLog.transcription
 
+extension SharedReaderKey where Self == InMemoryKey<Bool>.Default {
+  /// Mirrors `TranscriptionFeature.State.isTranscribing` for hotkey monitor access.
+  static var isTranscriptionBusy: Self {
+    Self[.inMemory("isTranscriptionBusy"), default: false]
+  }
+}
+
 @Reducer
 struct TranscriptionFeature {
   @ObservableState
@@ -25,17 +32,25 @@ struct TranscriptionFeature {
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
+    var liveTranscript: String = ""
     var sourceAppBundleID: String?
     var sourceAppName: String?
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
+    @Shared(.isTranscriptionBusy) var isTranscriptionBusy: Bool = false
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
+
+    mutating func setTranscribing(_ value: Bool) {
+      isTranscribing = value
+      $isTranscriptionBusy.withLock { $0 = value }
+    }
   }
 
   enum Action {
     case task
     case audioLevelUpdated(Meter)
+    case liveTranscriptUpdated(String)
 
     // Hotkey actions
     case hotKeyPressed
@@ -62,9 +77,12 @@ struct TranscriptionFeature {
     case recordingStart
     case recordingCleanup
     case transcription
+    case liveTranscription
   }
 
   @Dependency(\.transcription) var transcription
+  @Dependency(\.liveTranscription) var liveTranscription
+  @Dependency(\.liveTextInsertion) var liveTextInsertion
   @Dependency(\.recording) var recording
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -83,10 +101,12 @@ struct TranscriptionFeature {
         // 1) Observing audio meter
         // 2) Monitoring hot key events
         // 3) Priming the recorder for instant startup
+        // 4) Preloading live transcription models when Parakeet is selected
         return .merge(
           startMeteringEffect(),
           startHotKeyMonitoringEffect(),
-          warmUpRecorderEffect()
+          warmUpRecorderEffect(),
+          warmUpLiveTranscriptionEffect()
         )
 
       // MARK: - Metering
@@ -95,11 +115,14 @@ struct TranscriptionFeature {
         state.meter = meter
         return .none
 
+      case let .liveTranscriptUpdated(text):
+        state.liveTranscript = text
+        return .none
+
       // MARK: - HotKey Flow
 
       case .hotKeyPressed:
-        // If we're transcribing, send a cancel first. Otherwise start recording immediately.
-        // We'll decide later (on release) whether to keep or discard the recording.
+        // Ignore presses while a prior recording is still being transcribed.
         return handleHotKeyPressed(isTranscribing: state.isTranscribing)
 
       case .hotKeyReleased:
@@ -159,12 +182,24 @@ private extension TranscriptionFeature {
     .cancellable(id: CancelID.metering, cancelInFlight: true)
   }
 
+  /// Preloads Parakeet models so live preview and final transcription start quickly.
+  func warmUpLiveTranscriptionEffect() -> Effect<Action> {
+    .run { _ in
+      @Shared(.hexSettings) var hexSettings: HexSettings
+      let model = hexSettings.selectedModel
+      guard ParakeetModel(rawValue: model) != nil else { return }
+      // Snapshot live preview and final transcription share the batch Parakeet client.
+      try? await transcription.downloadModel(model) { _ in }
+    }
+  }
+
   /// Effect to start monitoring hotkey events through the `keyEventMonitor`.
   func startHotKeyMonitoringEffect() -> Effect<Action> {
     .run { send in
-      var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+      @Shared(.isTranscriptionBusy) var isTranscriptionBusy: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
+      var hotKeyProcessor: HotKeyProcessor = .init(hotkey: hexSettings.hotkey)
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
@@ -180,6 +215,11 @@ private extension TranscriptionFeature {
         hotKeyProcessor.useDoubleTapOnly = useDoubleTapOnly
         hotKeyProcessor.minimumKeyTime = hexSettings.minimumKeyTime
 
+        // Skip hotkey state while Hex is injecting live preview keystrokes.
+        if liveTextInsertion.isKeystrokeUpdateInFlight() {
+          return false
+        }
+
         switch inputEvent {
         case .keyboard(let keyEvent):
           // If Escape is pressed with no modifiers while idle, let's treat that as `cancel`.
@@ -193,11 +233,18 @@ private extension TranscriptionFeature {
           // Process the key event
           switch hotKeyProcessor.process(keyEvent: keyEvent) {
           case .startRecording:
-            // If double-tap lock is triggered, we start recording immediately
-            if hotKeyProcessor.state == .doubleTapLock {
-              Task { await send(.startRecording) }
-            } else {
-              Task { await send(.hotKeyPressed) }
+            guard !isTranscriptionBusy else { return false }
+            let isDoubleTapLock = hotKeyProcessor.state == .doubleTapLock
+            Task {
+              await recording.prewarmCapture()
+              if hexSettings.livePreviewDisplayMode == .cursor {
+                _ = liveTextInsertion.prepareNow()
+              }
+              if isDoubleTapLock {
+                await send(.startRecording)
+              } else {
+                await send(.hotKeyPressed)
+              }
             }
             // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
             // But if useDoubleTapOnly is true, always intercept the key
@@ -264,12 +311,8 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
-    // If already transcribing, cancel first. Otherwise start recording immediately.
-    guard isTranscribing else { return .send(.startRecording) }
-    return .concatenate(
-      .send(.cancel),
-      .send(.startRecording)
-    )
+    guard !isTranscribing else { return .none }
+    return .send(.startRecording)
   }
 
   func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
@@ -282,6 +325,7 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
+    guard !state.isRecording, !state.isTranscribing else { return .none }
     guard state.modelBootstrapState.isModelReady else {
       return .merge(
         .send(.modelMissing),
@@ -289,6 +333,7 @@ private extension TranscriptionFeature {
       )
     }
     state.isRecording = true
+    state.liveTranscript = ""
     let startTime = now
     state.recordingStartTime = startTime
     
@@ -300,12 +345,11 @@ private extension TranscriptionFeature {
     transcriptionFeatureLogger.notice("Recording started at \(startTime.ISO8601Format())")
 
     // Prevent system sleep during recording
+    let model = state.hexSettings.selectedModel
+    let useLiveTranscription = ParakeetModel(rawValue: model) != nil
     return .merge(
       .cancel(id: CancelID.recordingCleanup),
-      .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] _ in
-        // Play sound immediately for instant feedback
-        soundEffect.play(.startRecording)
-
+      .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
         if preventSleep {
           await sleepManagement.preventSleep(reason: "Hex Voice Recording")
         }
@@ -315,7 +359,20 @@ private extension TranscriptionFeature {
           }
           return
         }
-        await recording.startRecording()
+
+        await withTaskGroup(of: Void.self) { group in
+          group.addTask {
+            await recording.startRecording(requiresLiveAudio: false)
+          }
+
+          if useLiveTranscription {
+            group.addTask {
+              await runSnapshotLivePreview(model: model, send: send)
+            }
+          }
+        }
+
+        soundEffect.play(.startRecording)
       }
       .cancellable(id: CancelID.recordingStart, cancelInFlight: true)
     )
@@ -353,21 +410,38 @@ private extension TranscriptionFeature {
     }
 
     // Otherwise, proceed to transcription
-    state.isTranscribing = true
+    state.setTranscribing(true)
     state.error = nil
     let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
+    let useLiveTranscription = ParakeetModel(rawValue: model) != nil
 
-    state.isPrewarming = true
+    state.isPrewarming = !useLiveTranscription
+    let liveTranscriptSnapshot = state.liveTranscript
 
-    return .merge(
+    return .concatenate(
       .cancel(id: CancelID.recordingStart),
-      .run { [sleepManagement] send in
+      .run { [sleepManagement, useLiveTranscription, liveTranscriptSnapshot] send in
+        await recording.setLiveAudioConsumer(nil)
+        await liveTranscription.cancel()
+
         // Allow system to sleep again
         await sleepManagement.allowSleep()
 
+        // Let the cancelled preview loop finish any in-flight Parakeet work before final pass.
+        await transcription.waitForParakeetIdle()
+        try? await transcription.resetParakeetTranscriberState()
+
+        var previewSnapshotURL: URL?
+        if useLiveTranscription {
+          previewSnapshotURL = await recording.snapshotRecordingForPreview()
+        }
+
         var audioURL: URL?
         defer {
+          if let previewSnapshotURL {
+            FileManager.default.removeItemIfExists(at: previewSnapshotURL)
+          }
           if let audioURL {
             FileManager.default.removeItemIfExists(at: audioURL)
           }
@@ -378,17 +452,35 @@ private extension TranscriptionFeature {
           guard !Task.isCancelled else { return }
           soundEffect.play(.stopRecording)
 
-          // Create transcription options with the selected language
-          // Note: cap concurrency to avoid audio I/O overloads on some Macs
           let decodeOptions = DecodingOptions(
             language: language,
-            detectLanguage: language == nil, // Only auto-detect if no language specified
+            detectLanguage: language == nil,
             chunkingStrategy: .vad,
           )
 
-          let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
+          var result = ""
+          if useLiveTranscription, let previewSnapshotURL {
+            transcriptionFeatureLogger.notice(
+              "Final Parakeet transcribing preview snapshot file=\(previewSnapshotURL.lastPathComponent)"
+            )
+            result = try await transcription.transcribe(previewSnapshotURL, model, decodeOptions) { _ in }
+          }
+          if result.isEmpty {
+            transcriptionFeatureLogger.notice(
+              "Final Parakeet transcribing capture file file=\(capturedURL.lastPathComponent)"
+            )
+            result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
+          }
+          if result.isEmpty, !liveTranscriptSnapshot.isEmpty {
+            result = liveTranscriptSnapshot
+            transcriptionFeatureLogger.notice(
+              "Using live preview transcript as final fallback chars=\(result.count)"
+            )
+          }
 
-          transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
+          transcriptionFeatureLogger.notice(
+            "Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)"
+          )
           audioURL = nil
           await send(.transcriptionResult(result, capturedURL, duration))
         } catch {
@@ -396,8 +488,151 @@ private extension TranscriptionFeature {
           await send(.transcriptionError(error, nil))
         }
       }
-      .cancellable(id: CancelID.transcription)
+      .cancellable(id: CancelID.transcription),
     )
+  }
+
+  /// Feeds capture-engine audio into FluidAudio streaming ASR (~350ms chunks).
+  /// Reserved for future use; live preview currently uses batch snapshots for accuracy.
+  func runStreamingLivePreview(model: String, send: Send<Action>) async {
+    @Shared(.hexSettings) var hexSettings: HexSettings
+    let insertAtCursor = hexSettings.livePreviewDisplayMode == .cursor
+    do {
+      try await liveTranscription.start(model)
+      transcriptionFeatureLogger.notice("Streaming live preview started model=\(model)")
+
+      await recording.setLiveAudioConsumer { buffer in
+        await liveTranscription.feedAudio(buffer)
+      }
+
+      var previewGate = LivePreviewUpdateGate()
+      for await update in await liveTranscription.observeUpdates() {
+        guard !Task.isCancelled else { break }
+        let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        await applyLivePreviewText(
+          text,
+          insertAtCursor: insertAtCursor,
+          previewGate: &previewGate,
+          send: send
+        )
+      }
+    } catch {
+      transcriptionFeatureLogger.error(
+        "Streaming live preview failed: \(error.localizedDescription)"
+      )
+    }
+    await recording.setLiveAudioConsumer(nil)
+  }
+
+  /// Batch Parakeet on growing in-memory WAV snapshots (reliable live cursor updates).
+  func runSnapshotLivePreview(model: String, send: Send<Action>) async {
+    @Shared(.hexSettings) var hexSettings: HexSettings
+    let insertAtCursor = hexSettings.livePreviewDisplayMode == .cursor
+    var previewGate = LivePreviewUpdateGate()
+    var transcribeScheduler = LivePreviewTranscriptionScheduler()
+    var pollCount = 0
+    var inFlightTranscribe = false
+
+    while !Task.isCancelled {
+      let pollDelayMs = previewGate.lastApplied.isEmpty ? 60 : (insertAtCursor ? 180 : 220)
+      if pollCount > 0 {
+        try? await Task.sleep(for: .milliseconds(pollDelayMs))
+      }
+      pollCount += 1
+
+      guard !Task.isCancelled else { break }
+      guard !inFlightTranscribe else { continue }
+
+      let currentDuration = await recording.previewRecordingDuration()
+      guard transcribeScheduler.shouldScheduleTranscribe(
+        snapshotDuration: currentDuration,
+        hasInFlightTranscribe: inFlightTranscribe
+      ) else { continue }
+
+      guard !Task.isCancelled else { break }
+
+      guard let snapshotURL = await recording.snapshotRecordingForPreview() else { continue }
+      defer { try? FileManager.default.removeItem(at: snapshotURL) }
+
+      let capturedDuration = currentDuration
+      inFlightTranscribe = true
+      defer { inFlightTranscribe = false }
+
+      let text: String?
+      do {
+        let rawText = try await transcription.transcribePreview(snapshotURL, model)
+        text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+      } catch is CancellationError {
+        break
+      } catch {
+        if Task.isCancelled { break }
+        text = nil
+      }
+
+      guard !Task.isCancelled else { break }
+
+      let nowDuration = await recording.previewRecordingDuration()
+      guard let text, !text.isEmpty else { continue }
+
+      transcribeScheduler.markTranscribed(duration: capturedDuration)
+
+      if transcribeScheduler.shouldApplyResult(
+        resultDuration: capturedDuration,
+        currentDuration: nowDuration
+      ) {
+        await applyLivePreviewText(
+          text,
+          insertAtCursor: insertAtCursor,
+          previewGate: &previewGate,
+          send: send
+        )
+      } else {
+        transcribeScheduler.noteSkippedStaleResult(at: capturedDuration)
+        transcriptionFeatureLogger.debug(
+          "Discarded stale live preview transcribe result captured=\(String(format: "%.3f", capturedDuration))s current=\(String(format: "%.3f", nowDuration))s"
+        )
+      }
+    }
+  }
+
+  func applyLivePreviewUpdate(_ text: String, send: Send<Action>) async -> Bool {
+    @Shared(.hexSettings) var hexSettings: HexSettings
+    let insertAtCursor = hexSettings.livePreviewDisplayMode == .cursor
+    guard !text.isEmpty else { return false }
+
+    if insertAtCursor {
+      guard await liveTextInsertion.update(text) else {
+        transcriptionFeatureLogger.debug("Live preview apply failed chars=\(text.count)")
+        return false
+      }
+      transcriptionFeatureLogger.notice("Live preview applied chars=\(text.count)")
+    } else {
+      transcriptionFeatureLogger.notice("Live preview overlay updated chars=\(text.count)")
+    }
+    await send(.liveTranscriptUpdated(text))
+    return true
+  }
+
+  func applyLivePreviewText(
+    _ text: String,
+    insertAtCursor: Bool,
+    previewGate: inout LivePreviewUpdateGate,
+    send: Send<Action>
+  ) async {
+    guard previewGate.shouldApply(next: text) else { return }
+
+    if insertAtCursor {
+      guard await liveTextInsertion.update(text) else {
+        transcriptionFeatureLogger.debug("Live preview apply failed chars=\(text.count)")
+        return
+      }
+      transcriptionFeatureLogger.notice("Live preview applied chars=\(text.count)")
+    } else {
+      transcriptionFeatureLogger.notice("Live preview overlay updated chars=\(text.count)")
+    }
+
+    previewGate.markApplied(text)
+    await send(.liveTranscriptUpdated(text))
   }
 }
 
@@ -410,8 +645,9 @@ private extension TranscriptionFeature {
     audioURL: URL,
     duration: TimeInterval
   ) -> Effect<Action> {
-    state.isTranscribing = false
+    state.setTranscribing(false)
     state.isPrewarming = false
+    state.liveTranscript = ""
 
     // Check for force quit command (emergency escape hatch)
     if ForceQuitCommandDetector.matches(result) {
@@ -424,9 +660,10 @@ private extension TranscriptionFeature {
       }
     }
 
-    // If empty text, nothing else to do
+    // If empty text, revert any live preview that was inserted at the cursor.
     guard !result.isEmpty else {
       return .run { _ in
+        await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
         FileManager.default.removeItemIfExists(at: audioURL)
       }
     }
@@ -458,6 +695,7 @@ private extension TranscriptionFeature {
 
     guard !modifiedResult.isEmpty else {
       return .run { _ in
+        await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
         FileManager.default.removeItemIfExists(at: audioURL)
       }
     }
@@ -474,7 +712,10 @@ private extension TranscriptionFeature {
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,
           audioURL: audioURL,
-          transcriptionHistory: transcriptionHistory
+          transcriptionHistory: transcriptionHistory,
+          liveTextInsertion: liveTextInsertion,
+          pasteboard: pasteboard,
+          soundEffect: soundEffect
         )
       } catch {
         await send(.transcriptionError(error, audioURL))
@@ -488,15 +729,23 @@ private extension TranscriptionFeature {
     error: Error,
     audioURL: URL?
   ) -> Effect<Action> {
-    state.isTranscribing = false
+    state.setTranscribing(false)
     state.isPrewarming = false
+    state.liveTranscript = ""
     state.error = error.localizedDescription
     
     if let audioURL {
       FileManager.default.removeItemIfExists(at: audioURL)
     }
 
-    return .none
+    return .run { _ in
+      await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
+    }
+  }
+
+  static func revertLivePreviewIfNeeded(liveTextInsertion: LiveTextInsertionClient) async {
+    guard await liveTextInsertion.isActive() else { return }
+    await liveTextInsertion.revert()
   }
 
   /// Move file to permanent location, create a transcript record, paste text, and play sound.
@@ -506,7 +755,10 @@ private extension TranscriptionFeature {
     sourceAppBundleID: String?,
     sourceAppName: String?,
     audioURL: URL,
-    transcriptionHistory: Shared<TranscriptionHistory>
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    liveTextInsertion: LiveTextInsertionClient,
+    pasteboard: PasteboardClient,
+    soundEffect: SoundEffectsClient
   ) async throws {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -536,8 +788,18 @@ private extension TranscriptionFeature {
       FileManager.default.removeItemIfExists(at: audioURL)
     }
 
-    await pasteboard.paste(result)
-    soundEffect.play(.pasteTranscript)
+    if await liveTextInsertion.isActive() {
+      if await liveTextInsertion.finalize(result) {
+        soundEffect.play(.pasteTranscript)
+      } else {
+        await liveTextInsertion.revert()
+        await pasteboard.paste(result)
+        soundEffect.play(.pasteTranscript)
+      }
+    } else {
+      await pasteboard.paste(result)
+      soundEffect.play(.pasteTranscript)
+    }
   }
 }
 
@@ -546,14 +808,18 @@ private extension TranscriptionFeature {
 private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
     let wasRecording = state.isRecording
-    state.isTranscribing = false
+    state.setTranscribing(false)
     state.isRecording = false
     state.isPrewarming = false
+    state.liveTranscript = ""
 
     return .merge(
       .cancel(id: CancelID.transcription),
+      .cancel(id: CancelID.liveTranscription),
       .cancel(id: CancelID.recordingStart),
       .run { [sleepManagement] _ in
+        await liveTranscription.cancel()
+        await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
         // Allow system to sleep again
         await sleepManagement.allowSleep()
         guard wasRecording else {
@@ -573,11 +839,15 @@ private extension TranscriptionFeature {
   func handleDiscard(_ state: inout State) -> Effect<Action> {
     state.isRecording = false
     state.isPrewarming = false
+    state.liveTranscript = ""
 
     // Silently discard - no sound effect
     return .merge(
+      .cancel(id: CancelID.liveTranscription),
       .cancel(id: CancelID.recordingStart),
       .run { [sleepManagement] _ in
+        await liveTranscription.cancel()
+        await Self.revertLivePreviewIfNeeded(liveTextInsertion: liveTextInsertion)
         // Allow system to sleep again
         await sleepManagement.allowSleep()
         let url = await recording.stopRecording()
@@ -593,6 +863,7 @@ private extension TranscriptionFeature {
 
 struct TranscriptionView: View {
   @Bindable var store: StoreOf<TranscriptionFeature>
+  @Shared(.hexSettings) var hexSettings: HexSettings
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
@@ -610,7 +881,9 @@ struct TranscriptionView: View {
   var body: some View {
     TranscriptionIndicatorView(
       status: status,
-      meter: store.meter
+      meter: store.meter,
+      liveTranscript: store.liveTranscript,
+      livePreviewDisplayMode: hexSettings.livePreviewDisplayMode
     )
     .task {
       await store.send(.task).finish()
