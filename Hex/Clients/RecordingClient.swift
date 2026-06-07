@@ -64,6 +64,7 @@ extension RecordingClient: DependencyKey {
       snapshotRecordingForPreview: { await live.snapshotRecordingForPreview() },
       previewRecordingDuration: { await live.previewRecordingDuration() },
       recordingSpeechMetrics: { await live.recordingSpeechMetrics() },
+      previewSpeechMetrics: { await live.previewSpeechMetrics() },
       getAvailableInputDevices: { await live.getAvailableInputDevices() },
       getDefaultInputDeviceName: { await live.getDefaultInputDeviceName() },
       warmUpRecorder: { await live.warmUpRecorder() },
@@ -524,7 +525,7 @@ actor RecordingClientLive {
     reason: String
   ) {
     let listener: CoreAudioPropertyListenerBlock = { _, _ in
-      Task { await self.enqueueCaptureEnvironmentChange(reason: reason) }
+      Task { self.enqueueCaptureEnvironmentChange(reason: reason) }
     }
 
     var address = audioPropertyAddress(selector)
@@ -1401,7 +1402,7 @@ actor RecordingClientLive {
       if activationDelay > 0 {
         try? await Task.sleep(for: .seconds(activationDelay))
       }
-      guard await self.isCurrentSession(sessionID), !Task.isCancelled else { return }
+      guard self.isCurrentSession(sessionID), !Task.isCancelled else { return }
       await action()
     }
   }
