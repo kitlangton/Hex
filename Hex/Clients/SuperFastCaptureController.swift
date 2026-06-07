@@ -65,7 +65,8 @@ private struct SuperFastCaptureConstants {
   static let defaultPreRollDuration: TimeInterval = 0.45
   /// Short ring-buffer seed for live preview only (not the saved recording).
   static let previewPreRollDuration: TimeInterval = 0.12
-  static let previewMinimumDuration: TimeInterval = 0.12
+  /// Match Parakeet preview padding so we do not transcribe clips that will be zero-padded.
+  static let previewMinimumDuration: TimeInterval = 1.0
   /// Stop accumulating in-memory preview PCM beyond this duration; recording to file continues.
   static let previewMaximumDuration: TimeInterval = 600
   static let captureReadyMinimumRingDuration: TimeInterval = 0.15

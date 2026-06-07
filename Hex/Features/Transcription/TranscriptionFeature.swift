@@ -430,7 +430,7 @@ private extension TranscriptionFeature {
 
         // Let the cancelled preview loop finish any in-flight Parakeet work before final pass.
         await transcription.waitForParakeetIdle()
-        try? await transcription.resetParakeetTranscriberState()
+        try? await transcription.reinitializeParakeetTranscriber()
 
         var audioURL: URL?
         defer {
@@ -455,10 +455,17 @@ private extension TranscriptionFeature {
             "Final Parakeet transcribing capture file file=\(capturedURL.lastPathComponent)"
           )
           result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
-          if result.isEmpty, !liveTranscriptSnapshot.isEmpty {
+          if result.isEmpty {
+            transcriptionFeatureLogger.notice(
+              "Final Parakeet returned empty; reinitializing and retrying file=\(capturedURL.lastPathComponent)"
+            )
+            try? await transcription.reinitializeParakeetTranscriber()
+            result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
+          }
+          if result.isEmpty, !liveTranscriptSnapshot.isEmpty, duration < 1.5 {
             result = liveTranscriptSnapshot
             transcriptionFeatureLogger.notice(
-              "Using live preview transcript as final fallback chars=\(result.count)"
+              "Using live preview transcript as final fallback chars=\(result.count) duration=\(String(format: "%.2f", duration))s"
             )
           }
 
@@ -562,10 +569,12 @@ private extension TranscriptionFeature {
 
       guard !Task.isCancelled else { break }
 
+      // Always advance the scheduler after a completed preview pass, even when Parakeet
+      // returns empty — otherwise we re-transcribe every poll and overload audio + ASR.
+      transcribeScheduler.markTranscribed(duration: capturedDuration)
+
       let nowDuration = await recording.previewRecordingDuration()
       guard let text, !text.isEmpty else { continue }
-
-      transcribeScheduler.markTranscribed(duration: capturedDuration)
 
       if transcribeScheduler.shouldApplyResult(
         resultDuration: capturedDuration,

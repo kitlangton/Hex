@@ -33,6 +33,9 @@ struct TranscriptionClient {
   /// Clears FluidAudio decoder state between preview and final passes.
   var resetParakeetTranscriberState: @Sendable () async throws -> Void = {}
 
+  /// Rebuilds the Parakeet AsrManager from cached models after repeated preview passes.
+  var reinitializeParakeetTranscriber: @Sendable () async throws -> Void = {}
+
   /// Ensures a model is downloaded (if missing) and loaded into memory, reporting progress via `progressCallback`.
   var downloadModel: @Sendable (String, @escaping (Progress) -> Void) async throws -> Void
 
@@ -57,6 +60,7 @@ extension TranscriptionClient: DependencyKey {
       transcribePreview: { try await live.transcribePreview(url: $0, model: $1) },
       waitForParakeetIdle: { await live.waitForParakeetIdle() },
       resetParakeetTranscriberState: { try await live.resetParakeetTranscriberState() },
+      reinitializeParakeetTranscriber: { try await live.reinitializeParakeetTranscriber() },
       downloadModel: { try await live.downloadAndLoadModel(variant: $0, progressCallback: $1) },
       deleteModel: { try await live.deleteModel(variant: $0) },
       isModelDownloaded: { await live.isModelDownloaded($0) },
@@ -306,7 +310,15 @@ actor TranscriptionClientLive {
   }
 
   func resetParakeetTranscriberState() async throws {
+    await acquireParakeetPipeline()
+    defer { releaseParakeetPipeline() }
     try await parakeet.resetTranscriberState()
+  }
+
+  func reinitializeParakeetTranscriber() async throws {
+    await acquireParakeetPipeline()
+    defer { releaseParakeetPipeline() }
+    try await parakeet.reinitializeTranscriber()
   }
 
   /// Lightweight Parakeet pass for live preview while a capture file is still growing.
@@ -325,7 +337,7 @@ actor TranscriptionClientLive {
       logger: parakeetLogger
     )
     defer { preparedClip.cleanup() }
-    return try await parakeet.transcribe(preparedClip.url)
+    return try await parakeet.transcribe(preparedClip.url, reinitializeOnEmpty: false)
   }
 
   private func acquireParakeetPipeline() async {

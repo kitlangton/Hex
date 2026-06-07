@@ -109,7 +109,7 @@ actor ParakeetClient {
     return total
   }
 
-  func transcribe(_ url: URL) async throws -> String {
+  func transcribe(_ url: URL, reinitializeOnEmpty: Bool = true) async throws -> String {
     try Task.checkCancellation()
     await acquireTranscribeSlot()
     defer { releaseTranscribeSlot() }
@@ -119,7 +119,7 @@ actor ParakeetClient {
     }
 
     var text = try await transcribeLocked(url)
-    if text.isEmpty {
+    if text.isEmpty, reinitializeOnEmpty {
       let shouldReinitialize: Bool = {
         guard let lastTranscriberReinitializeAt else { return true }
         return Date().timeIntervalSince(lastTranscriberReinitializeAt) >= transcriberReinitializeCooldown
