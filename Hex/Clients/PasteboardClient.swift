@@ -6,6 +6,7 @@
 //
 
 import ComposableArchitecture
+import Carbon
 import Dependencies
 import DependenciesMacros
 import Foundation
@@ -48,6 +49,12 @@ extension DependencyValues {
 
 struct PasteboardClientLive {
     @Shared(.hexSettings) var hexSettings: HexSettings
+
+    private final class LiveKeystrokePasteboardSession {
+        var userSnapshot: PasteboardSnapshot?
+    }
+
+    private let liveKeystrokePasteboardSession = LiveKeystrokePasteboardSession()
     
     private struct PasteboardSnapshot {
         let items: [[String: Any]]
@@ -78,6 +85,29 @@ struct PasteboardClientLive {
                 pasteboard.writeObjects([item])
             }
         }
+    }
+
+    @MainActor
+    func beginLiveKeystrokePasteboardSession() {
+        liveKeystrokePasteboardSession.userSnapshot = PasteboardSnapshot(
+            pasteboard: NSPasteboard.general
+        )
+    }
+
+    @MainActor
+    func endLiveKeystrokePasteboardSession(finalText: String? = nil) {
+        defer { liveKeystrokePasteboardSession.userSnapshot = nil }
+        let pasteboard = NSPasteboard.general
+        if hexSettings.copyToClipboard {
+            if let finalText, !finalText.isEmpty {
+                pasteboard.clearContents()
+                pasteboard.setString(finalText, forType: .string)
+            } else {
+                liveKeystrokePasteboardSession.userSnapshot?.restore(to: pasteboard)
+            }
+            return
+        }
+        liveKeystrokePasteboardSession.userSnapshot?.restore(to: pasteboard)
     }
 
     @MainActor
@@ -127,7 +157,7 @@ struct PasteboardClientLive {
         // Press modifiers down
         for keyCode in modifierKeyCodes {
             let modDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
-            modDown?.post(tap: .cghidEventTap)
+            postTagged(modDown)
         }
         
         // Press main key if present
@@ -136,17 +166,18 @@ struct PasteboardClientLive {
             
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
             keyDown?.flags = flags
-            keyDown?.post(tap: .cghidEventTap)
+            keyDown?.flags = flags
+            postTagged(keyDown)
             
             let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
             keyUp?.flags = flags
-            keyUp?.post(tap: .cghidEventTap)
+            postTagged(keyUp)
         }
         
         // Release modifiers in reverse order
         for keyCode in modifierKeyCodes.reversed() {
             let modUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-            modUp?.post(tap: .cghidEventTap)
+            postTagged(modUp)
         }
         
         pasteboardLogger.debug("Sent keyboard command: \(command.displayName)")
@@ -265,6 +296,185 @@ struct PasteboardClientLive {
         return false
     }
 
+    @MainActor
+    private func postTagged(_ event: CGEvent?) {
+        SyntheticKeyboardEvent.tag(event)
+        event?.post(tap: .cghidEventTap)
+    }
+
+    /// Deletes recently inserted preview text when the cursor sits at the end of the insertion.
+    @MainActor
+    func deleteKeystrokeInsertedText(count: Int) async {
+        guard count > 0 else { return }
+        postBackspaces(count)
+        let settleMs = min(200, max(15, count * 2))
+        try? await Task.sleep(for: .milliseconds(settleMs))
+    }
+
+    /// Pastes finalized dictation text at the cursor during a keystroke live session.
+    @MainActor
+    func pasteKeystrokeTextAtCursor(_ text: String, targetBundleID: String?) async -> Bool {
+        if !Self.isTargetAppFrontmost(bundleIdentifier: targetBundleID) {
+            activateApplication(bundleIdentifier: targetBundleID)
+            try? await Task.sleep(for: .milliseconds(12))
+        }
+        return await pasteTextAtCursor(text, delayMs: 3)
+    }
+
+    /// Replaces live preview text at the cursor.
+    /// Full replace deletes via backspace at the insertion tail (Shift+Left select + paste
+    /// appends in Electron editors like Cursor). Incremental edits still use selection.
+    @MainActor
+    func replaceLiveText(
+        targetBundleID: String?,
+        previousText: String,
+        newText: String,
+        preferFullReplace: Bool = false
+    ) async -> Bool {
+        guard previousText != newText else { return true }
+
+        if !Self.isTargetAppFrontmost(bundleIdentifier: targetBundleID) {
+            activateApplication(bundleIdentifier: targetBundleID)
+            try? await Task.sleep(for: .milliseconds(12))
+        }
+
+        let action = LiveTextInsertionLogic.keystrokeUpdateAction(
+            previous: previousText,
+            new: newText,
+            preferFullReplace: preferFullReplace
+        )
+        switch action {
+        case .none:
+            return true
+        case let .append(suffix):
+            guard !suffix.isEmpty else { return true }
+            return await pasteTextAtCursor(suffix, delayMs: 3)
+        case let .shrinkBackspaces(count):
+            postBackspaces(count)
+            let settleMs = min(200, max(15, count * 2))
+            try? await Task.sleep(for: .milliseconds(settleMs))
+            return true
+        case let .replaceTail(backspaces, insert):
+            if backspaces > 0 {
+                postBackspaces(backspaces)
+                let settleMs = min(200, max(15, backspaces * 2))
+                try? await Task.sleep(for: .milliseconds(settleMs))
+            }
+            guard !insert.isEmpty else { return true }
+            return await pasteTextAtCursor(insert, delayMs: 3)
+        }
+    }
+
+    @MainActor
+    private func selectBackward(_ count: Int) async {
+        guard count > 0 else { return }
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let leftArrow = CGKeyCode(kVK_LeftArrow)
+        let shiftKey = CGKeyCode(kVK_Shift)
+
+        CGEvent(keyboardEventSource: source, virtualKey: shiftKey, keyDown: true).map { postTagged($0) }
+
+        var remaining = count
+        let chunkSize = 32
+        while remaining > 0 {
+            let batch = min(chunkSize, remaining)
+            for _ in 0 ..< batch {
+                let keyDown = CGEvent(keyboardEventSource: source, virtualKey: leftArrow, keyDown: true)
+                keyDown?.flags = .maskShift
+                postTagged(keyDown)
+                let keyUp = CGEvent(keyboardEventSource: source, virtualKey: leftArrow, keyDown: false)
+                keyUp?.flags = .maskShift
+                postTagged(keyUp)
+            }
+            remaining -= batch
+            if remaining > 0 {
+                try? await Task.sleep(for: .milliseconds(6))
+            }
+        }
+
+        CGEvent(keyboardEventSource: source, virtualKey: shiftKey, keyDown: false).map { postTagged($0) }
+    }
+
+    @MainActor
+    private func selectBackwardAndDelete(_ count: Int) async {
+        guard count > 0 else { return }
+        await selectBackward(count)
+        let settleMs = min(120, max(10, count / 4))
+        try? await Task.sleep(for: .milliseconds(settleMs))
+        postBackspaces(1)
+    }
+
+    @MainActor
+    func selectBackwardAndDeleteForRevert(count: Int) async {
+        await selectBackwardAndDelete(count)
+    }
+
+    @MainActor
+    private func pasteTextAtCursor(_ text: String, delayMs: Int) async -> Bool {
+        let pasteboard = NSPasteboard.general
+        let targetChangeCount = writeAndTrackChangeCount(pasteboard: pasteboard, text: text)
+        _ = await waitForPasteboardCommit(targetChangeCount: targetChangeCount)
+
+        var succeeded = await postCmdV(delayMs: delayMs)
+        if !succeeded {
+            succeeded = Self.pasteToFrontmostApp()
+        }
+        if !succeeded {
+            succeeded = (try? Self.insertTextAtCursor(text)) != nil
+        }
+
+        // Clipboard restore is deferred to endLiveKeystrokePasteboardSession so live
+        // preview updates are not blocked by a 500ms wait on every keystroke paste.
+
+        return succeeded
+    }
+
+    @MainActor
+    func activateApplication(bundleIdentifier: String?) {
+        guard let bundleIdentifier else { return }
+        NSWorkspace.shared.runningApplications
+            .first { $0.bundleIdentifier == bundleIdentifier }?
+            .activate(options: [.activateAllWindows])
+    }
+
+    @MainActor
+    private static func isTargetAppFrontmost(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        return NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleIdentifier
+    }
+
+    @MainActor
+    func postBackspaces(_ count: Int) {
+        guard count > 0 else { return }
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let deleteKey = CGKeyCode(kVK_Delete)
+        for _ in 0 ..< count {
+            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: deleteKey, keyDown: true)
+            postTagged(keyDown)
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: deleteKey, keyDown: false)
+            postTagged(keyUp)
+        }
+    }
+
+    /// Types text at the cursor without touching the pasteboard. Reserved for short inserts
+    /// where paste flicker is undesirable; live dictation uses paste for spacing reliability.
+    @MainActor
+    func postUnicodeText(_ text: String) {
+        guard !text.isEmpty else { return }
+        let source = CGEventSource(stateID: .combinedSessionState)
+        for codeUnit in text.utf16 {
+            var uniChar = codeUnit
+            guard
+                let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+                let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+            else { continue }
+            keyDown.keyboardSetUnicodeString(stringLength: 1, unicodeString: &uniChar)
+            keyUp.keyboardSetUnicodeString(stringLength: 1, unicodeString: &uniChar)
+            postTagged(keyDown)
+            postTagged(keyUp)
+        }
+    }
+
     // MARK: - Paste Orchestration
 
     @MainActor
@@ -311,10 +521,10 @@ struct PasteboardClientLive {
         let vUp = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         vUp?.flags = .maskCommand
         let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: cmdKey, keyDown: false)
-        cmdDown?.post(tap: .cghidEventTap)
-        vDown?.post(tap: .cghidEventTap)
-        vUp?.post(tap: .cghidEventTap)
-        cmdUp?.post(tap: .cghidEventTap)
+        postTagged(cmdDown)
+        postTagged(vDown)
+        postTagged(vUp)
+        postTagged(cmdUp)
         return true
     }
 

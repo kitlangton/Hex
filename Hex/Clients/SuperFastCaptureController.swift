@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import HexCore
+import HexCore
 
 private final class FloatRingBuffer {
   private let lock = NSLock()
@@ -50,18 +51,38 @@ private final class FloatRingBuffer {
     writeIndex = 0
     validSampleCount = 0
   }
+
+  func fillDuration(sampleRate: Double) -> TimeInterval {
+    lock.lock()
+    defer { lock.unlock() }
+    guard sampleRate > 0 else { return 0 }
+    return Double(validSampleCount) / sampleRate
+  }
 }
 
 private struct SuperFastCaptureConstants {
   static let sampleRate: Double = 16_000
   static let ringBufferDuration: TimeInterval = 1.0
   static let defaultPreRollDuration: TimeInterval = 0.45
-  static let tapBufferSize: AVAudioFrameCount = 2_048
+  /// Short ring-buffer seed for live preview only (not the saved recording).
+  static let previewPreRollDuration: TimeInterval = 0.12
+  /// Match Parakeet preview padding so we do not transcribe clips that will be zero-padded.
+  static let previewMinimumDuration: TimeInterval = 1.0
+  /// Stop accumulating in-memory preview PCM beyond this duration; recording to file continues.
+  static let previewMaximumDuration: TimeInterval = 600
+  static let captureReadyMinimumRingDuration: TimeInterval = 0.15
+  static let captureReadyPrewarmRingDuration: TimeInterval = 0.20
+  static let captureWarmUpTimeout: TimeInterval = 1.5
+  static let captureReadyTimeout: TimeInterval = 2.5
+  static let tapBufferSize: AVAudioFrameCount = 4_096
   static let fallbackStopGracePeriod: TimeInterval = 0.05
   static let minimumStopGracePeriod: TimeInterval = 0.02
   static let maximumStopGracePeriod: TimeInterval = 0.08
   static let stopGraceSafetyMargin: TimeInterval = 0.008
   static let callbackTimingWindowSize = 8
+  static let configChangeGracePeriod: TimeInterval = 2.0
+  static let startRetryCount = 3
+  static let startRetryDelay: TimeInterval = 0.15
 }
 
 enum CaptureRecordingMode: String {
@@ -83,6 +104,13 @@ enum CaptureRecordingMode: String {
 }
 
 final class SuperFastCaptureController {
+  enum Readiness {
+    static let minimumRingDuration = SuperFastCaptureConstants.captureReadyMinimumRingDuration
+    static let prewarmRingDuration = SuperFastCaptureConstants.captureReadyPrewarmRingDuration
+    static let warmUpTimeout = SuperFastCaptureConstants.captureWarmUpTimeout
+    static let readyTimeout = SuperFastCaptureConstants.captureReadyTimeout
+  }
+
   struct StopTimingEstimate {
     let gracePeriod: TimeInterval
     let callbackInterval: TimeInterval
@@ -100,6 +128,7 @@ final class SuperFastCaptureController {
   private let logger = HexLog.recording
   private let processingQueue = DispatchQueue(label: "com.kitlangton.Hex.SuperFastCapture")
   private let meterContinuation: AsyncStream<Meter>.Continuation
+  private let liveAudioContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
   private let ringBuffer = FloatRingBuffer(
     capacity: Int(SuperFastCaptureConstants.sampleRate * SuperFastCaptureConstants.ringBufferDuration)
   )
@@ -114,17 +143,25 @@ final class SuperFastCaptureController {
   private var converter: AVAudioConverter?
   private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
+  private var isLiveMonitoring = false
+  private var didLogFirstLiveBuffer = false
   private var keepWarmBuffer = false
   private var lastProcessedBufferAt: Date?
   private var recentCallbackIntervals: [TimeInterval] = []
   private var recentBufferDurations: [TimeInterval] = []
+  private var previewSamples: [Float] = []
+  private var didLogPreviewSampleCap = false
+  private var sessionSpeechMetrics = SpeechActivityMetrics.zero
+  private var lastArmedAt: Date?
   private let onEngineConfigurationChange: @Sendable () -> Void
 
   init(
     meterContinuation: AsyncStream<Meter>.Continuation,
+    liveAudioContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation? = nil,
     onEngineConfigurationChange: @escaping @Sendable () -> Void
   ) {
     self.meterContinuation = meterContinuation
+    self.liveAudioContinuation = liveAudioContinuation
     self.onEngineConfigurationChange = onEngineConfigurationChange
   }
 
@@ -138,6 +175,95 @@ final class SuperFastCaptureController {
 
   var isRecording: Bool {
     processingQueue.sync { activeRecording != nil }
+  }
+
+  var currentRecordingURL: URL? {
+    processingQueue.sync { activeRecording?.url }
+  }
+
+  var previewCaptureDuration: TimeInterval {
+    processingQueue.sync {
+      guard activeRecording != nil || isLiveMonitoring else { return 0 }
+      return Double(previewSamples.count) / SuperFastCaptureConstants.sampleRate
+    }
+  }
+
+  func recordingSpeechMetrics() -> SpeechActivityMetrics {
+    processingQueue.sync { sessionSpeechMetrics }
+  }
+
+  /// Speech levels in the recent trailing preview window (ignores earlier audio).
+  func previewSpeechMetrics() -> SpeechActivityMetrics {
+    previewSpeechEvaluation().metrics
+  }
+
+  /// Whether the recent preview window contains speech above the estimated noise floor.
+  func previewHasSpeechActivity() -> Bool {
+    previewSpeechEvaluation().hasActivity
+  }
+
+  func previewSpeechEvaluation() -> (metrics: SpeechActivityMetrics, hasActivity: Bool) {
+    processingQueue.sync {
+      SpeechActivityGate.evaluatePreviewActivity(
+        samples: previewSamples,
+        sampleRate: SuperFastCaptureConstants.sampleRate
+      )
+    }
+  }
+
+  func resetSessionSpeechMetrics() {
+    processingQueue.sync {
+      sessionSpeechMetrics = .zero
+    }
+  }
+
+  /// Writes accumulated PCM from the active recording to a standalone WAV for live preview.
+  /// In-progress capture files are not readable until finalized, so preview uses memory instead.
+  func makePreviewSnapshotURL(
+    minimumDuration: TimeInterval = SuperFastCaptureConstants.previewMinimumDuration
+  ) -> URL? {
+    let snapshotData = processingQueue.sync { () -> (samples: [Float], duration: TimeInterval)? in
+      guard activeRecording != nil || isLiveMonitoring else { return nil }
+
+      let duration = Double(previewSamples.count) / SuperFastCaptureConstants.sampleRate
+      guard duration >= minimumDuration else { return nil }
+      return (previewSamples, duration)
+    }
+
+    guard let snapshotData else { return nil }
+    let (samples, duration) = snapshotData
+
+    let snapshotURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("hex-preview-\(UUID().uuidString).wav")
+
+    do {
+      if FileManager.default.fileExists(atPath: snapshotURL.path) {
+        try FileManager.default.removeItem(at: snapshotURL)
+      }
+
+      let file = try AVAudioFile(
+        forWriting: snapshotURL,
+        settings: [
+          AVFormatIDKey: Int(kAudioFormatLinearPCM),
+          AVSampleRateKey: SuperFastCaptureConstants.sampleRate,
+          AVNumberOfChannelsKey: 1,
+          AVLinearPCMBitDepthKey: 32,
+          AVLinearPCMIsFloatKey: true,
+          AVLinearPCMIsBigEndianKey: false,
+          AVLinearPCMIsNonInterleaved: true,
+        ],
+        commonFormat: .pcmFormatFloat32,
+        interleaved: false
+      )
+      try write(samples: samples, to: file)
+      logger.debug(
+        "Preview snapshot written duration=\(String(format: "%.3f", duration))s samples=\(samples.count) file=\(snapshotURL.lastPathComponent)"
+      )
+      return snapshotURL
+    } catch {
+      logger.debug("Failed to write preview snapshot: \(error.localizedDescription)")
+      return nil
+    }
   }
 
   var stopTimingEstimate: StopTimingEstimate {
@@ -162,6 +288,38 @@ final class SuperFastCaptureController {
     }
   }
 
+  var ringBufferFillDuration: TimeInterval {
+    processingQueue.sync {
+      ringBuffer.fillDuration(sampleRate: SuperFastCaptureConstants.sampleRate)
+    }
+  }
+
+  /// Waits until the capture engine is running and the warm ring buffer has enough audio
+  /// to seed the recording pre-roll (critical for the first hotkey press after launch).
+  func waitUntilReady(
+    minimumRingDuration: TimeInterval = SuperFastCaptureConstants.captureReadyMinimumRingDuration,
+    timeout: TimeInterval = SuperFastCaptureConstants.captureReadyTimeout
+  ) async -> Bool {
+    guard minimumRingDuration > 0 else {
+      return processingQueue.sync { engine?.isRunning == true }
+    }
+
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if Task.isCancelled { return false }
+
+      let isReady = processingQueue.sync { () -> Bool in
+        guard engine?.isRunning == true else { return false }
+        return ringBuffer.fillDuration(sampleRate: SuperFastCaptureConstants.sampleRate) >= minimumRingDuration
+      }
+      if isReady { return true }
+
+      try? await Task.sleep(for: .milliseconds(25))
+    }
+
+    return processingQueue.sync { engine?.isRunning == true }
+  }
+
   func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
     let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
     self.keepWarmBuffer = keepWarmBuffer
@@ -178,30 +336,54 @@ final class SuperFastCaptureController {
       return
     }
 
-    stop(reason: "restart-before-arm")
+    var lastError: Error?
+    for attempt in 0 ..< SuperFastCaptureConstants.startRetryCount {
+      stop(reason: attempt == 0 ? "restart-before-arm" : "restart-before-arm-retry-\(attempt + 1)")
 
+      do {
+        try startEngineOnce(reason: reason, attempt: attempt + 1)
+        lastArmedAt = Date()
+        return
+      } catch {
+        lastError = error
+        guard isRecoverableStartError(error), attempt + 1 < SuperFastCaptureConstants.startRetryCount else {
+          throw error
+        }
+        logger.notice(
+          "Capture engine start failed, retrying reason=\(reason) attempt=\(attempt + 2)/\(SuperFastCaptureConstants.startRetryCount) error=\(error.localizedDescription)"
+        )
+        Thread.sleep(forTimeInterval: SuperFastCaptureConstants.startRetryDelay * Double(attempt + 1))
+      }
+    }
+
+    if let lastError {
+      throw lastError
+    }
+  }
+
+  private func startEngineOnce(reason: String, attempt: Int) throws {
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
-    let inputFormat = inputNode.inputFormat(forBus: 0)
-    guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+    engine.prepare()
+    let tapFormat = inputNode.outputFormat(forBus: 0)
+    guard let converter = AVAudioConverter(from: tapFormat, to: targetFormat) else {
       throw NSError(
         domain: "SuperFastCapture",
         code: -1,
         userInfo: [NSLocalizedDescriptionKey: "Unable to create the capture engine audio converter."]
       )
     }
-    if inputFormat.channelCount > 1 {
+    if tapFormat.channelCount > 1 {
       converter.channelMap = [NSNumber(value: 0)]
     }
 
     self.converter = converter
 
-    inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: inputFormat) {
+    inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: tapFormat) {
       [weak self] buffer, _ in
       self?.enqueue(buffer)
     }
 
-    engine.prepare()
     do {
       try engine.start()
     } catch {
@@ -218,8 +400,13 @@ final class SuperFastCaptureController {
       self?.handleConfigurationChange()
     }
     logger.notice(
-      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
+      "Capture engine armed reason=\(reason) attempt=\(attempt) tapSampleRate=\(String(format: "%.0f", tapFormat.sampleRate))Hz channels=\(tapFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
     )
+  }
+
+  private func isRecoverableStartError(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    return nsError.domain == "com.apple.coreaudio.avfaudio" && nsError.code == -10868
   }
 
   func stop(reason: String = "unknown") {
@@ -239,6 +426,8 @@ final class SuperFastCaptureController {
 
     processingQueue.sync {
       activeRecording = nil
+      isLiveMonitoring = false
+      didLogFirstLiveBuffer = false
       ringBuffer.clear()
       lastProcessedBufferAt = nil
       recentCallbackIntervals.removeAll(keepingCapacity: false)
@@ -248,6 +437,27 @@ final class SuperFastCaptureController {
 
   private func handleConfigurationChange() {
     logger.notice("Capture engine configuration changed")
+
+    let isRecording = processingQueue.sync { activeRecording != nil }
+    if isRecording {
+      onEngineConfigurationChange()
+      return
+    }
+
+    if let lastArmedAt,
+       Date().timeIntervalSince(lastArmedAt) < SuperFastCaptureConstants.configChangeGracePeriod
+    {
+      logger.debug(
+        "Re-arming capture engine after config change within grace period armedAgo=\(String(format: "%.3f", Date().timeIntervalSince(lastArmedAt)))s"
+      )
+      do {
+        try startIfNeeded(reason: "config-change-rearm", keepWarmBuffer: keepWarmBuffer)
+      } catch {
+        logger.error("Capture engine re-arm after config change failed: \(error.localizedDescription)")
+      }
+      return
+    }
+
     onEngineConfigurationChange()
   }
 
@@ -278,7 +488,21 @@ final class SuperFastCaptureController {
         let prependedDuration = Double(preRollSamples.count) / SuperFastCaptureConstants.sampleRate
         if !preRollSamples.isEmpty {
           try write(samples: preRollSamples, to: file)
+          if let liveAudioContinuation,
+             let preRollBuffer = makePCMBuffer(from: preRollSamples)
+          {
+            liveAudioContinuation.yield(preRollBuffer)
+          }
         }
+
+        // Live preview uses post-hotkey audio plus a short ring-buffer seed so the
+        // first words aren't missed, without the full pre-roll that caused ghost tokens.
+        let previewPreRollFrameCount = Int(
+          SuperFastCaptureConstants.previewPreRollDuration * SuperFastCaptureConstants.sampleRate
+        )
+        previewSamples = ringBuffer.recentSamples(count: previewPreRollFrameCount)
+        didLogPreviewSampleCap = false
+        sessionSpeechMetrics = .zero
 
         logger.notice(
           "Capture engine recording file opened prepended=\(String(format: "%.3f", prependedDuration))s requestedPreRoll=\(String(format: "%.3f", preRollDuration))s"
@@ -300,10 +524,30 @@ final class SuperFastCaptureController {
     }
   }
 
+  func beginLiveMonitoring() throws {
+    try startIfNeeded(reason: "begin-live-monitoring", keepWarmBuffer: false)
+    processingQueue.sync {
+      isLiveMonitoring = true
+      didLogFirstLiveBuffer = false
+      previewSamples.removeAll(keepingCapacity: true)
+      didLogPreviewSampleCap = false
+    }
+    logger.notice("Capture engine live monitoring started")
+  }
+
+  func endLiveMonitoring() {
+    processingQueue.sync {
+      isLiveMonitoring = false
+    }
+    logger.notice("Capture engine live monitoring stopped")
+  }
+
   func finishRecording(clearBuffer: Bool = true) -> URL? {
     processingQueue.sync {
       let url = activeRecording?.url
       activeRecording = nil
+      previewSamples.removeAll(keepingCapacity: true)
+      didLogPreviewSampleCap = false
       if clearBuffer {
         ringBuffer.clear()
       }
@@ -346,7 +590,42 @@ final class SuperFastCaptureController {
     }
 
     if activeRecording != nil {
-      meterContinuation.yield(meter(for: samples, count: sampleCount))
+      let level = meter(for: samples, count: sampleCount)
+      meterContinuation.yield(level)
+      sessionSpeechMetrics.merge(
+        SpeechActivityMetrics(peakRMS: level.averagePower, peakSample: level.peakPower)
+      )
+    }
+
+    if activeRecording != nil || isLiveMonitoring {
+      if let liveAudioContinuation, let liveBuffer = clone(converted) {
+        if !didLogFirstLiveBuffer {
+          didLogFirstLiveBuffer = true
+          logger.notice("Capture engine yielding first live audio buffer frames=\(liveBuffer.frameLength)")
+        }
+        liveAudioContinuation.yield(liveBuffer)
+      }
+    }
+
+    if activeRecording != nil || isLiveMonitoring {
+      let maxPreviewSamples = Int(
+        SuperFastCaptureConstants.previewMaximumDuration * SuperFastCaptureConstants.sampleRate
+      )
+      if previewSamples.count < maxPreviewSamples {
+        let remaining = maxPreviewSamples - previewSamples.count
+        let appendCount = min(sampleCount, remaining)
+        if appendCount > 0 {
+          previewSamples.append(
+            contentsOf: UnsafeBufferPointer(start: samples, count: appendCount)
+          )
+        }
+        if appendCount < sampleCount, !didLogPreviewSampleCap {
+          didLogPreviewSampleCap = true
+          logger.notice(
+            "Live preview in-memory buffer capped at \(String(format: "%.0f", SuperFastCaptureConstants.previewMaximumDuration))s; recording continues, final transcription unaffected"
+          )
+        }
+      }
     }
 
     guard var recording = activeRecording else { return }
@@ -364,6 +643,8 @@ final class SuperFastCaptureController {
     } catch {
       logger.error("Failed to write capture engine audio: \(error.localizedDescription)")
       activeRecording = nil
+      previewSamples.removeAll(keepingCapacity: true)
+      didLogPreviewSampleCap = false
     }
   }
 
@@ -409,10 +690,20 @@ final class SuperFastCaptureController {
 
   private func write(samples: [Float], to file: AVAudioFile) throws {
     guard !samples.isEmpty,
+          let buffer = makePCMBuffer(from: samples)
+    else {
+      return
+    }
+
+    try file.write(from: buffer)
+  }
+
+  private func makePCMBuffer(from samples: [Float]) -> AVAudioPCMBuffer? {
+    guard !samples.isEmpty,
           let buffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(samples.count)),
           let channelData = buffer.floatChannelData?[0]
     else {
-      return
+      return nil
     }
 
     buffer.frameLength = AVAudioFrameCount(samples.count)
@@ -420,7 +711,7 @@ final class SuperFastCaptureController {
       guard let baseAddress = sampleBuffer.baseAddress else { return }
       channelData.update(from: baseAddress, count: sampleBuffer.count)
     }
-    try file.write(from: buffer)
+    return buffer
   }
 
   private func meter(for samples: UnsafePointer<Float>, count: Int) -> Meter {

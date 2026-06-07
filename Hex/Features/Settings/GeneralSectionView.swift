@@ -70,6 +70,25 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
+				HStack(alignment: .center) {
+					Text("Live Preview")
+					Spacer()
+					Picker("", selection: Binding(
+						get: { store.hexSettings.livePreviewDisplayMode },
+						set: { store.send(.setLivePreviewDisplayMode($0)) }
+					)) {
+						Text("Insert at cursor").tag(LivePreviewDisplayMode.cursor)
+						Text("Overlay").tag(LivePreviewDisplayMode.overlay)
+					}
+					.pickerStyle(.menu)
+					.labelsHidden()
+				}
+				Text("Show live transcription at the text cursor, or in Hex's floating overlay while recording. Requires a Parakeet model and Super Fast Mode.")
+			} icon: {
+				Image(systemName: "text.cursor")
+			}
+
+			Label {
 				Toggle(
 					"Super Fast Mode",
 					isOn: Binding(

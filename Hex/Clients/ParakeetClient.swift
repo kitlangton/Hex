@@ -8,6 +8,10 @@ actor ParakeetClient {
   private var asr: AsrManager?
   private var models: AsrModels?
   private var currentVariant: ParakeetModel?
+  private var transcribeWaiters: [CheckedContinuation<Void, Never>] = []
+  private var isTranscribeSlotHeld = false
+  private var lastTranscriberReinitializeAt: Date?
+  private let transcriberReinitializeCooldown: TimeInterval = 2.0
   private let logger = HexLog.parakeet
   private let vendorDirs = [
     // Our app-specific cache path convention (under XDG or com.kitlangton.Hex/cache)
@@ -105,13 +109,94 @@ actor ParakeetClient {
     return total
   }
 
-  func transcribe(_ url: URL) async throws -> String {
-    guard let asr else { throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"]) }
+  func transcribe(_ url: URL, reinitializeOnEmpty: Bool = true) async throws -> String {
+    try Task.checkCancellation()
+    await acquireTranscribeSlot()
+    defer { releaseTranscribeSlot() }
+
+    guard asr != nil else {
+      throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"])
+    }
+
+    var text = try await transcribeLocked(url)
+    if text.isEmpty, reinitializeOnEmpty {
+      let shouldReinitialize: Bool = {
+        guard let lastTranscriberReinitializeAt else { return true }
+        return Date().timeIntervalSince(lastTranscriberReinitializeAt) >= transcriberReinitializeCooldown
+      }()
+      if shouldReinitialize {
+        logger.notice("Parakeet returned empty text for \(url.lastPathComponent); reinitializing transcriber")
+        try await reinitializeTranscriberLocked()
+        lastTranscriberReinitializeAt = Date()
+        text = try await transcribeLocked(url)
+        if text.isEmpty {
+          logger.notice("Parakeet returned empty text after reinitialize for \(url.lastPathComponent)")
+        }
+      } else {
+        logger.debug("Parakeet returned empty text for \(url.lastPathComponent); skipping reinitialize cooldown")
+      }
+    }
+    return text
+  }
+
+  func resetTranscriberState() async throws {
+    await acquireTranscribeSlot()
+    defer { releaseTranscribeSlot() }
+    guard let asr else { return }
+    try await asr.resetDecoderState()
+  }
+
+  /// Rebuilds AsrManager from cached models when decoder state becomes corrupted.
+  func reinitializeTranscriber() async throws {
+    await acquireTranscribeSlot()
+    defer { releaseTranscribeSlot() }
+    try await reinitializeTranscriberLocked()
+  }
+
+  private func transcribeLocked(_ url: URL) async throws -> String {
+    guard let asr else {
+      throw NSError(domain: "Parakeet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Parakeet not initialized"])
+    }
     let t0 = Date()
     logger.notice("Transcribing with Parakeet file=\(url.lastPathComponent)")
-    let result = try await asr.transcribe(url)
+    // File-based batch transcribe uses FluidAudio's default `.system` decoder path.
+    let result = try await asr.transcribe(url, source: .system)
     logger.info("Parakeet transcription finished in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
     return result.text
+  }
+
+  private func reinitializeTranscriberLocked() async throws {
+    guard let models, let variant = currentVariant else { return }
+    let manager = AsrManager(config: .init())
+    try await manager.initialize(models: models)
+    self.asr = manager
+    logger.notice("Parakeet transcriber reinitialized variant=\(variant.identifier)")
+  }
+
+  /// FluidAudio's AsrManager is not re-entrant; hold this slot for the entire transcribe await.
+  private func acquireTranscribeSlot() async {
+    if !isTranscribeSlotHeld {
+      isTranscribeSlotHeld = true
+      return
+    }
+    await withCheckedContinuation { continuation in
+      transcribeWaiters.append(continuation)
+    }
+  }
+
+  private func releaseTranscribeSlot() {
+    if transcribeWaiters.isEmpty {
+      isTranscribeSlotHeld = false
+      return
+    }
+    let next = transcribeWaiters.removeFirst()
+    next.resume()
+  }
+
+  /// Waits until no Parakeet transcribe call is in progress.
+  func waitUntilTranscribeIdle() async {
+    await acquireTranscribeSlot()
+    releaseTranscribeSlot()
   }
 
   // Delete cached Parakeet models from known locations and reset state
@@ -191,6 +276,9 @@ actor ParakeetClient {
     )
   }
   func transcribe(_ url: URL) async throws -> String { throw NSError(domain: "Parakeet", code: -3, userInfo: [NSLocalizedDescriptionKey: "Parakeet not available"]) }
+  func waitUntilTranscribeIdle() async {}
+  func resetTranscriberState() async throws {}
+  func reinitializeTranscriber() async throws {}
   func deleteCaches(modelName: String) async throws {}
 }
 
