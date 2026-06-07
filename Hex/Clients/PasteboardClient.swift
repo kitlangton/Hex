@@ -302,9 +302,28 @@ struct PasteboardClientLive {
         event?.post(tap: .cghidEventTap)
     }
 
+    /// Deletes recently inserted preview text when the cursor sits at the end of the insertion.
+    @MainActor
+    func deleteKeystrokeInsertedText(count: Int) async {
+        guard count > 0 else { return }
+        postBackspaces(count)
+        let settleMs = min(200, max(15, count * 2))
+        try? await Task.sleep(for: .milliseconds(settleMs))
+    }
+
+    /// Pastes finalized dictation text at the cursor during a keystroke live session.
+    @MainActor
+    func pasteKeystrokeTextAtCursor(_ text: String, targetBundleID: String?) async -> Bool {
+        if !Self.isTargetAppFrontmost(bundleIdentifier: targetBundleID) {
+            activateApplication(bundleIdentifier: targetBundleID)
+            try? await Task.sleep(for: .milliseconds(12))
+        }
+        return await pasteTextAtCursor(text, delayMs: 3)
+    }
+
     /// Replaces live preview text at the cursor.
-    /// Electron editors (e.g. Cursor) often drop synthetic backspaces; selecting inserted
-    /// text with Shift+Left then pasting is much more reliable.
+    /// Full replace deletes via backspace at the insertion tail (Shift+Left select + paste
+    /// appends in Electron editors like Cursor). Incremental edits still use selection.
     @MainActor
     func replaceLiveText(
         targetBundleID: String?,
@@ -335,12 +354,18 @@ struct PasteboardClientLive {
             return true
         case let .replaceTail(backspaces, insert):
             if backspaces > 0 {
-                await selectBackward(backspaces)
-                let settleMs = min(120, max(10, backspaces / 4))
-                try? await Task.sleep(for: .milliseconds(settleMs))
+                if preferFullReplace {
+                    postBackspaces(backspaces)
+                    let settleMs = min(200, max(15, backspaces * 2))
+                    try? await Task.sleep(for: .milliseconds(settleMs))
+                } else {
+                    await selectBackward(backspaces)
+                    let settleMs = min(120, max(10, backspaces / 4))
+                    try? await Task.sleep(for: .milliseconds(settleMs))
+                }
             }
             guard !insert.isEmpty else {
-                if backspaces > 0 {
+                if backspaces > 0, !preferFullReplace {
                     postBackspaces(1)
                 }
                 return true

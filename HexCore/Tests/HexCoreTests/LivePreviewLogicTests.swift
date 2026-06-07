@@ -34,12 +34,19 @@ final class LivePreviewLogicTests: XCTestCase {
     XCTAssertTrue(gate.shouldApply(next: "hell"))
   }
 
+  func testLivePreviewUpdateGateRejectsUnrelatedGrowth() {
+    var gate = LivePreviewUpdateGate()
+    gate.markApplied("The setting seems fine")
+    XCTAssertFalse(gate.shouldApply(next: "Random words completely different"))
+    XCTAssertTrue(gate.shouldApply(next: "The setting seems fine now"))
+  }
+
   func testLivePreviewTranscriptionSchedulerThrottles() {
     var scheduler = LivePreviewTranscriptionScheduler()
-    XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.1, hasInFlightTranscribe: false))
+    XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.3, hasInFlightTranscribe: false))
     XCTAssertTrue(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.5, hasInFlightTranscribe: false))
     scheduler.markTranscribed(duration: 0.5)
-    XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.55, hasInFlightTranscribe: false))
-    XCTAssertTrue(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.65, hasInFlightTranscribe: false))
+    XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.65, hasInFlightTranscribe: false))
+    XCTAssertTrue(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.75, hasInFlightTranscribe: false))
   }
 }

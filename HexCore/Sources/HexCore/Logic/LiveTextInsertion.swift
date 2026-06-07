@@ -126,6 +126,11 @@ public struct LivePreviewUpdateGate: Equatable, Sendable {
     guard !lastApplied.isEmpty else { return true }
 
     if next.count >= lastApplied.count {
+      let sharedPrefixLength = lastApplied.commonPrefix(with: next).count
+      // Short padded preview clips often hallucinate unrelated longer strings.
+      // Require growth to mostly extend the prior transcript instead of rewriting it.
+      let minimumStablePrefix = max(1, (lastApplied.count * 2) / 3)
+      guard sharedPrefixLength >= minimumStablePrefix else { return false }
       pendingShrinkCandidate = nil
       return true
     }
@@ -158,8 +163,8 @@ public struct LivePreviewUpdateGate: Equatable, Sendable {
 
 /// Throttles live preview Parakeet passes and decides when to skip stale results.
 public struct LivePreviewTranscriptionScheduler: Equatable, Sendable {
-  public static let minimumAudioBeforeTranscribe: TimeInterval = 0.22
-  public static let minimumNewAudioBetweenTranscribes: TimeInterval = 0.12
+  public static let minimumAudioBeforeTranscribe: TimeInterval = 0.45
+  public static let minimumNewAudioBetweenTranscribes: TimeInterval = 0.22
   /// Ignore preview results that lag the live capture by more than this.
   public static let maxStaleResultDelta: TimeInterval = 0.5
 

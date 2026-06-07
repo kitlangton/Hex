@@ -73,7 +73,7 @@ struct GeneralSectionView: View {
 				HStack(alignment: .center) {
 					Text("Live Preview")
 					Spacer()
-					Picker("Live Preview", selection: Binding(
+					Picker("", selection: Binding(
 						get: { store.hexSettings.livePreviewDisplayMode },
 						set: { store.send(.setLivePreviewDisplayMode($0)) }
 					)) {
@@ -81,6 +81,7 @@ struct GeneralSectionView: View {
 						Text("Overlay").tag(LivePreviewDisplayMode.overlay)
 					}
 					.pickerStyle(.menu)
+					.labelsHidden()
 				}
 				Text("Show live transcription at the text cursor, or in Hex's floating overlay while recording. Requires a Parakeet model and Super Fast Mode.")
 			} icon: {

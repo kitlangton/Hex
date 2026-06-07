@@ -168,6 +168,9 @@ final class LiveTextInsertionClientLive {
       return true
 
     case let .keystroke(bundleID, preferFullReplace):
+      if text == insertedText {
+        return true
+      }
       pendingKeystrokeText = text
       keystrokeUpdateGeneration &+= 1
       let generation = keystrokeUpdateGeneration
@@ -236,36 +239,70 @@ final class LiveTextInsertionClientLive {
 
   @MainActor
   func finalize(_ text: String) async -> Bool {
-    guard session != nil else { return false }
-    if await update(text) {
-      let finalKeystrokeText: String? = if case .keystroke = session { text } else { nil }
-      await resetSession(finalKeystrokeText: finalKeystrokeText)
-      liveTextInsertionLogger.notice("Live text insertion finalized chars=\(text.count)")
-      return true
-    }
+    guard let session else { return false }
 
-    if case let .keystroke(bundleID, preferFullReplace) = session {
-      let previousText = insertedText
-      guard previousText != text else {
-        await resetSession(finalKeystrokeText: text)
-        return true
+    pendingKeystrokeText = nil
+    keystrokeUpdateGeneration &+= 1
+    if let chain = keystrokeUpdateChain {
+      _ = await chain.value
+    }
+    keystrokeUpdateChain = nil
+    isKeystrokeUpdateInFlight = false
+
+    switch session {
+    case let .accessibility(element, bundleID, state):
+      var mutableState = state
+      let previousInsertedLength = mutableState.insertedText.count
+      let newValue = mutableState.update(with: text)
+      guard FocusedTextFieldEditor.apply(
+        to: element,
+        state: mutableState,
+        value: newValue,
+        previousInsertedLength: previousInsertedLength
+      ) else {
+        return false
       }
-      let replaced = await pasteboard.replaceLiveText(
-        targetBundleID: bundleID,
-        previousText: previousText,
-        newText: text,
-        preferFullReplace: true
-      )
-      if replaced {
+      await resetSession()
+      liveTextInsertionLogger.notice("Live text insertion finalized mode=accessibility chars=\(text.count)")
+      return true
+
+    case let .keystroke(bundleID, _):
+      let previewText = insertedText
+
+      if previewText == text, !previewText.isEmpty {
         await resetSession(finalKeystrokeText: text)
         liveTextInsertionLogger.notice(
-          "Live text insertion finalized via full-replace fallback chars=\(text.count) fullReplace=\(preferFullReplace)"
+          "Live text insertion finalized without re-paste chars=\(text.count)"
         )
         return true
       }
-    }
 
-    return false
+      pasteboard.activateApplication(bundleIdentifier: bundleID)
+      if !previewText.isEmpty {
+        await pasteboard.deleteKeystrokeInsertedText(count: previewText.count)
+      }
+
+      let pasted: Bool
+      if text.isEmpty {
+        pasted = true
+      } else {
+        pasted = await pasteboard.pasteKeystrokeTextAtCursor(text, targetBundleID: bundleID)
+      }
+
+      guard pasted else { return false }
+
+      await resetSession(finalKeystrokeText: text)
+      if previewText.isEmpty {
+        liveTextInsertionLogger.notice(
+          "Live text insertion finalized via single-paste chars=\(text.count)"
+        )
+      } else {
+        liveTextInsertionLogger.notice(
+          "Live text insertion finalized via revert-and-paste chars=\(text.count) previewChars=\(previewText.count)"
+        )
+      }
+      return true
+    }
   }
 
   @MainActor
@@ -300,7 +337,7 @@ final class LiveTextInsertionClientLive {
       let revertCount = insertedText.count
       pasteboard.activateApplication(bundleIdentifier: bundleID)
       if revertCount > 0 {
-        await pasteboard.selectBackwardAndDeleteForRevert(count: revertCount)
+        await pasteboard.deleteKeystrokeInsertedText(count: revertCount)
       }
       liveTextInsertionLogger.notice("Live text insertion reverted mode=keystroke")
     }
