@@ -36,13 +36,19 @@ public struct SpeechActivityMetrics: Equatable, Sendable {
 
 /// Detects whether captured audio likely contains speech vs silence/noise.
 public enum SpeechActivityGate {
-  /// Minimum RMS for float32 mono PCM at 16 kHz (disconnected/silent mics stay well below this).
-  public static let minimumPeakRMS: Double = 0.012
-  /// Short spikes from padding/click noise can exceed RMS while still not being speech.
-  public static let minimumPeakSample: Double = 0.04
+  /// Both must be met — Bluetooth idle noise often spikes peak without sustained RMS.
+  public static let minimumPeakRMS: Double = 0.018
+  public static let minimumPeakSample: Double = 0.055
+  /// Louder evidence required before accepting hallucination-prone short phrases.
+  public static let strongPeakRMS: Double = 0.030
+  public static let strongPeakSample: Double = 0.10
 
   public static func hasSpeechActivity(_ metrics: SpeechActivityMetrics) -> Bool {
-    metrics.peakRMS >= minimumPeakRMS || metrics.peakSample >= minimumPeakSample
+    metrics.peakRMS >= minimumPeakRMS && metrics.peakSample >= minimumPeakSample
+  }
+
+  public static func hasStrongSpeechActivity(_ metrics: SpeechActivityMetrics) -> Bool {
+    metrics.peakRMS >= strongPeakRMS || metrics.peakSample >= strongPeakSample
   }
 }
 
@@ -74,6 +80,8 @@ public enum SilentTranscriptionFilter {
     "subscribe",
   ]
 
+  public static let maxShortPreviewCharsWithoutStrongSpeech = 8
+
   public static func normalized(_ text: String) -> String {
     text
       .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -87,14 +95,22 @@ public enum SilentTranscriptionFilter {
     return hallucinatedPhrases.contains(normalized)
   }
 
-  /// Accept real speech always; reject silence and common silent-audio hallucinations.
+  /// Accept real speech; reject silence/noise and common silent-audio hallucinations.
   public static func shouldAcceptTranscription(
     text: String,
     metrics: SpeechActivityMetrics
   ) -> Bool {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return false }
-    if SpeechActivityGate.hasSpeechActivity(metrics) { return true }
-    return !isLikelyHallucination(trimmed)
+
+    if isLikelyHallucination(trimmed) {
+      return SpeechActivityGate.hasStrongSpeechActivity(metrics)
+    }
+
+    if trimmed.count <= maxShortPreviewCharsWithoutStrongSpeech {
+      return SpeechActivityGate.hasStrongSpeechActivity(metrics)
+    }
+
+    return SpeechActivityGate.hasSpeechActivity(metrics)
   }
 }

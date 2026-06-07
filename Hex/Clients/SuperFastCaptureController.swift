@@ -192,6 +192,13 @@ final class SuperFastCaptureController {
     processingQueue.sync { sessionSpeechMetrics }
   }
 
+  /// Speech levels in the current in-memory preview buffer (not cumulative session peak).
+  func previewSpeechMetrics() -> SpeechActivityMetrics {
+    processingQueue.sync {
+      SpeechActivityMetrics.analyze(samples: previewSamples)
+    }
+  }
+
   func resetSessionSpeechMetrics() {
     processingQueue.sync {
       sessionSpeechMetrics = .zero

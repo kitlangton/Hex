@@ -172,13 +172,27 @@ public struct LivePreviewTranscriptionScheduler: Equatable, Sendable {
 
   public init() {}
 
+  public static func minimumNewAudioBetweenTranscribes(for snapshotDuration: TimeInterval) -> TimeInterval {
+    switch snapshotDuration {
+    case ..<3:
+      minimumNewAudioBetweenTranscribes
+    case ..<8:
+      0.50
+    case ..<15:
+      0.85
+    default:
+      1.25
+    }
+  }
+
   public mutating func shouldScheduleTranscribe(
     snapshotDuration: TimeInterval,
     hasInFlightTranscribe: Bool
   ) -> Bool {
     guard !hasInFlightTranscribe else { return false }
     guard snapshotDuration >= Self.minimumAudioBeforeTranscribe else { return false }
-    guard snapshotDuration - lastTranscribedDuration >= Self.minimumNewAudioBetweenTranscribes else {
+    let requiredNewAudio = Self.minimumNewAudioBetweenTranscribes(for: snapshotDuration)
+    guard snapshotDuration - lastTranscribedDuration >= requiredNewAudio else {
       return false
     }
     return true

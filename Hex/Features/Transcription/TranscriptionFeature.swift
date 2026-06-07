@@ -547,8 +547,8 @@ private extension TranscriptionFeature {
       guard !inFlightTranscribe else { continue }
       guard !keystrokeBusy else { continue }
 
-      let speechMetrics = await recording.recordingSpeechMetrics()
-      guard SpeechActivityGate.hasSpeechActivity(speechMetrics) else {
+      let snapshotMetrics = await recording.previewSpeechMetrics()
+      guard SpeechActivityGate.hasSpeechActivity(snapshotMetrics) else {
         try? await Task.sleep(for: .milliseconds(200))
         continue
       }
@@ -588,9 +588,9 @@ private extension TranscriptionFeature {
       let nowDuration = await recording.previewRecordingDuration()
       guard let text, !text.isEmpty else { continue }
 
-      guard SilentTranscriptionFilter.shouldAcceptTranscription(text: text, metrics: speechMetrics) else {
+      guard SilentTranscriptionFilter.shouldAcceptTranscription(text: text, metrics: snapshotMetrics) else {
         transcriptionFeatureLogger.debug(
-          "Rejected live preview — likely silent-audio hallucination chars=\(text.count)"
+          "Rejected live preview — likely silent-audio hallucination chars=\(text.count) peakRMS=\(String(format: "%.4f", snapshotMetrics.peakRMS)) peakSample=\(String(format: "%.4f", snapshotMetrics.peakSample))"
         )
         continue
       }

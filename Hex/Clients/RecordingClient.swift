@@ -38,6 +38,7 @@ struct RecordingClient {
   var snapshotRecordingForPreview: @Sendable () async -> URL? = { nil }
   var previewRecordingDuration: @Sendable () async -> TimeInterval = { 0 }
   var recordingSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
+  var previewSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
   var getDefaultInputDeviceName: @Sendable () async -> String? = { nil }
   var warmUpRecorder: @Sendable () async -> Void = {}
@@ -1687,6 +1688,10 @@ actor RecordingClientLive {
     var metrics = sessionSpeechMetrics
     metrics.merge(captureController.recordingSpeechMetrics())
     return metrics
+  }
+
+  func previewSpeechMetrics() -> SpeechActivityMetrics {
+    captureController.previewSpeechMetrics()
   }
 
   func warmUpRecorder() async {

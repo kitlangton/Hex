@@ -49,4 +49,15 @@ final class LivePreviewLogicTests: XCTestCase {
     XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.65, hasInFlightTranscribe: false))
     XCTAssertTrue(scheduler.shouldScheduleTranscribe(snapshotDuration: 0.75, hasInFlightTranscribe: false))
   }
+
+  func testLivePreviewTranscriptionSchedulerSlowsOnLongRecordings() {
+    var scheduler = LivePreviewTranscriptionScheduler()
+    scheduler.markTranscribed(duration: 5.0)
+    XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 5.4, hasInFlightTranscribe: false))
+    XCTAssertTrue(scheduler.shouldScheduleTranscribe(snapshotDuration: 5.55, hasInFlightTranscribe: false))
+
+    scheduler.markTranscribed(duration: 14.0)
+    XCTAssertFalse(scheduler.shouldScheduleTranscribe(snapshotDuration: 14.7, hasInFlightTranscribe: false))
+    XCTAssertTrue(scheduler.shouldScheduleTranscribe(snapshotDuration: 14.9, hasInFlightTranscribe: false))
+  }
 }

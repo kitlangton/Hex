@@ -14,6 +14,12 @@ final class SpeechActivityTests: XCTestCase {
     }
     let metrics = SpeechActivityMetrics.analyze(samples: speechLike)
     XCTAssertTrue(SpeechActivityGate.hasSpeechActivity(metrics))
+    XCTAssertTrue(SpeechActivityGate.hasStrongSpeechActivity(metrics))
+  }
+
+  func testPeakSampleAloneDoesNotCountAsSpeech() {
+    let metrics = SpeechActivityMetrics(peakRMS: 0.005, peakSample: 0.08)
+    XCTAssertFalse(SpeechActivityGate.hasSpeechActivity(metrics))
   }
 
   func testSilentTranscriptionFilterRejectsCommonHallucinations() {
@@ -22,20 +28,28 @@ final class SpeechActivityTests: XCTestCase {
     XCTAssertFalse(SilentTranscriptionFilter.isLikelyHallucination("The settings section seems fine"))
   }
 
-  func testShouldAcceptTranscriptionWithoutSpeechActivity() {
-    let metrics = SpeechActivityMetrics.zero
+  func testShouldRejectHallucinationOnWeakSpeechMetrics() {
+    let weakMetrics = SpeechActivityMetrics(peakRMS: 0.020, peakSample: 0.06)
+    XCTAssertTrue(SpeechActivityGate.hasSpeechActivity(weakMetrics))
+    XCTAssertFalse(SpeechActivityGate.hasStrongSpeechActivity(weakMetrics))
     XCTAssertFalse(
-      SilentTranscriptionFilter.shouldAcceptTranscription(text: "Thank you.", metrics: metrics)
+      SilentTranscriptionFilter.shouldAcceptTranscription(text: "Thank you.", metrics: weakMetrics)
     )
     XCTAssertFalse(
-      SilentTranscriptionFilter.shouldAcceptTranscription(text: "okay", metrics: metrics)
+      SilentTranscriptionFilter.shouldAcceptTranscription(text: "hello", metrics: weakMetrics)
     )
   }
 
-  func testShouldAcceptTranscriptionWithSpeechActivity() {
+  func testShouldAcceptTranscriptionWithStrongSpeechActivity() {
     let metrics = SpeechActivityMetrics(peakRMS: 0.05, peakSample: 0.12)
     XCTAssertTrue(
       SilentTranscriptionFilter.shouldAcceptTranscription(text: "Thank you.", metrics: metrics)
+    )
+    XCTAssertTrue(
+      SilentTranscriptionFilter.shouldAcceptTranscription(
+        text: "The settings section seems fine",
+        metrics: metrics
+      )
     )
   }
 }
