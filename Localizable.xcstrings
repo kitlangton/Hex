@@ -686,9 +686,6 @@
     "Show less" : {
 
     },
-    "Show live transcription at the text cursor, or in Hex's floating overlay while recording." : {
-
-    },
     "Show live transcription at the text cursor, or in Hex's floating overlay while recording. Requires a Parakeet model and Super Fast Mode." : {
       "localizations" : {
         "de" : {

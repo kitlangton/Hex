@@ -75,15 +75,9 @@ final class LiveTextInsertionClientLive {
     "com.kitlangton.Hex.debug",
   ]
 
-  /// Electron and web-wrapper chat apps often drop incremental backspaces; full replace is safer.
-  private static let fullKeystrokeReplaceBundleIdentifiers: Set<String> = [
-    "net.whatsapp.WhatsApp",
-    "net.whatsapp.WhatsApp.Service",
-    "com.tinyspeck.slackmacgap",
-    "com.microsoft.teams2",
-    "com.hnc.Discord",
-    "org.telegram.desktop",
-  ]
+  /// Keystroke fallback means Accessibility insertion failed; incremental edits are
+  /// unreliable in Electron/web-wrapper apps (WhatsApp, Slack, Cursor, etc.).
+  private static let prefersFullKeystrokeReplace: Bool = true
 
   @MainActor
   func prepareNow() -> Bool {
@@ -132,11 +126,11 @@ final class LiveTextInsertionClientLive {
 
     session = .keystroke(
       bundleID: bundleID,
-      preferFullReplace: Self.fullKeystrokeReplaceBundleIdentifiers.contains(bundleID)
+      preferFullReplace: Self.prefersFullKeystrokeReplace
     )
     pasteboard.beginLiveKeystrokePasteboardSession()
     liveTextInsertionLogger.notice(
-      "Live text insertion prepared mode=keystroke app=\(bundleID) fullReplace=\(Self.fullKeystrokeReplaceBundleIdentifiers.contains(bundleID))"
+      "Live text insertion prepared mode=keystroke app=\(bundleID) fullReplace=\(Self.prefersFullKeystrokeReplace)"
     )
     return true
   }
