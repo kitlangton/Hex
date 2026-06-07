@@ -338,6 +338,8 @@ actor RecordingClientLive {
   private var deferredCaptureRestartReason: String?
   private var environmentChangeDebounceTask: Task<Void, Never>?
   private var mediaControlTask: Task<Void, Never>?
+  private var resumeMediaTask: Task<Void, Never>?
+  private static let resumeMediaDebounce: Duration = .milliseconds(200)
   private let recorderSettings: [String: Any] = [
     AVFormatIDKey: Int(kAudioFormatLinearPCM),
     AVSampleRateKey: 16000.0,
@@ -376,6 +378,22 @@ actor RecordingClientLive {
 
   /// Tracks previous system volume when muted for recording
   private var previousVolume: Float?
+
+  private var hasActiveMediaControlState: Bool {
+    didPauseMedia || didPauseViaMediaRemote || previousVolume != nil || !pausedPlayers.isEmpty
+  }
+
+  private var isCaptureActive: Bool {
+    activeRecordingSession != nil || captureController.isRecording || recorder?.isRecording == true
+  }
+
+  /// Wait until a recording is likely intentional before pausing media or muting output.
+  private func mediaControlActivationDelay() -> TimeInterval {
+    if hexSettings.hotkey.key == nil {
+      return max(hexSettings.minimumKeyTime, RecordingDecisionEngine.modifierOnlyMinimumDuration)
+    }
+    return max(hexSettings.minimumKeyTime, 0.1)
+  }
 
   /// Gets all available input devices on the system
   func getAvailableInputDevices() async -> [AudioInputDevice] {
@@ -1031,60 +1049,37 @@ actor RecordingClientLive {
   }
 
   func startRecording() async {
+    resumeMediaTask?.cancel()
+    resumeMediaTask = nil
+
+    if isCaptureActive {
+      recordingLogger.notice("Ignoring duplicate startRecording while capture is active")
+      return
+    }
+
+    if hasActiveMediaControlState {
+      await resumeMediaImmediately()
+    }
+
     let sessionID = UUID()
     recordingSessionID = sessionID
     mediaControlTask?.cancel()
     mediaControlTask = nil
 
-    // Handle audio behavior based on user preference
+    // Defer pause/mute until the recording survives the minimum hold threshold.
+    // This avoids pause/play and volume flicker on accidental or fluttering hotkey presses.
     switch hexSettings.recordingAudioBehavior {
     case .pauseMedia:
-      // Pause media in background - don't block recording from starting
-      mediaControlTask = Task { [sessionID] in
-        guard await self.isCurrentSession(sessionID) else { return }
-        if await self.pauseUsingMediaRemoteIfPossible(sessionID: sessionID) {
-          return
-        }
-
-        // First, pause all media applications using their AppleScript interface.
-        let paused = await pauseAllMediaApplications()
-        guard await self.isCurrentSession(sessionID) else {
-          await resumeMediaApplications(paused)
-          return
-        }
-        await self.updatePausedPlayers(paused, sessionID: sessionID)
-
-        // If no specific players were paused, pause generic media using the media key.
-        guard await self.isCurrentSession(sessionID) else { return }
-        if paused.isEmpty {
-          if await isAudioPlayingOnDefaultOutput() {
-            guard await self.isCurrentSession(sessionID) else { return }
-            mediaLogger.notice("Detected active audio on default output; sending media pause")
-            await MainActor.run {
-              sendMediaKey()
-            }
-            await self.setDidPauseMedia(true, sessionID: sessionID)
-            mediaLogger.notice("Paused media via media key fallback")
-          }
-        } else {
-          mediaLogger.notice("Paused media players: \(paused.joined(separator: ", "))")
-        }
+      scheduleMediaControl(sessionID: sessionID) { [sessionID] in
+        await self.applyPauseMedia(sessionID: sessionID)
       }
 
     case .mute:
-      // Mute system volume in background
-      mediaControlTask = Task { [sessionID] in
-        guard await self.isCurrentSession(sessionID) else { return }
-        let volume = await self.muteSystemVolume()
-        guard await self.isCurrentSession(sessionID) else {
-          await self.restoreSystemVolume(volume)
-          return
-        }
-        await self.setPreviousVolume(volume, sessionID: sessionID)
+      scheduleMediaControl(sessionID: sessionID) { [sessionID] in
+        await self.applyMute(sessionID: sessionID)
       }
 
     case .doNothing:
-      // No audio handling
       break
     }
 
@@ -1181,7 +1176,7 @@ actor RecordingClientLive {
       }
 
       await flushDeferredCaptureRestartIfNeeded()
-      await resumeMediaIfNeeded()
+      scheduleResumeMediaIfNeeded()
       return captureURL
     }
 
@@ -1200,7 +1195,7 @@ actor RecordingClientLive {
       clearActiveRecordingMetadata()
       lastRecordingEndedAt = stoppedAt
       await flushDeferredCaptureRestartIfNeeded()
-      await resumeMediaIfNeeded()
+      scheduleResumeMediaIfNeeded()
       return makeIgnoredStopURL()
     }
     recorder?.stop()
@@ -1224,12 +1219,72 @@ actor RecordingClientLive {
     }
 
     await flushDeferredCaptureRestartIfNeeded()
-    await resumeMediaIfNeeded()
+    scheduleResumeMediaIfNeeded()
 
     return exportedURL
   }
 
-  private func resumeMediaIfNeeded() async {
+  private func scheduleMediaControl(sessionID: UUID, action: @escaping @Sendable () async -> Void) {
+    let activationDelay = mediaControlActivationDelay()
+    mediaControlTask = Task {
+      if activationDelay > 0 {
+        try? await Task.sleep(for: .seconds(activationDelay))
+      }
+      guard await self.isCurrentSession(sessionID), !Task.isCancelled else { return }
+      await action()
+    }
+  }
+
+  private func applyPauseMedia(sessionID: UUID) async {
+    guard isCurrentSession(sessionID) else { return }
+    if await pauseUsingMediaRemoteIfPossible(sessionID: sessionID) {
+      return
+    }
+
+    let paused = await pauseAllMediaApplications()
+    guard isCurrentSession(sessionID) else {
+      await resumeMediaApplications(paused)
+      return
+    }
+    updatePausedPlayers(paused, sessionID: sessionID)
+
+    guard isCurrentSession(sessionID) else { return }
+    if paused.isEmpty {
+      if await isAudioPlayingOnDefaultOutput() {
+        guard isCurrentSession(sessionID) else { return }
+        mediaLogger.notice("Detected active audio on default output; sending media pause")
+        await MainActor.run {
+          sendMediaKey()
+        }
+        setDidPauseMedia(true, sessionID: sessionID)
+        mediaLogger.notice("Paused media via media key fallback")
+      }
+    } else {
+      mediaLogger.notice("Paused media players: \(paused.joined(separator: ", "))")
+    }
+  }
+
+  private func applyMute(sessionID: UUID) async {
+    guard isCurrentSession(sessionID) else { return }
+    let volume = await muteSystemVolume()
+    guard isCurrentSession(sessionID) else {
+      await restoreSystemVolume(volume)
+      return
+    }
+    setPreviousVolume(volume, sessionID: sessionID)
+  }
+
+  private func scheduleResumeMediaIfNeeded() {
+    guard hasActiveMediaControlState else { return }
+    resumeMediaTask?.cancel()
+    resumeMediaTask = Task {
+      try? await Task.sleep(for: Self.resumeMediaDebounce)
+      guard !Task.isCancelled else { return }
+      await self.resumeMediaImmediately()
+    }
+  }
+
+  private func resumeMediaImmediately() async {
     let playersToResume = pausedPlayers
     let shouldResumeMedia = didPauseMedia
     let shouldResumeViaMediaRemote = didPauseViaMediaRemote
