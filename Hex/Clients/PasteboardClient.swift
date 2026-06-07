@@ -49,6 +49,12 @@ extension DependencyValues {
 
 struct PasteboardClientLive {
     @Shared(.hexSettings) var hexSettings: HexSettings
+
+    private final class LiveKeystrokePasteboardSession {
+        var userSnapshot: PasteboardSnapshot?
+    }
+
+    private let liveKeystrokePasteboardSession = LiveKeystrokePasteboardSession()
     
     private struct PasteboardSnapshot {
         let items: [[String: Any]]
@@ -79,6 +85,27 @@ struct PasteboardClientLive {
                 pasteboard.writeObjects([item])
             }
         }
+    }
+
+    @MainActor
+    func beginLiveKeystrokePasteboardSession() {
+        liveKeystrokePasteboardSession.userSnapshot = PasteboardSnapshot(
+            pasteboard: NSPasteboard.general
+        )
+    }
+
+    @MainActor
+    func endLiveKeystrokePasteboardSession(finalText: String? = nil) {
+        defer { liveKeystrokePasteboardSession.userSnapshot = nil }
+        let pasteboard = NSPasteboard.general
+        if hexSettings.copyToClipboard {
+            if let finalText, !finalText.isEmpty {
+                pasteboard.clearContents()
+                pasteboard.setString(finalText, forType: .string)
+            }
+            return
+        }
+        liveKeystrokePasteboardSession.userSnapshot?.restore(to: pasteboard)
     }
 
     @MainActor
@@ -362,12 +389,25 @@ struct PasteboardClientLive {
     @MainActor
     private func pasteTextAtCursor(_ text: String, delayMs: Int) async -> Bool {
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        let targetChangeCount = writeAndTrackChangeCount(pasteboard: pasteboard, text: text)
+        _ = await waitForPasteboardCommit(targetChangeCount: targetChangeCount)
 
-        if await postCmdV(delayMs: delayMs) { return true }
-        if Self.pasteToFrontmostApp() { return true }
-        return (try? Self.insertTextAtCursor(text)) != nil
+        var succeeded = await postCmdV(delayMs: delayMs)
+        if !succeeded {
+            succeeded = Self.pasteToFrontmostApp()
+        }
+        if !succeeded {
+            succeeded = (try? Self.insertTextAtCursor(text)) != nil
+        }
+
+        if !hexSettings.copyToClipboard && succeeded {
+            if let snapshot = liveKeystrokePasteboardSession.userSnapshot {
+                try? await Task.sleep(for: .milliseconds(500))
+                snapshot.restore(to: pasteboard)
+            }
+        }
+
+        return succeeded
     }
 
     @MainActor

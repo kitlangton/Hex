@@ -119,6 +119,7 @@ final class LiveTextInsertionClientLive {
     }
 
     session = .keystroke(bundleID: bundleID)
+    pasteboard.beginLiveKeystrokePasteboardSession()
     liveTextInsertionLogger.notice(
       "Live text insertion prepared mode=keystroke app=\(bundleID)"
     )
@@ -210,7 +211,8 @@ final class LiveTextInsertionClientLive {
     guard session != nil else { return false }
     let succeeded = await update(text)
     if succeeded {
-      resetSession()
+      let finalKeystrokeText: String? = if case .keystroke = session { text } else { nil }
+      resetSession(finalKeystrokeText: finalKeystrokeText)
       liveTextInsertionLogger.notice("Live text insertion finalized chars=\(text.count)")
     }
     return succeeded
@@ -256,7 +258,10 @@ final class LiveTextInsertionClientLive {
   }
 
   @MainActor
-  private func resetSession() {
+  private func resetSession(finalKeystrokeText: String? = nil) {
+    if case .keystroke = session {
+      pasteboard.endLiveKeystrokePasteboardSession(finalText: finalKeystrokeText)
+    }
     keystrokeUpdateChain?.cancel()
     keystrokeUpdateChain = nil
     keystrokeUpdateGeneration &+= 1
