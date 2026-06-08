@@ -22,6 +22,7 @@ private typealias CoreAudioPropertyListenerBlock = @convention(block) (UInt32, U
 struct AudioInputDevice: Identifiable, Equatable {
   var id: String
   var name: String
+  var legacyID: String
 }
 
 @DependencyClient
@@ -348,8 +349,16 @@ actor RecordingClientLive {
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
-  private lazy var captureController = SuperFastCaptureController(meterContinuation: meterContinuation)
+  private lazy var captureController = SuperFastCaptureController(
+    meterContinuation: meterContinuation,
+    onEngineConfigurationChange: { [weak self] in
+      Task {
+        await self?.enqueueCaptureEnvironmentChange(reason: "capture-engine-configuration-changed")
+      }
+    }
+  )
   private var captureControllerDeviceID: AudioDeviceID?
+  private var captureControllerNeedsRestartReason: String?
   private var notificationObservers: [NSObjectProtocol] = []
   private var audioHardwareObservers: [AudioHardwareObserver] = []
   private var isObservingSystemChanges = false
@@ -368,40 +377,18 @@ actor RecordingClientLive {
   /// Tracks previous system volume when muted for recording
   private var previousVolume: Float?
 
-  // Cache to store already-processed device information
-  private var deviceCache: [AudioDeviceID: (hasInput: Bool, name: String?)] = [:]
-  private var lastDeviceCheck = Date(timeIntervalSince1970: 0)
-  
   /// Gets all available input devices on the system
   func getAvailableInputDevices() async -> [AudioInputDevice] {
-    // Reset cache if it's been more than 5 minutes since last full refresh
-    let now = Date()
-    if now.timeIntervalSince(lastDeviceCheck) > 300 {
-      deviceCache.removeAll()
-      lastDeviceCheck = now
-    }
-    
     // Get all available audio devices
     let devices = getAllAudioDevices()
     var inputDevices: [AudioInputDevice] = []
     
     // Filter to only input devices and convert to our model
     for device in devices {
-      let hasInput: Bool
-      let name: String?
-      
-      // Check cache first to avoid expensive Core Audio calls
-      if let cached = deviceCache[device] {
-        hasInput = cached.hasInput
-        name = cached.name
-      } else {
-        hasInput = deviceHasInput(deviceID: device)
-        name = hasInput ? getDeviceName(deviceID: device) : nil
-        deviceCache[device] = (hasInput, name)
-      }
-      
-      if hasInput, let deviceName = name {
-        inputDevices.append(AudioInputDevice(id: String(device), name: deviceName))
+      if deviceHasInput(deviceID: device),
+         let deviceUID = getDeviceUID(deviceID: device),
+         let deviceName = getDeviceName(deviceID: device) {
+        inputDevices.append(AudioInputDevice(id: deviceUID, name: deviceName, legacyID: String(device)))
       }
     }
     
@@ -411,14 +398,7 @@ actor RecordingClientLive {
   /// Gets the current system default input device name
   func getDefaultInputDeviceName() async -> String? {
     guard let deviceID = getDefaultInputDevice() else { return nil }
-    if let cached = deviceCache[deviceID], cached.hasInput, let name = cached.name {
-      return name
-    }
-    let name = getDeviceName(deviceID: deviceID)
-    if let name {
-      deviceCache[deviceID] = (hasInput: true, name: name)
-    }
-    return name
+    return getDeviceName(deviceID: deviceID)
   }
   
   // MARK: - Core Audio Helpers
@@ -447,7 +427,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "system-wake", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "system-wake") }
       }
     )
     notificationObservers.append(
@@ -456,7 +436,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "display-wake", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "display-wake") }
       }
     )
 
@@ -467,7 +447,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-connected", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-connected") }
       }
     )
     notificationObservers.append(
@@ -476,7 +456,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-disconnected", forceRestart: true) }
+        Task { await self.enqueueCaptureEnvironmentChange(reason: "capture-device-disconnected") }
       }
     )
 
@@ -501,7 +481,7 @@ actor RecordingClientLive {
     reason: String
   ) {
     let listener: CoreAudioPropertyListenerBlock = { _, _ in
-      Task { await self.enqueueCaptureEnvironmentChange(reason: reason, forceRestart: true) }
+      Task { await self.enqueueCaptureEnvironmentChange(reason: reason) }
     }
 
     var address = audioPropertyAddress(selector)
@@ -521,12 +501,12 @@ actor RecordingClientLive {
     }
   }
 
-  private func enqueueCaptureEnvironmentChange(reason: String, forceRestart: Bool) {
+  private func enqueueCaptureEnvironmentChange(reason: String) {
     environmentChangeDebounceTask?.cancel()
     environmentChangeDebounceTask = Task { [self] in
       try? await Task.sleep(for: .milliseconds(250))
       guard !Task.isCancelled else { return }
-      await handleCaptureEnvironmentChange(reason: reason, forceRestart: forceRestart)
+      await handleCaptureEnvironmentChange(reason: reason)
     }
   }
 
@@ -557,7 +537,7 @@ actor RecordingClientLive {
     audioHardwareObservers.removeAll()
   }
 
-  private func handleCaptureEnvironmentChange(reason: String, forceRestart: Bool) async {
+  private func handleCaptureEnvironmentChange(reason: String) async {
     let currentInputDevice = getDefaultInputDevice()
     let currentOutputDevice = getDefaultOutputDevice()
     let isRecorderRecording = recorder?.isRecording == true
@@ -576,46 +556,24 @@ actor RecordingClientLive {
     }
 
     deferredCaptureRestartReason = nil
-    let activeInputDevice = applyPreferredInputDevice()
-
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "environment-change-\(reason)")
-      do {
-        try ensureCaptureControllerReady(
-          for: activeInputDevice,
-          reason: reason,
-          forceRestart: forceRestart
-        )
-      } catch {
-        recordingLogger.error("Failed to restart capture engine after \(reason): \(error.localizedDescription)")
-      }
+      captureControllerNeedsRestartReason = reason
+      captureController.clearWarmBuffer()
+      recordingLogger.notice("Deferring capture engine rebuild until next recording reason=\(reason)")
       return
     }
 
+    _ = applyPreferredInputDevice()
     stopCaptureController(reason: reason)
-    let shouldReprimeRecorder = recorder != nil || isRecorderPrimedForNextSession
     releaseRecorder(reason: "environment-change-\(reason)")
-
-    guard shouldReprimeRecorder else {
-      recordingLogger.debug("No warm recorder state to rebuild after reason=\(reason)")
-      return
-    }
-
-    do {
-      try primeRecorderForNextSession()
-      recordingLogger.notice("Recorder re-primed after reason=\(reason)")
-    } catch {
-      recordingLogger.error("Failed to re-prime recorder after \(reason): \(error.localizedDescription)")
-    }
+    recordingLogger.debug("Standard mode uses on-demand capture startup after reason=\(reason)")
   }
 
   private func flushDeferredCaptureRestartIfNeeded() async {
     guard let deferredCaptureRestartReason else { return }
     recordingLogger.notice("Applying deferred capture restart reason=\(deferredCaptureRestartReason)")
-    await handleCaptureEnvironmentChange(
-      reason: "deferred-\(deferredCaptureRestartReason)",
-      forceRestart: true
-    )
+    await handleCaptureEnvironmentChange(reason: "deferred-\(deferredCaptureRestartReason)")
   }
 
   /// Get all available audio devices
@@ -661,7 +619,19 @@ actor RecordingClientLive {
   
   /// Get device name for the given device ID
   private func getDeviceName(deviceID: AudioDeviceID) -> String? {
-    var address = audioPropertyAddress(kAudioDevicePropertyDeviceNameCFString)
+    getDeviceStringProperty(deviceID: deviceID, selector: kAudioDevicePropertyDeviceNameCFString)
+  }
+
+  /// Get the persistent device UID for the given device ID
+  private func getDeviceUID(deviceID: AudioDeviceID) -> String? {
+    getDeviceStringProperty(deviceID: deviceID, selector: kAudioDevicePropertyDeviceUID)
+  }
+
+  private func getDeviceStringProperty(
+    deviceID: AudioDeviceID,
+    selector: AudioObjectPropertySelector
+  ) -> String? {
+    var address = audioPropertyAddress(selector)
     
     var deviceName: CFString? = nil
     var size = UInt32(MemoryLayout<CFString?>.size)
@@ -682,7 +652,7 @@ actor RecordingClientLive {
     }
     
       if status != 0 {
-        recordingLogger.error("Failed to fetch device name: \(status)")
+        recordingLogger.error("Failed to fetch device property \(selector): \(status)")
         return nil
       }
     
@@ -779,18 +749,39 @@ actor RecordingClientLive {
   }
 
   private func resolvePreferredInputDevice() -> AudioDeviceID? {
-    if let selectedDeviceIDString = hexSettings.selectedMicrophoneID,
-       let selectedDeviceID = AudioDeviceID(selectedDeviceIDString) {
-      let devices = getAllAudioDevices()
-      if devices.contains(selectedDeviceID), deviceHasInput(deviceID: selectedDeviceID) {
-        return selectedDeviceID
-      }
-
-      recordingLogger.notice("Selected device \(selectedDeviceID) missing; using system default")
-      return nil
+    guard let selectedMicrophoneID = hexSettings.selectedMicrophoneID else { return nil }
+    if let deviceID = getDeviceID(uid: selectedMicrophoneID),
+       deviceHasInput(deviceID: deviceID) {
+      return deviceID
     }
 
+    if let legacyDeviceID = AudioDeviceID(selectedMicrophoneID),
+       deviceHasInput(deviceID: legacyDeviceID) {
+      return legacyDeviceID
+    }
+
+    recordingLogger.notice("Selected device \(selectedMicrophoneID) missing; using system default")
     return nil
+  }
+
+  private func getDeviceID(uid: String) -> AudioDeviceID? {
+    var address = audioPropertyAddress(kAudioHardwarePropertyDeviceForUID)
+    var deviceUID = uid as CFString
+    var deviceID = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    let status = withUnsafePointer(to: &deviceUID) { pointer in
+      AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        UInt32(MemoryLayout<CFString>.size),
+        pointer,
+        &size,
+        &deviceID
+      )
+    }
+
+    guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+    return deviceID
   }
 
   private func formatDuration(_ duration: TimeInterval?) -> String {
@@ -878,6 +869,19 @@ actor RecordingClientLive {
     captureControllerDeviceID = deviceID
   }
 
+  private func ensureCaptureControllerReadyAfterDeferredRestart(
+    for deviceID: AudioDeviceID?,
+    reason: String
+  ) throws {
+    let deferredReason = captureControllerNeedsRestartReason
+    try ensureCaptureControllerReady(
+      for: deviceID,
+      reason: deferredReason.map { "deferred-\($0)-\(reason)" } ?? reason,
+      forceRestart: deferredReason != nil
+    )
+    captureControllerNeedsRestartReason = nil
+  }
+
   private func stopCaptureController(reason: String) {
     captureController.stop(reason: reason)
     captureControllerDeviceID = nil
@@ -929,25 +933,10 @@ actor RecordingClientLive {
 
   /// Checks and fixes muted input device before recording
   private func ensureInputDeviceUnmuted() {
-    // Check the selected device if specified, otherwise the default
-    var deviceIDsToCheck: [AudioDeviceID] = []
-
-    if let selectedIDString = hexSettings.selectedMicrophoneID,
-       let selectedID = AudioDeviceID(selectedIDString) {
-      deviceIDsToCheck.append(selectedID)
-    }
-
-    if let defaultID = getDefaultInputDevice() {
-      if !deviceIDsToCheck.contains(defaultID) {
-        deviceIDsToCheck.append(defaultID)
-      }
-    }
-
-    for deviceID in deviceIDsToCheck {
-      if isInputDeviceMuted(deviceID) {
-        recordingLogger.error("⚠️ Input device \(deviceID) is MUTED at Core Audio level! This causes silent recordings.")
-        unmuteInputDevice(deviceID)
-      }
+    guard let deviceID = getDefaultInputDevice() else { return }
+    if isInputDeviceMuted(deviceID) {
+      recordingLogger.error("⚠️ Input device \(deviceID) is MUTED at Core Audio level! This causes silent recordings.")
+      unmuteInputDevice(deviceID)
     }
   }
 
@@ -1042,9 +1031,6 @@ actor RecordingClientLive {
   }
 
   func startRecording() async {
-    // Check and fix device-level mute before recording
-    ensureInputDeviceUnmuted()
-
     let sessionID = UUID()
     recordingSessionID = sessionID
     mediaControlTask?.cancel()
@@ -1062,12 +1048,17 @@ actor RecordingClientLive {
 
         // First, pause all media applications using their AppleScript interface.
         let paused = await pauseAllMediaApplications()
+        guard await self.isCurrentSession(sessionID) else {
+          await resumeMediaApplications(paused)
+          return
+        }
         await self.updatePausedPlayers(paused, sessionID: sessionID)
 
         // If no specific players were paused, pause generic media using the media key.
         guard await self.isCurrentSession(sessionID) else { return }
         if paused.isEmpty {
           if await isAudioPlayingOnDefaultOutput() {
+            guard await self.isCurrentSession(sessionID) else { return }
             mediaLogger.notice("Detected active audio on default output; sending media pause")
             await MainActor.run {
               sendMediaKey()
@@ -1085,6 +1076,10 @@ actor RecordingClientLive {
       mediaControlTask = Task { [sessionID] in
         guard await self.isCurrentSession(sessionID) else { return }
         let volume = await self.muteSystemVolume()
+        guard await self.isCurrentSession(sessionID) else {
+          await self.restoreSystemVolume(volume)
+          return
+        }
         await self.setPreviousVolume(volume, sessionID: sessionID)
       }
 
@@ -1094,12 +1089,14 @@ actor RecordingClientLive {
     }
 
     let activeInputDevice = applyPreferredInputDevice()
+    // Check the actual active device after applying the user's preferred input.
+    ensureInputDeviceUnmuted()
     let mode = currentCaptureMode()
     logRecordingStartRequest(mode: mode, inputDeviceID: activeInputDevice)
     let startRequestAt = Date()
 
     do {
-      try ensureCaptureControllerReady(for: activeInputDevice, reason: "startRecording")
+      try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "startRecording")
       let recordingURL = makeCaptureRecordingURL()
       try captureController.beginRecording(to: recordingURL, requestedAt: startRequestAt, mode: mode)
       let startedAt = Date()
@@ -1196,37 +1193,31 @@ actor RecordingClientLive {
     )
     let recordingDuration = stoppedAt.timeIntervalSince(session.startedAt)
     let wasRecording = recorder?.isRecording == true
+    guard session.backend == .recorderFallback, wasRecording else {
+      recordingLogger.notice("stopRecording() called without an active recorder fallback; skipping stale recording.wav export")
+      stopMeterTask()
+      endRecordingSession()
+      clearActiveRecordingMetadata()
+      lastRecordingEndedAt = stoppedAt
+      await flushDeferredCaptureRestartIfNeeded()
+      await resumeMediaIfNeeded()
+      return makeIgnoredStopURL()
+    }
     recorder?.stop()
     stopMeterTask()
     endRecordingSession()
     clearActiveRecordingMetadata()
     lastRecordingEndedAt = stoppedAt
-    if wasRecording {
-      recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
-    } else {
-      recordingLogger.notice("stopRecording() called while recorder was idle")
-    }
+    recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
 
     var exportedURL = recordingURL
-    var didCopyRecording = false
     do {
       exportedURL = try duplicateCurrentRecording()
-      didCopyRecording = true
     } catch {
       isRecorderPrimedForNextSession = false
       recordingLogger.error("Failed to copy recording: \(error.localizedDescription)")
     }
-
-    if didCopyRecording {
-      do {
-        if session.backend == .recorderFallback {
-          try primeRecorderForNextSession()
-        }
-      } catch {
-        isRecorderPrimedForNextSession = false
-        recordingLogger.error("Failed to prime recorder fallback: \(error.localizedDescription)")
-      }
-    }
+    releaseRecorder(reason: "fallback-stop")
 
     if !hexSettings.superFastModeEnabled {
       stopCaptureController(reason: "standard-stop")
@@ -1239,44 +1230,38 @@ actor RecordingClientLive {
   }
 
   private func resumeMediaIfNeeded() async {
-    // Resume audio in background - don't block stop from completing
     let playersToResume = pausedPlayers
     let shouldResumeMedia = didPauseMedia
     let shouldResumeViaMediaRemote = didPauseViaMediaRemote
     let volumeToRestore = previousVolume
 
-    if !playersToResume.isEmpty || shouldResumeMedia || shouldResumeViaMediaRemote || volumeToRestore != nil {
-      Task {
-        // Restore volume if it was muted
-        if let volume = volumeToRestore {
-          await self.restoreSystemVolume(volume)
-        }
-        // Resume media if we previously paused specific players
-        else if !playersToResume.isEmpty {
-          mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "))")
-          await resumeMediaApplications(playersToResume)
-        }
-        else if shouldResumeViaMediaRemote {
-          if mediaRemoteController?.send(.play) == true {
-            mediaLogger.notice("Resuming media via MediaRemote")
-          } else {
-            mediaLogger.error("Failed to resume via MediaRemote; falling back to media key")
-            await MainActor.run {
-              sendMediaKey()
-            }
-          }
-        }
-        // Resume generic media if we paused it with the media key
-        else if shouldResumeMedia {
-          await MainActor.run {
-            sendMediaKey()
-          }
-          mediaLogger.notice("Resuming media via media key")
-        }
+    clearMediaState()
 
-        // Clear the flags
-        self.clearMediaState()
+    // Restore volume if it was muted
+    if let volume = volumeToRestore {
+      await restoreSystemVolume(volume)
+    }
+    // Resume media if we previously paused specific players
+    else if !playersToResume.isEmpty {
+      mediaLogger.notice("Resuming players: \(playersToResume.joined(separator: ", "))")
+      await resumeMediaApplications(playersToResume)
+    }
+    else if shouldResumeViaMediaRemote {
+      if mediaRemoteController?.send(.play) == true {
+        mediaLogger.notice("Resuming media via MediaRemote")
+      } else {
+        mediaLogger.error("Failed to resume via MediaRemote; falling back to media key")
+        await MainActor.run {
+          sendMediaKey()
+        }
       }
+    }
+    // Resume generic media if we paused it with the media key
+    else if shouldResumeMedia {
+      await MainActor.run {
+        sendMediaKey()
+      }
+      mediaLogger.notice("Resuming media via media key")
     }
   }
 
@@ -1337,6 +1322,7 @@ actor RecordingClientLive {
     guard isPlaying else {
       return false
     }
+    guard isCurrentSession(sessionID), !Task.isCancelled else { return false }
 
     guard controller.send(.pause) else {
       mediaLogger.error("Failed to send MediaRemote pause command")
@@ -1436,12 +1422,16 @@ actor RecordingClientLive {
   }
 
   func warmUpRecorder() async {
+    guard activeRecordingSession == nil, recorder?.isRecording != true, !captureController.isRecording else {
+      recordingLogger.notice("Skipping recorder warm-up while recording is active")
+      return
+    }
     let activeInputDevice = applyPreferredInputDevice()
 
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "warm-up-super-fast")
       do {
-        try ensureCaptureControllerReady(for: activeInputDevice, reason: "warmUpRecorder")
+        try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "warmUpRecorder")
       } catch {
         recordingLogger.error("Failed to arm capture engine for super fast mode: \(error.localizedDescription)")
       }
@@ -1454,8 +1444,9 @@ actor RecordingClientLive {
   }
 
   /// Release recorder resources. Call on app termination.
-  func cleanup() {
+  func cleanup() async {
     endRecordingSession()
+    await resumeMediaIfNeeded()
     stopObservingSystemChanges()
     stopCaptureController(reason: "cleanup")
     releaseRecorder(reason: "cleanup")

@@ -35,6 +35,27 @@ public extension URL {
 			return modelsDirectory
 		}
 	}
+
+	/// Where FluidAudio (Parakeet) keeps its on-disk model caches.
+	///
+	/// FluidAudio writes to `<Application Support>/FluidAudio/Models/<variant>` in
+	/// the sandboxed container, regardless of `XDG_CACHE_HOME`. We surface that
+	/// location so "Show in Finder" can reveal Parakeet caches instead of the
+	/// WhisperKit-only models directory.
+	static var hexParakeetModelsDirectory: URL {
+		get throws {
+			let fm = FileManager.default
+			let appSupport = try fm.url(
+				for: .applicationSupportDirectory,
+				in: .userDomainMask,
+				appropriateFor: nil,
+				create: true
+			)
+			let dir = appSupport.appendingPathComponent("FluidAudio/Models", isDirectory: true)
+			try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+			return dir
+		}
+	}
 }
 
 public extension FileManager {

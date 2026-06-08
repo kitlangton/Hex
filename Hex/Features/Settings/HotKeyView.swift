@@ -74,7 +74,7 @@ struct KeyView: View {
       .background(
         RoundedRectangle(cornerRadius: 8)
           .fill(
-            .black.mix(with: .white, by: 0.2)
+            Color(white: 0.2)
               .shadow(.inner(color: .white.opacity(0.3), radius: 1, y: 1))
               .shadow(.inner(color: .white.opacity(0.1), radius: 5, y: 8))
               .shadow(.inner(color: .black.opacity(0.3), radius: 1, y: -3))

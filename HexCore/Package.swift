@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "HexCore",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "HexCore", targets: ["HexCore"]),
     ],

@@ -15,8 +15,8 @@ import SwiftUI
 /// I'm pretty sure this is what CleanShot X and other apps do to render their floating widgets.
 /// But if there's a better way to do this, I'd love to know!
 class InvisibleWindow: NSPanel {
-  override var canBecomeKey: Bool { true }
-  override var canBecomeMain: Bool { true }
+  override var canBecomeKey: Bool { false }
+  override var canBecomeMain: Bool { false }
 
   private var currentScreen: NSScreen?
   private var mouseMonitor: Any?
@@ -34,6 +34,7 @@ class InvisibleWindow: NSPanel {
     backgroundColor = .clear
     isOpaque = false
     hasShadow = false
+    ignoresMouseEvents = true
     hidesOnDeactivate = false // Prevent hiding when app loses focus
     canHide = false
     collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .stationary, .ignoresCycle]

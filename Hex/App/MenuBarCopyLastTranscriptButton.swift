@@ -13,23 +13,10 @@ struct MenuBarCopyLastTranscriptButton: View {
   var body: some View {
     let lastText = transcriptionHistory.history
       .first(where: { $0.resolvedStatus == .completed })?.text
-    let preview: String = {
-      guard let text = lastText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return "" }
-      let snippet = text.prefix(40)
-      return "\(snippet)\(text.count > 40 ? "…" : "")"
-    }()
 
-    let button = Button(action: {
+    let button = Button("Paste Last Transcript") {
       if let text = lastText {
         Task { await pasteboard.paste(text) }
-      }
-    }) {
-      HStack(spacing: 6) {
-        Text("Paste Last Transcript")
-        if !preview.isEmpty {
-          Text("(\(preview))")
-            .foregroundStyle(.secondary)
-        }
       }
     }
     .disabled(lastText == nil)

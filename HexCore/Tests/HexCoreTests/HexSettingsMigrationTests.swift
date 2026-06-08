@@ -16,7 +16,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.preventSystemSleep, true)
 		XCTAssertEqual(decoded.minimumKeyTime, 0.25)
 		XCTAssertEqual(decoded.copyToClipboard, true)
-		XCTAssertFalse(decoded.superFastModeEnabled)
+		XCTAssertTrue(decoded.superFastModeEnabled)
 		XCTAssertEqual(decoded.useDoubleTapOnly, true)
 		XCTAssertEqual(decoded.doubleTapLockEnabled, true)
 		XCTAssertEqual(decoded.outputLanguage, "en")
@@ -33,6 +33,10 @@ final class HexSettingsMigrationTests: XCTestCase {
 		let data = try JSONEncoder().encode(settings)
 		let decoded = try JSONDecoder().decode(HexSettings.self, from: data)
 		XCTAssertEqual(decoded, settings)
+	}
+
+	func testNewSettingsEnableSuperFastModeByDefault() {
+		XCTAssertTrue(HexSettings().superFastModeEnabled)
 	}
 
 	func testInitNormalizesDoubleTapOnlyWhenLockDisabled() {

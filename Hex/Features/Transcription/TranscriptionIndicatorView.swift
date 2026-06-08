@@ -4,6 +4,7 @@
 //
 //  Created by Kit Langton on 1/25/25.
 
+import AppKit
 import Inject
 import Pow
 import SwiftUI
@@ -27,9 +28,10 @@ struct TranscriptionIndicatorView: View {
     switch status {
     case .hidden: return Color.clear
     case .optionKeyPressed: return Color.black
-    case .recording: return .red.mix(with: .black, by: 0.5).mix(with: .red, by: meter.averagePower * 3)
-    case .transcribing: return transcribeBaseColor.mix(with: .black, by: 0.5)
-    case .prewarming: return transcribeBaseColor.mix(with: .black, by: 0.5)
+    case .recording:
+      return mixedColor(mixedNSColor(.red, with: .black, by: 0.5), with: .red, by: meter.averagePower * 3)
+    case .transcribing: return mixedColor(.blue, with: .black, by: 0.5)
+    case .prewarming: return mixedColor(.blue, with: .black, by: 0.5)
     }
   }
 
@@ -37,10 +39,19 @@ struct TranscriptionIndicatorView: View {
     switch status {
     case .hidden: return Color.clear
     case .optionKeyPressed: return Color.black
-    case .recording: return Color.red.mix(with: .white, by: 0.1).opacity(0.6)
-    case .transcribing: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
-    case .prewarming: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
+    case .recording: return mixedColor(.red, with: .white, by: 0.1).opacity(0.6)
+    case .transcribing: return mixedColor(.blue, with: .white, by: 0.1).opacity(0.6)
+    case .prewarming: return mixedColor(.blue, with: .white, by: 0.1).opacity(0.6)
     }
+  }
+
+  private func mixedColor(_ color: NSColor, with otherColor: NSColor, by fraction: Double) -> Color {
+    Color(nsColor: mixedNSColor(color, with: otherColor, by: fraction))
+  }
+
+  private func mixedNSColor(_ color: NSColor, with otherColor: NSColor, by fraction: Double) -> NSColor {
+    let clampedFraction = min(max(fraction, 0), 1)
+    return color.blended(withFraction: clampedFraction, of: otherColor) ?? color
   }
 
   private var innerShadowColor: Color {
