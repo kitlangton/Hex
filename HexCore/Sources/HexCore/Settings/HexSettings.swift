@@ -40,6 +40,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var outputLanguage: String?
 	public var selectedMicrophoneID: String?
 	public var saveTranscriptionHistory: Bool
+	public var saveCancelledRecordings: Bool
 	public var maxHistoryEntries: Int?
 	public var pasteLastTranscriptHotkey: HotKey?
 	public var hasCompletedModelBootstrap: Bool
@@ -72,6 +73,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		outputLanguage: String? = nil,
 		selectedMicrophoneID: String? = nil,
 		saveTranscriptionHistory: Bool = true,
+		saveCancelledRecordings: Bool = true,
 		maxHistoryEntries: Int? = nil,
 		pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey,
 		hasCompletedModelBootstrap: Bool = false,
@@ -97,6 +99,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.outputLanguage = outputLanguage
 		self.selectedMicrophoneID = selectedMicrophoneID
 		self.saveTranscriptionHistory = saveTranscriptionHistory
+		self.saveCancelledRecordings = saveCancelledRecordings
 		self.maxHistoryEntries = maxHistoryEntries
 		self.pasteLastTranscriptHotkey = pasteLastTranscriptHotkey
 		self.hasCompletedModelBootstrap = hasCompletedModelBootstrap
@@ -145,6 +148,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case outputLanguage
 	case selectedMicrophoneID
 	case saveTranscriptionHistory
+	case saveCancelledRecordings
 	case maxHistoryEntries
 	case pasteLastTranscriptHotkey
 	case hasCompletedModelBootstrap
@@ -256,6 +260,7 @@ private enum HexSettingsSchema {
 			}
 		).eraseToAny(),
 		SettingsField(.saveTranscriptionHistory, keyPath: \.saveTranscriptionHistory, default: defaults.saveTranscriptionHistory).eraseToAny(),
+		SettingsField(.saveCancelledRecordings, keyPath: \.saveCancelledRecordings, default: defaults.saveCancelledRecordings).eraseToAny(),
 		SettingsField(
 			.maxHistoryEntries,
 			keyPath: \.maxHistoryEntries,
