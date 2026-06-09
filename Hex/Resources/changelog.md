@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.6
+
+### Patch Changes
+
+- f4cecbb: Show in Finder reveals Parakeet caches at the correct path (#205)
+- f4cecbb: Stay in the menu bar when launched at login (#222)
+
+## 0.7.5
+
+### Patch Changes
+
+- b5a19b4: Fix word remapping deletion crashes (#207)
+- b5a19b4: Enable Super Fast Mode by default for new users
+- b5a19b4: Restore macOS Sonoma compatibility (#215)
+
+## 0.7.4
+
+### Patch Changes
+
+- 5a4af9b: Fix silent recordings from multichannel input devices during calls (#204)
+- b78f049: Stop priming the sound-effects audio engine when sound effects are disabled so Hex avoids unnecessary background audio activity and sleep assertions (#200).
+
 ## 0.7.3
 
 ### Patch Changes

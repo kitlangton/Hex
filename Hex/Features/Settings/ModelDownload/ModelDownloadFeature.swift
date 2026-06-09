@@ -419,15 +419,22 @@ public struct ModelDownloadFeature {
 			}
 
 		case .openModelLocation:
-			return openModelLocationEffect()
+			return openModelLocationEffect(for: state)
 		}
 	}
 
 	// MARK: Helpers
 
-	private func openModelLocationEffect() -> Effect<Action> {
-		.run { _ in
-			let base = try URL.hexModelsDirectory
+	private func openModelLocationEffect(for state: State) -> Effect<Action> {
+		// Parakeet caches live under FluidAudio's directory, not the WhisperKit
+		// models folder. Route "Show in Finder" to the matching root so users
+		// don't end up staring at an empty WhisperKit folder thinking the
+		// Parakeet download silently failed.
+		let usesParakeetRoot = ParakeetModel(rawValue: state.selectedModel) != nil
+		return .run { _ in
+			let base = try usesParakeetRoot
+				? URL.hexParakeetModelsDirectory
+				: URL.hexModelsDirectory
 			NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: base.path)
 		}
 	}
