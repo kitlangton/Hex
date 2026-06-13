@@ -1,3 +1,4 @@
+import AppKit
 import ComposableArchitecture
 import HexCore
 import SwiftUI
@@ -8,8 +9,14 @@ private let cacheLogger = HexLog.caches
 class HexAppDelegate: NSObject, NSApplicationDelegate {
 	var invisibleWindow: InvisibleWindow?
 	var settingsWindow: NSWindow?
+	var agentWindow: AgentPanel?
 	var statusItem: NSStatusItem!
 	private var launchedAtLogin = false
+
+	/// The most recent non-Hex app to come to the foreground — the terminal we paste
+	/// agent replies back into. Tracked because opening the hex:// URL activates Hex.
+	private var lastForegroundApp: NSRunningApplication?
+	private var agentVisibilityToken: ObserveToken?
 
 	@Dependency(\.soundEffects) var soundEffect
 	@Dependency(\.recording) var recording
@@ -42,6 +49,21 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			name: .updateAppMode,
 			object: nil
 		)
+
+		// Track the foreground app so Agent Plugins can paste back into the terminal.
+		startTrackingForegroundApp()
+
+		// Show/hide the agent voice window whenever the feature's visibility changes.
+		agentVisibilityToken = observe { [weak self] in
+			guard let self else { return }
+			let visible = HexApp.appStore.agent.isVisible
+			appLogger.notice("Agent panel visibility observed: \(visible, privacy: .public)")
+			if visible {
+				self.showAgentPanel()
+			} else {
+				self.hideAgentPanel()
+			}
+		}
 
 		// Start long-running app effects (global hotkeys, permissions, etc.)
 		startLifecycleTasksIfNeeded()
@@ -131,6 +153,76 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		self.settingsWindow = settingsWindow
 	}
 
+	// MARK: - Agent Plugins (Claude Code integration)
+
+	private func startTrackingForegroundApp() {
+		lastForegroundApp = NSWorkspace.shared.frontmostApplication
+		NSWorkspace.shared.notificationCenter.addObserver(
+			self,
+			selector: #selector(activeAppDidChange(_:)),
+			name: NSWorkspace.didActivateApplicationNotification,
+			object: nil
+		)
+	}
+
+	@objc private func activeAppDidChange(_ notification: Notification) {
+		guard
+			let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+			app.bundleIdentifier != Bundle.main.bundleIdentifier
+		else { return }
+		lastForegroundApp = app
+	}
+
+	/// Handles `hex://agent-update?…` deeplinks fired by the Claude Code hook script.
+	func application(_: NSApplication, open urls: [URL]) {
+		for url in urls where url.scheme == "hex" {
+			handleHexURL(url)
+		}
+	}
+
+	private func handleHexURL(_ url: URL) {
+		appLogger.notice("Received hex URL: \(url.absoluteString, privacy: .public)")
+		guard url.host == "agent-update" else {
+			appLogger.notice("Ignoring unknown hex URL host: \(url.host ?? "nil", privacy: .public)")
+			return
+		}
+		let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+		func value(_ name: String) -> String? {
+			items.first { $0.name == name }?.value
+		}
+
+		let source = lastForegroundApp
+		let payload = AgentFeature.ShowPayload(
+			event: value("event"),
+			tool: value("tool"),
+			sessionID: value("session"),
+			cwd: value("cwd"),
+			transcriptPath: value("transcript"),
+			payloadPath: value("payload"),
+			inlineMessage: value("message"),
+			sourceAppBundleID: source?.bundleIdentifier,
+			sourceAppName: source?.localizedName,
+			sourceAppPID: source?.processIdentifier
+		)
+		Task { @MainActor in
+			HexApp.appStore.send(.agent(.show(payload)))
+		}
+	}
+
+	private func showAgentPanel() {
+		if agentWindow == nil {
+			let agentStore = HexApp.appStore.scope(state: \.agent, action: \.agent)
+			agentWindow = AgentPanel.fromView(AgentView(store: agentStore))
+		}
+		agentWindow?.positionNearMouse()
+		agentWindow?.orderFrontRegardless()
+		agentWindow?.makeKey()
+	}
+
+	private func hideAgentPanel() {
+		agentWindow?.orderOut(nil)
+	}
+
 	@objc private func handleAppModeUpdate() {
 		Task {
 			await updateAppMode()
@@ -153,6 +245,13 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationWillTerminate(_: Notification) {
+		// Release every still-blocked agent hook so quitting Hex never leaves a Claude
+		// session hanging on its 600s timeout. An empty response yields to the terminal UI.
+		for request in HexApp.appStore.agent.requests {
+			if let payloadPath = request.payloadPath {
+				AgentHookResponder.respond(payloadPath: payloadPath, json: nil)
+			}
+		}
 		Task {
 			await recording.cleanup()
 		}
