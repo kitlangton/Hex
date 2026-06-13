@@ -47,6 +47,21 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+	/// Enables the Agent Plugins voice window for Claude Code (and future agents).
+	public var agentPluginsEnabled: Bool
+	/// When true, sending a reply also presses Return so it submits immediately.
+	public var agentAutoSubmit: Bool
+	/// When true, the agent window reads its output aloud via text-to-speech.
+	public var agentSpeakOutput: Bool
+	/// Kokoro voice name for reading output aloud (e.g. "af_heart"); nil = default voice.
+	public var agentVoiceIdentifier: String?
+	/// When true, each Claude session is read aloud in its own consistent voice — so
+	/// concurrent projects are distinguishable by ear and each project keeps the same voice
+	/// across turns. The first/primary session keeps the chosen default voice; additional
+	/// sessions get distinct voices. When false, every session uses the default voice.
+	public var agentDistinctSessionVoices: Bool
+	/// Global hotkey that summons the agent window from anywhere; nil = not set.
+	public var agentWindowHotkey: HotKey?
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -78,7 +93,13 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		agentPluginsEnabled: Bool = false,
+		agentAutoSubmit: Bool = true,
+		agentSpeakOutput: Bool = false,
+		agentVoiceIdentifier: String? = nil,
+		agentDistinctSessionVoices: Bool = true,
+		agentWindowHotkey: HotKey? = nil
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -104,6 +125,12 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.agentPluginsEnabled = agentPluginsEnabled
+		self.agentAutoSubmit = agentAutoSubmit
+		self.agentSpeakOutput = agentSpeakOutput
+		self.agentVoiceIdentifier = agentVoiceIdentifier
+		self.agentDistinctSessionVoices = agentDistinctSessionVoices
+		self.agentWindowHotkey = agentWindowHotkey
 		normalizeDoubleTapSettings()
 	}
 
@@ -152,6 +179,12 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case agentPluginsEnabled
+	case agentAutoSubmit
+	case agentSpeakOutput
+	case agentVoiceIdentifier
+	case agentDistinctSessionVoices
+	case agentWindowHotkey
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -284,6 +317,26 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
+		).eraseToAny(),
+		SettingsField(.agentPluginsEnabled, keyPath: \.agentPluginsEnabled, default: defaults.agentPluginsEnabled).eraseToAny(),
+		SettingsField(.agentAutoSubmit, keyPath: \.agentAutoSubmit, default: defaults.agentAutoSubmit).eraseToAny(),
+		SettingsField(.agentSpeakOutput, keyPath: \.agentSpeakOutput, default: defaults.agentSpeakOutput).eraseToAny(),
+		SettingsField(
+			.agentVoiceIdentifier,
+			keyPath: \.agentVoiceIdentifier,
+			default: defaults.agentVoiceIdentifier,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
+		).eraseToAny(),
+		SettingsField(.agentDistinctSessionVoices, keyPath: \.agentDistinctSessionVoices, default: defaults.agentDistinctSessionVoices).eraseToAny(),
+		SettingsField(
+			.agentWindowHotkey,
+			keyPath: \.agentWindowHotkey,
+			default: defaults.agentWindowHotkey,
+			encode: { container, key, value in
+				try container.encodeIfPresent(value, forKey: key)
+			}
 		).eraseToAny()
 	]
 }

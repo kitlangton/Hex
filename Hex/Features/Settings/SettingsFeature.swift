@@ -15,6 +15,7 @@ private typealias SettingsAudioPropertyListenerBlock = @convention(block) (UInt3
 private enum HotKeyCaptureTarget {
   case recording
   case pasteLastTranscript
+  case agentWindow
 }
 
 extension SharedReaderKey
@@ -26,6 +27,10 @@ extension SharedReaderKey
   
   static var isSettingPasteLastTranscriptHotkey: Self {
     Self[.inMemory("isSettingPasteLastTranscriptHotkey"), default: false]
+  }
+
+  static var isSettingAgentWindowHotkey: Self {
+    Self[.inMemory("isSettingAgentWindowHotkey"), default: false]
   }
 
   static var isRemappingScratchpadFocused: Self {
@@ -42,6 +47,7 @@ struct SettingsFeature {
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isSettingHotKey) var isSettingHotKey: Bool = false
     @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool = false
+    @Shared(.isSettingAgentWindowHotkey) var isSettingAgentWindowHotkey: Bool = false
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
     @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
@@ -49,6 +55,7 @@ struct SettingsFeature {
     var languages: IdentifiedArrayOf<Language> = []
     var currentModifiers: Modifiers = .init(modifiers: [])
     var currentPasteLastModifiers: Modifiers = .init(modifiers: [])
+    var currentAgentWindowModifiers: Modifiers = .init(modifiers: [])
     var remappingScratchpadText: String = ""
     
     // Available microphones
@@ -58,6 +65,12 @@ struct SettingsFeature {
     // Model Management
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
+
+    // Agent Plugins
+    var agentPluginInstalled = false
+    /// Non-nil while the Kokoro TTS model is downloading (0...1).
+    var kokoroDownloadProgress: Double?
+    var kokoroReady = false
 
   }
 
@@ -101,6 +114,21 @@ struct SettingsFeature {
     case toggleSaveTranscriptionHistory(Bool)
     case setMaxHistoryEntries(Int?)
 
+    // Agent Plugins
+    case toggleAgentPluginsEnabled(Bool)
+    case setAgentAutoSubmit(Bool)
+    case setAgentVoice(String?)
+    case setAgentDistinctSessionVoices(Bool)
+    case previewAgentVoice
+    case startSettingAgentWindowHotkey
+    case clearAgentWindowHotkey
+    case prepareKokoro
+    case kokoroPrepareProgress(Double)
+    case kokoroPrepared(success: Bool)
+    case installAgentPlugin
+    case uninstallAgentPlugin
+    case agentPluginStatusLoaded(Bool)
+
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
 
@@ -120,6 +148,8 @@ struct SettingsFeature {
   @Dependency(\.recording) var recording
   @Dependency(\.soundEffects) var soundEffects
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.claudePlugin) var claudePlugin
+  @Dependency(\.speechSynthesizer) var speechSynthesizer
 
   private func deleteAudioEffect(for transcripts: [Transcript]) -> Effect<Action> {
     .run { [transcriptPersistence] _ in
@@ -137,6 +167,9 @@ struct SettingsFeature {
     case .pasteLastTranscript:
       state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = true }
       state.currentPasteLastModifiers = .init(modifiers: [])
+    case .agentWindow:
+      state.$isSettingAgentWindowHotkey.withLock { $0 = true }
+      state.currentAgentWindowModifiers = .init(modifiers: [])
     }
   }
 
@@ -148,6 +181,9 @@ struct SettingsFeature {
     case .pasteLastTranscript:
       state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
       state.currentPasteLastModifiers = .init(modifiers: [])
+    case .agentWindow:
+      state.$isSettingAgentWindowHotkey.withLock { $0 = false }
+      state.currentAgentWindowModifiers = .init(modifiers: [])
     }
   }
 
@@ -157,6 +193,8 @@ struct SettingsFeature {
       state.currentModifiers
     case .pasteLastTranscript:
       state.currentPasteLastModifiers
+    case .agentWindow:
+      state.currentAgentWindowModifiers
     }
   }
 
@@ -166,6 +204,8 @@ struct SettingsFeature {
       state.currentModifiers = modifiers
     case .pasteLastTranscript:
       state.currentPasteLastModifiers = modifiers
+    case .agentWindow:
+      state.currentAgentWindowModifiers = modifiers
     }
   }
 
@@ -181,6 +221,11 @@ struct SettingsFeature {
       state.$hexSettings.withLock {
         $0.pasteLastTranscriptHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
       }
+    case .agentWindow:
+      guard let key else { return }
+      state.$hexSettings.withLock {
+        $0.agentWindowHotkey = HotKey(key: key, modifiers: modifiers.erasingSides())
+      }
     }
   }
 
@@ -193,7 +238,7 @@ struct SettingsFeature {
     let updatedModifiers = keyEvent.modifiers.union(captureModifiers(for: target, state: state))
     updateCaptureModifiers(updatedModifiers, for: target, state: &state)
 
-    if target == .pasteLastTranscript, keyEvent.key != nil, updatedModifiers.isEmpty {
+    if target != .recording, keyEvent.key != nil, updatedModifiers.isEmpty {
       return .none
     }
 
@@ -256,6 +301,9 @@ struct SettingsFeature {
 
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
+          // Self-heal an out-of-date hook script (e.g. after an app update) before reporting status.
+          await claudePlugin.refreshIfStale()
+          await send(.agentPluginStatusLoaded(await claudePlugin.isInstalled()))
 
           // Listen for device connection/disconnection notifications
           // Using a simpler debounced approach with a single task
@@ -404,12 +452,23 @@ struct SettingsFeature {
       case .startSettingPasteLastTranscriptHotkey:
         beginCapture(.pasteLastTranscript, state: &state)
         return .none
-        
+
       case .clearPasteLastTranscriptHotkey:
         state.$hexSettings.withLock { $0.pasteLastTranscriptHotkey = nil }
         return .none
 
+      case .startSettingAgentWindowHotkey:
+        beginCapture(.agentWindow, state: &state)
+        return .none
+
+      case .clearAgentWindowHotkey:
+        state.$hexSettings.withLock { $0.agentWindowHotkey = nil }
+        return .none
+
       case let .keyEvent(keyEvent):
+        if state.isSettingAgentWindowHotkey {
+          return handleCapture(keyEvent, for: .agentWindow, state: &state)
+        }
         if state.isSettingPasteLastTranscriptHotkey {
           return handleCapture(keyEvent, for: .pasteLastTranscript, state: &state)
         }
@@ -562,6 +621,82 @@ struct SettingsFeature {
 
       case let .setWordRemovalsEnabled(enabled):
         state.$hexSettings.withLock { $0.wordRemovalsEnabled = enabled }
+        return .none
+
+      // MARK: - Agent Plugins
+
+      case let .toggleAgentPluginsEnabled(enabled):
+        state.$hexSettings.withLock { $0.agentPluginsEnabled = enabled }
+        return .none
+
+      case let .setAgentAutoSubmit(enabled):
+        state.$hexSettings.withLock { $0.agentAutoSubmit = enabled }
+        return .none
+
+      case let .setAgentVoice(identifier):
+        state.$hexSettings.withLock { $0.agentVoiceIdentifier = identifier }
+        return .send(.previewAgentVoice)
+
+      case let .setAgentDistinctSessionVoices(enabled):
+        state.$hexSettings.withLock { $0.agentDistinctSessionVoices = enabled }
+        // Warm the Kokoro model so the extra voices are ready the first time a second
+        // project speaks (one model covers every voice, so this preloads them all).
+        return enabled && !state.kokoroReady ? .send(.prepareKokoro) : .none
+
+      case .previewAgentVoice:
+        // The Kokoro model must be downloaded before it can make a sound.
+        guard state.kokoroReady else { return .send(.prepareKokoro) }
+        let voice = state.hexSettings.agentVoiceIdentifier
+        return .run { _ in
+          await speechSynthesizer.speak("Hi! This is how Hex will read agent output aloud.", voice)
+        }
+
+      case .prepareKokoro:
+        guard state.kokoroDownloadProgress == nil else { return .none } // already downloading
+        state.kokoroDownloadProgress = 0
+        return .run { send in
+          do {
+            try await speechSynthesizer.prepareKokoro { progress in
+              Task { await send(.kokoroPrepareProgress(progress)) }
+            }
+            await send(.kokoroPrepared(success: true))
+          } catch {
+            settingsLogger.error("Kokoro model download failed: \(error.localizedDescription)")
+            await send(.kokoroPrepared(success: false))
+          }
+        }
+
+      case let .kokoroPrepareProgress(progress):
+        state.kokoroDownloadProgress = progress
+        return .none
+
+      case let .kokoroPrepared(success):
+        state.kokoroDownloadProgress = nil
+        state.kokoroReady = success
+        return success ? .send(.previewAgentVoice) : .none
+
+      case .installAgentPlugin:
+        return .run { send in
+          do {
+            try await claudePlugin.install()
+          } catch {
+            settingsLogger.error("Failed to install Claude Code plugin: \(error.localizedDescription)")
+          }
+          await send(.agentPluginStatusLoaded(await claudePlugin.isInstalled()))
+        }
+
+      case .uninstallAgentPlugin:
+        return .run { send in
+          do {
+            try await claudePlugin.uninstall()
+          } catch {
+            settingsLogger.error("Failed to uninstall Claude Code plugin: \(error.localizedDescription)")
+          }
+          await send(.agentPluginStatusLoaded(await claudePlugin.isInstalled()))
+        }
+
+      case let .agentPluginStatusLoaded(installed):
+        state.agentPluginInstalled = installed
         return .none
 
       }

@@ -6,6 +6,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "build": "bun run tools/scripts/build-app.ts",
+    "build:run": "bun run tools/scripts/build-app.ts --run",
     "release": "cd tools && bun run build",
     "changeset": "changeset",
     "changeset:add": "changeset",

@@ -116,6 +116,19 @@ FluidAudio models reside under `Application Support/FluidAudio/Models`.
 - Settings → Transcription Model shows a compact list with radio selection, accuracy/speed dots, size on right, and trailing menu / download‑check icon.
 - Context menu offers Show in Finder / Delete.
 
+## Agent Voice Replies (`Spoken:` line)
+
+When working in this repo via the Hex Agent Plugins voice window, **end every reply with a `Spoken:` line** — a TTS-ready version Hex reads aloud and surfaces as a banner above the full detail. Keep the written reply above it as detailed as usual. The `Spoken:` line is what the user *hears*, so it should be a **condensed version of the reply (keep ~60% of the substance), not a micro-summary** — preserve every action taken and every decision/ask; drop only pleasantries, redundancy, file/symbol names, code, and exact paths. Usually 2–4 sentences, ending with the question when you need input. See `SpokenText.swift` — if no `Spoken:` line is present Hex falls back to a ~60% heuristic condense, so the marker is how you control the spoken output precisely.
+
+Example:
+
+```
+Rebuilt and relaunched. The speaker button now has a solid backing circle, opaque blue
+when on and muted gray when off, and I dropped it to 20×20 to match the row.
+Spoken: Rebuilt and relaunched — the speaker button now has a solid circle, blue when
+on and gray when off, sized to match the row. Want it bigger or a different color?
+```
+
 ## Troubleshooting
 
 - Repeated mic prompts during debug: ensure Debug signing uses "Apple Development" so TCC sticks
