@@ -63,6 +63,10 @@ struct AgentFeature {
     /// enqueue, and kept for the card's lifetime — so a session that arrived alongside
     /// another keeps its distinct voice even after the other is answered and it's alone.
     var voice: String?
+    /// The project's GitHub owner avatar, resolved once from the repo's `origin` remote.
+    /// nil until resolved, or when the project has no GitHub remote — the header then shows
+    /// the folder icon instead.
+    var projectIconURL: URL?
 
     /// A session blocks on a single hook at a time, so the session id is the natural
     /// identity; fall back to the payload path, then a singleton id for manually-summoned
@@ -122,6 +126,7 @@ struct AgentFeature {
       guard let cwd = current?.cwd, !cwd.isEmpty else { return nil }
       return URL(fileURLWithPath: cwd).lastPathComponent
     }
+    var projectIconURL: URL? { current?.projectIconURL }
     var queueCount: Int { requests.count }
     /// 1-based position of the current card in the queue (0 when nothing is showing).
     var queuePosition: Int {
@@ -134,6 +139,7 @@ struct AgentFeature {
     case show(ShowPayload)
     case openManually
     case promptLoaded(AgentRequest.ID, AgentPrompt)
+    case projectIconResolved(AgentRequest.ID, URL?)
     case revealPanel
     case dismiss
     case draftChanged(String)
@@ -222,6 +228,10 @@ struct AgentFeature {
         // Only the front card speaks/reveals; a preloaded waiting card just caches.
         guard id == state.currentID else { return .none }
         return speakThenReveal(state)
+
+      case let .projectIconResolved(id, url):
+        state.requests[id: id]?.projectIconURL = url
+        return .none
 
       case .revealPanel:
         // Ignore a reveal that arrives after the prompt was answered or dismissed.
@@ -404,13 +414,26 @@ struct AgentFeature {
       state.isVisible = !state.hexSettings.agentSpeakOutput
       state.pendingReveal = !state.isVisible
     }
+    let iconEffect = resolveProjectIcon(request)
     let payloadPath = request.payloadPath
     let transcriptPath = request.transcriptPath
-    guard payloadPath != nil || transcriptPath != nil else { return speakThenReveal(state) }
+    guard payloadPath != nil || transcriptPath != nil else {
+      return .merge(iconEffect, speakThenReveal(state))
+    }
     let fallback = request.prompt
-    return .run { send in
+    return .merge(iconEffect, .run { send in
       let prompt = (try? await agentTranscript.latestPrompt(payloadPath, transcriptPath)) ?? fallback
       await send(.promptLoaded(id, prompt))
+    })
+  }
+
+  /// Resolves the project's GitHub owner avatar from its git remote (once per card), so the
+  /// header can show the project's real identity instead of a generic folder icon.
+  private func resolveProjectIcon(_ request: AgentRequest) -> Effect<Action> {
+    guard request.projectIconURL == nil, let cwd = request.cwd, !cwd.isEmpty else { return .none }
+    let id = request.id
+    return .run { send in
+      await send(.projectIconResolved(id, await Self.gitHubAvatarURL(forRepoAt: cwd)))
     }
   }
 
@@ -465,6 +488,52 @@ struct AgentFeature {
       if isFrontmost() { return true }
     }
     return isFrontmost()
+  }
+
+  // MARK: Project icon
+
+  /// The GitHub owner avatar for a repo, derived from its `origin` remote. nil when the
+  /// directory isn't a git repo, has no origin, or the remote isn't a GitHub URL.
+  static func gitHubAvatarURL(forRepoAt cwd: String) async -> URL? {
+    guard let remote = await gitOriginURL(cwd: cwd),
+          let owner = gitHubOwner(fromRemote: remote)
+    else { return nil }
+    return URL(string: "https://github.com/\(owner).png?size=128")
+  }
+
+  /// Reads `remote.origin.url` via git (handles subdirectories and worktrees). Returns nil
+  /// when git is unavailable or the directory has no origin remote.
+  private static func gitOriginURL(cwd: String) async -> String? {
+    await withCheckedContinuation { continuation in
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+      process.arguments = ["-C", cwd, "config", "--get", "remote.origin.url"]
+      let pipe = Pipe()
+      process.standardOutput = pipe
+      process.standardError = Pipe() // swallow "not a git repository" noise
+      process.terminationHandler = { _ in
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let url = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        continuation.resume(returning: (url?.isEmpty == false) ? url : nil)
+      }
+      do {
+        try process.run()
+      } catch {
+        continuation.resume(returning: nil)
+      }
+    }
+  }
+
+  /// Extracts the owner/org from a GitHub remote, tolerating every common form:
+  /// `git@github.com:Org/Repo.git`, `ssh://git@github.com/Org/Repo.git`,
+  /// `https://github.com/Org/Repo(.git)`.
+  static func gitHubOwner(fromRemote remote: String) -> String? {
+    guard let hostRange = remote.range(of: "github.com") else { return nil }
+    // Drop the host/path separator (":" for SCP-style, "/" for URL-style), then take the
+    // first path component as the owner.
+    let path = remote[hostRange.upperBound...].drop(while: { $0 == ":" || $0 == "/" })
+    let owner = path.prefix(while: { $0 != "/" })
+    return owner.isEmpty ? nil : String(owner)
   }
 
   // MARK: Speech

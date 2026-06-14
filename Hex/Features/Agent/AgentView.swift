@@ -70,9 +70,7 @@ struct AgentView: View {
     if project != nil || store.queueCount > 1 {
       HStack(spacing: 6) {
         if let project {
-          Image(systemName: "folder.fill")
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+          projectIcon
           Text(project)
             .font(.caption.weight(.semibold))
         }
@@ -89,6 +87,31 @@ struct AgentView: View {
       .lineLimit(1)
       .padding(.bottom, 2)
     }
+  }
+
+  /// The project's GitHub owner avatar when we resolved one, falling back to the folder
+  /// glyph while it loads, when there's no GitHub remote, or if the fetch fails.
+  @ViewBuilder
+  private var projectIcon: some View {
+    if let url = store.projectIconURL {
+      AsyncImage(url: url) { phase in
+        if case let .success(image) = phase {
+          image.resizable().aspectRatio(contentMode: .fill)
+        } else {
+          folderGlyph
+        }
+      }
+      .frame(width: 18, height: 18)
+      .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+    } else {
+      folderGlyph
+    }
+  }
+
+  private var folderGlyph: some View {
+    Image(systemName: "folder.fill")
+      .font(.caption2)
+      .foregroundStyle(.tertiary)
   }
 
   private func markdown(_ text: String) -> some View {
