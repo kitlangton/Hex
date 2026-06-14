@@ -59,13 +59,31 @@ final class AgentPanel: NSPanel {
     return panel
   }
 
-  /// Place the panel near the mouse (which is over the terminal), clamped on-screen.
+  /// The card follows the cursor, but only within the central `centerGutterFraction` of the
+  /// screen — so however far out (or at the edge) the mouse is, the card always spawns in a
+  /// narrow central band rather than hugging a corner.
+  private let centerGutterFraction: CGFloat = 0.40
+
+  /// Place the panel near the mouse (which is over the terminal), confined to a central
+  /// gutter and clamped on-screen.
   func positionNearMouse() {
     let mouse = NSEvent.mouseLocation
     let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
     guard let screen else { return }
     let vf = screen.visibleFrame
-    var origin = NSPoint(x: mouse.x - frame.width / 2, y: mouse.y - frame.height - 24)
+
+    // Anchor the card's center under the cursor horizontally, and a little below it
+    // vertically (so it sits beneath where you're pointing, not on top of it).
+    var center = NSPoint(x: mouse.x, y: mouse.y - frame.height / 2 - 24)
+
+    // Gutter: keep that center inside the central 40% of the screen on both axes.
+    let halfBandW = vf.width * centerGutterFraction / 2
+    let halfBandH = vf.height * centerGutterFraction / 2
+    center.x = min(max(center.x, vf.midX - halfBandW), vf.midX + halfBandW)
+    center.y = min(max(center.y, vf.midY - halfBandH), vf.midY + halfBandH)
+
+    var origin = NSPoint(x: center.x - frame.width / 2, y: center.y - frame.height / 2)
+    // Safety net: never let any part of the card fall off-screen (tiny displays / tall card).
     origin.x = min(max(origin.x, vf.minX + 8), vf.maxX - frame.width - 8)
     origin.y = min(max(origin.y, vf.minY + 8), vf.maxY - frame.height - 8)
     setFrameOrigin(origin)
