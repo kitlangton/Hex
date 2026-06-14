@@ -122,7 +122,6 @@ struct AgentFeature {
       guard let cwd = current?.cwd, !cwd.isEmpty else { return nil }
       return URL(fileURLWithPath: cwd).lastPathComponent
     }
-    var sourceAppName: String? { current?.sourceAppName }
     var queueCount: Int { requests.count }
     /// 1-based position of the current card in the queue (0 when nothing is showing).
     var queuePosition: Int {

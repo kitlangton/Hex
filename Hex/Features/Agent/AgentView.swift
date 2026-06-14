@@ -62,13 +62,12 @@ struct AgentView: View {
     .modifier(FloatingCard())
   }
 
-  /// Identifies which session this card belongs to — project (cwd basename) + host app —
-  /// with a passive "n / N" position indicator when several sessions are queued.
+  /// Identifies which session this card belongs to — the project (cwd basename) — with a
+  /// passive "n / N" position indicator when several sessions are queued.
   @ViewBuilder
   private var cardHeader: some View {
     let project = store.projectName
-    let app = store.sourceAppName
-    if project != nil || app != nil || store.queueCount > 1 {
+    if project != nil || store.queueCount > 1 {
       HStack(spacing: 6) {
         if let project {
           Image(systemName: "folder.fill")
@@ -76,12 +75,6 @@ struct AgentView: View {
             .foregroundStyle(.tertiary)
           Text(project)
             .font(.caption.weight(.semibold))
-        }
-        if let app {
-          Text("·").foregroundStyle(.tertiary)
-          Text(app)
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         Spacer(minLength: 0)
         if store.queueCount > 1 {
