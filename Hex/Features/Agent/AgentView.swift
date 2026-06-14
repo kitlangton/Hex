@@ -213,6 +213,12 @@ struct AgentView: View {
         store.send(.send)
         return .handled
       }
+      // The focused field editor swallows Escape before it can reach the VStack's
+      // `.onExitCommand`, so dismiss (and stop any read-aloud) from here directly.
+      .onKeyPress(.escape) {
+        store.send(.dismiss)
+        return .handled
+      }
 
       if let progress = store.autoSendProgress {
         autoSendBar(progress)
