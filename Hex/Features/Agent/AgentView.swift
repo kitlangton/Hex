@@ -19,16 +19,49 @@ struct AgentView: View {
   private let cardWidth: CGFloat = 480
 
   var body: some View {
-    VStack(spacing: 10) {
-      if hasOutput {
-        outputCard
+    Group {
+      if store.noSessionsError {
+        noSessionsCard
+      } else {
+        VStack(spacing: 10) {
+          if hasOutput {
+            outputCard
+          }
+          inputCard
+        }
+        .onAppear { DispatchQueue.main.async { replyFocused = true } }
       }
-      inputCard
     }
     .frame(width: cardWidth)
     .padding(16) // breathing room so each card's shadow isn't clipped by the window
-    .onAppear { DispatchQueue.main.async { replyFocused = true } }
     .onExitCommand { store.send(.dismiss) }
+  }
+
+  // MARK: Empty state (nothing to target)
+
+  /// Shown when the window is summoned with no session to talk to — no remembered session
+  /// and no live `claude` terminal. Replaces the dead-end compose card with a clear reason.
+  private var noSessionsCard: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
+          .font(.title3)
+          .foregroundStyle(.secondary)
+        Text("No Claude sessions")
+          .font(.headline)
+      }
+      Text("There's no running Claude Code session to talk to yet. Start one — or wait for Claude to ask a question, request permission, or finish a turn — then summon this window again.")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      HStack {
+        Spacer()
+        hint("Dismiss", key: "esc") { store.send(.dismiss) }
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .modifier(FloatingCard())
   }
 
   private var hasOutput: Bool {
@@ -62,38 +95,75 @@ struct AgentView: View {
     .modifier(FloatingCard())
   }
 
-  /// Identifies which session this card belongs to — the project (cwd basename) — with a
-  /// passive "n / N" position indicator when several sessions are queued.
+  /// Identifies which session this card belongs to. With several remembered sessions it
+  /// becomes a selector — a row of project avatars you can tap to retarget the window;
+  /// otherwise it's the single project's avatar and name.
   @ViewBuilder
   private var cardHeader: some View {
-    let project = store.projectName
-    if project != nil || store.queueCount > 1 {
-      HStack(spacing: 6) {
-        if let project {
-          projectIcon
+    let agents = store.selectableAgents
+    if agents.count > 1 {
+      HStack(spacing: 8) {
+        agentSelector(agents)
+        Spacer(minLength: 0)
+        if let project = store.projectName {
           Text(project)
             .font(.caption.weight(.semibold))
-        }
-        Spacer(minLength: 0)
-        if store.queueCount > 1 {
-          Text("\(store.queuePosition) / \(store.queueCount)")
-            .font(.caption.weight(.medium).monospacedDigit())
+            .lineLimit(1)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.white.opacity(0.1), in: Capsule())
         }
+      }
+      .padding(.bottom, 2)
+    } else if let project = store.projectName {
+      HStack(spacing: 6) {
+        avatar(store.projectIconURL)
+          .frame(width: 18, height: 18)
+          .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        Text(project)
+          .font(.caption.weight(.semibold))
+        Spacer(minLength: 0)
       }
       .lineLimit(1)
       .padding(.bottom, 2)
     }
   }
 
+  /// A tappable avatar per remembered session. The current one is ringed and larger; a dot
+  /// marks sessions still blocked and waiting for an answer.
+  private func agentSelector(_ agents: [AgentFeature.State.SelectableAgent]) -> some View {
+    HStack(spacing: 7) {
+      ForEach(agents) { agent in
+        Button { store.send(.selectAgent(agent.id)) } label: {
+          let side: CGFloat = agent.isCurrent ? 24 : 20
+          avatar(agent.iconURL)
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(
+              RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .strokeBorder(agent.isCurrent ? Color.accentColor : .clear, lineWidth: 2)
+            )
+            .overlay(alignment: .topTrailing) {
+              if agent.isBlocked {
+                Circle()
+                  .fill(Color.orange)
+                  .frame(width: 7, height: 7)
+                  .overlay(Circle().strokeBorder(.black.opacity(0.35), lineWidth: 0.5))
+                  .offset(x: 2.5, y: -2.5)
+              }
+            }
+            .opacity(agent.isCurrent ? 1 : 0.7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(agent.projectName ?? "Session")
+      }
+    }
+  }
+
   /// The project's GitHub owner avatar when we resolved one, falling back to the folder
   /// glyph while it loads, when there's no GitHub remote, or if the fetch fails.
   @ViewBuilder
-  private var projectIcon: some View {
-    if let url = store.projectIconURL {
+  private func avatar(_ url: URL?) -> some View {
+    if let url {
       AsyncImage(url: url) { phase in
         if case let .success(image) = phase {
           image.resizable().aspectRatio(contentMode: .fill)
@@ -101,17 +171,18 @@ struct AgentView: View {
           folderGlyph
         }
       }
-      .frame(width: 18, height: 18)
-      .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     } else {
       folderGlyph
     }
   }
 
   private var folderGlyph: some View {
-    Image(systemName: "folder.fill")
-      .font(.caption2)
-      .foregroundStyle(.tertiary)
+    ZStack {
+      Color.white.opacity(0.06)
+      Image(systemName: "folder.fill")
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+    }
   }
 
   private func markdown(_ text: String) -> some View {

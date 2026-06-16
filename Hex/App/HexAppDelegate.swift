@@ -201,7 +201,6 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			payloadPath: value("payload"),
 			inlineMessage: value("message"),
 			sourceAppBundleID: source?.bundleIdentifier,
-			sourceAppName: source?.localizedName,
 			sourceAppPID: source?.processIdentifier
 		)
 		Task { @MainActor in
