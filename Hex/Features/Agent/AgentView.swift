@@ -292,11 +292,10 @@ struct AgentView: View {
       .focused($replyFocused)
       .font(.body)
       .lineLimit(1 ... 6)
-      // Plain Return submits; multi-line replies are rare and still reachable via ⌥Return.
+      // Any Return — plain or with any modifier (⇧⌘⌥⌃) — sends. We never insert a newline
+      // from the keyboard; every Enter completes the reply.
       .onSubmit { store.send(.send) }
-      // Shift+Return would normally insert a newline — make it send too.
-      .onKeyPress(.return, phases: .down) { press in
-        guard press.modifiers.contains(.shift) else { return .ignored }
+      .onKeyPress(.return, phases: .down) { _ in
         store.send(.send)
         return .handled
       }
