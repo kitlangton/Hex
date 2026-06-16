@@ -3,12 +3,11 @@
 //  Hex
 //
 //  Drives the Agent Plugins voice window. Shows what Claude Code is presenting (a plain
-//  message, a multiple-choice question, or a permission request), lets the user answer by
-//  voice / typing / tapping an option, then answers the BLOCKED hook in-band: Hex writes
-//  the complete hook-output JSON to `<payload>.response`, which the hook script relays to
-//  Claude Code on stdout. No app focusing, no synthetic keystrokes — the answer can never
-//  land in the wrong window. (Typing into the terminal remains only as a legacy fallback
-//  when no payload file is available.)
+//  message, a multiple-choice question, or a permission request) and lets the user answer by
+//  voice / typing / tapping an option, then answers the BLOCKED hook in-band: Hex writes the
+//  complete hook-output JSON to `<payload>.response`, which the hook script relays to Claude
+//  Code on stdout. No app focusing, no synthetic keystrokes — the answer can never land in the
+//  wrong window, and the window only ever *responds* to a session that is blocked on a hook.
 //
 //  Multiple Claude sessions can be blocked at once — each on its own hook — so the feature
 //  holds a FIFO queue of `AgentRequest`s (one card per active project). The oldest is shown;
@@ -27,9 +26,7 @@ private let agentFeatureLogger = HexLog.app
 
 @Reducer
 struct AgentFeature {
-  /// Parsed from a `hex://agent-update?…` deeplink — the raw wire format. The terminal we
-  /// should reply to (`sourceApp*`) is filled in by the app delegate, which tracks the last
-  /// foreground app before the deeplink activated Hex.
+  /// Parsed from a `hex://agent-update?…` deeplink — the raw wire format.
   struct ShowPayload: Equatable {
     var event: String?
     var tool: String?
@@ -38,20 +35,12 @@ struct AgentFeature {
     var transcriptPath: String?
     var payloadPath: String?
     var inlineMessage: String?
-    var sourceAppBundleID: String?
-    var sourceAppPID: pid_t?
   }
 
-  /// The identity + routing for one Claude session: where it lives and how to reach its
-  /// terminal. Shared by the live card (`AgentRequest`) and the recent-session registry
-  /// (`RecentSession`) so the same fields aren't hand-copied across structs.
+  /// The identity of one Claude session: where it lives and the project it belongs to.
   struct SessionContext: Equatable {
     var cwd: String? = nil
     var transcriptPath: String? = nil
-    /// The hosting terminal app, captured from the foreground app at deeplink time. Used only
-    /// by the legacy typing path (a compose reply, or a permission with no payload file).
-    var sourceAppBundleID: String? = nil
-    var sourceAppPID: pid_t? = nil
     /// The project's GitHub owner avatar, resolved once from the repo's `origin` remote. nil
     /// until resolved, or when the project has no GitHub remote (the header shows a folder).
     var projectIconURL: URL? = nil
@@ -61,30 +50,14 @@ struct AgentFeature {
       guard let cwd, !cwd.isEmpty else { return nil }
       return URL(fileURLWithPath: cwd).lastPathComponent
     }
-
-    /// Overlays non-nil fields from `other`, preserving anything already resolved — so a
-    /// sparse re-show never erases a previously-resolved avatar or terminal.
-    mutating func merge(_ other: SessionContext) {
-      if let value = other.cwd, !value.isEmpty { cwd = value }
-      if let value = other.transcriptPath { transcriptPath = value }
-      if let value = other.sourceAppBundleID { sourceAppBundleID = value }
-      if let value = other.sourceAppPID { sourceAppPID = value }
-      if let value = other.projectIconURL { projectIconURL = value }
-    }
   }
 
-  /// One card in the window. Each owns its own draft reply and selection, so flipping between
-  /// cards never loses what you typed.
+  /// One card in the window — a Claude hook blocked polling for our response file. Each owns
+  /// its own draft reply and selection, so flipping between cards never loses what you typed.
   struct AgentRequest: Equatable, Identifiable {
-    /// Why this card exists. `.hook` answers a Claude hook that's blocked polling for our
-    /// response file (in-band delivery when a `payloadPath` is present); `.compose` is a
-    /// user-initiated reply with no hook waiting (typed into the session's terminal).
-    enum Kind: Equatable {
-      case hook(payloadPath: String?)
-      case compose
-    }
-
-    var kind: Kind
+    /// The hook's payload file; the in-band channel we answer through. (Optional only to guard
+    /// the degenerate case of a hook that arrived without one — it simply can't be answered.)
+    var payloadPath: String?
     var sessionID: String?
     var context: SessionContext
 
@@ -98,53 +71,16 @@ struct AgentFeature {
     /// sibling is answered and it's alone.
     var voice: String?
 
-    /// The hook's payload file, when this is a blocked hook with an in-band channel.
-    var payloadPath: String? {
-      if case let .hook(path) = kind { return path }
-      return nil
-    }
-    /// True while a Claude hook is blocked waiting on us (vs. a manual compose card).
-    var isBlocked: Bool {
-      if case .hook = kind { return true }
-      return false
-    }
-
     /// A session blocks on a single hook at a time, so the session id is the natural identity;
     /// fall back to the payload path for the rare hook that arrived without one.
     var id: String { sessionID ?? payloadPath ?? "manual" }
 
     init(from payload: ShowPayload) {
-      kind = .hook(payloadPath: payload.payloadPath)
+      payloadPath = payload.payloadPath
       sessionID = payload.sessionID
-      context = SessionContext(
-        cwd: payload.cwd,
-        transcriptPath: payload.transcriptPath,
-        sourceAppBundleID: payload.sourceAppBundleID,
-        sourceAppPID: payload.sourceAppPID
-      )
+      context = SessionContext(cwd: payload.cwd, transcriptPath: payload.transcriptPath)
       prompt = .message(payload.inlineMessage ?? "")
     }
-
-    /// A manually-composed card addressed to a known session picked from the selector. It
-    /// carries the session's identity (so the selector highlights it and the header shows its
-    /// avatar) but has no blocked hook — the reply is typed into that session's terminal.
-    init(composeFor session: RecentSession) {
-      kind = .compose
-      sessionID = session.sessionID
-      context = session.context
-      voice = session.voice
-    }
-  }
-
-  /// A Claude session Hex has seen block at least once this run, remembered so the user can
-  /// summon the window and target it again — even after it has unblocked and is sitting idle.
-  /// Stored most-recent-first; capped at `maxRecentSessions`.
-  struct RecentSession: Equatable, Identifiable {
-    var sessionID: String
-    var context: SessionContext = .init()
-    var voice: String?
-
-    var id: String { sessionID }
   }
 
   @ObservableState
@@ -157,16 +93,12 @@ struct AgentFeature {
     /// the whole run (even across turns where it's the only active card). Assigned lazily;
     /// not persisted — a fresh launch is a fresh working session.
     var sessionVoices: [String: String] = [:]
-    /// Sessions seen blocked at least once this run, most-recent-first. Powers the header's
-    /// agent selector so a manual summon can target any of them — blocked or idle.
-    var recentSessions: IdentifiedArrayOf<RecentSession> = []
 
     var isVisible: Bool = false
     /// True while the panel is intentionally hidden waiting for speech synthesis.
     var pendingReveal: Bool = false
-    /// Shown when the window is summoned but there's nothing to target — no remembered
-    /// session and no live `claude` terminal — so the card explains that instead of opening
-    /// a compose box that would type into a random frontmost window.
+    /// Shown when the window is summoned but no session is blocked and waiting — so the card
+    /// explains that instead of opening an empty reply box that has nothing to answer.
     var noSessionsError: Bool = false
     /// Whether the panel should hold keyboard focus. False when a hook auto-presents, so the
     /// card appears passively and never steals keystrokes from the editor you're typing in;
@@ -195,23 +127,21 @@ struct AgentFeature {
       var id: String          // session id
       var projectName: String?
       var iconURL: URL?
-      var isBlocked: Bool      // currently waiting on a hook (vs. idle)
       var isCurrent: Bool      // the visible card
     }
 
-    /// The agents the selector offers, recency-ordered. Every remembered session, tagged with
-    /// whether it's currently blocked on a hook (vs. a compose target) and whether it's the
-    /// one on screen.
+    /// The agents the selector offers — every session currently blocked and waiting, in queue
+    /// order. Tapping one switches the visible card to it. (Idle sessions aren't targetable:
+    /// the only way to reach a session is to answer the hook it's blocked on.)
     var selectableAgents: [SelectableAgent] {
-      let blocked = Set(requests.filter(\.isBlocked).compactMap(\.sessionID))
       let currentSessionID = current?.sessionID
-      return recentSessions.map { session in
-        SelectableAgent(
-          id: session.sessionID,
-          projectName: session.context.projectName,
-          iconURL: session.context.projectIconURL,
-          isBlocked: blocked.contains(session.sessionID),
-          isCurrent: session.sessionID == currentSessionID
+      return requests.compactMap { request in
+        guard let sessionID = request.sessionID else { return nil }
+        return SelectableAgent(
+          id: sessionID,
+          projectName: request.context.projectName,
+          iconURL: request.context.projectIconURL,
+          isCurrent: sessionID == currentSessionID
         )
       }
     }
@@ -220,7 +150,7 @@ struct AgentFeature {
   enum Action {
     case show(ShowPayload)
     case openManually
-    case selectAgent(String)              // switch the window to a remembered session
+    case selectAgent(String)              // switch the window to another blocked session
     case promptLoaded(AgentRequest.ID, AgentPrompt)
     case projectIconResolved(AgentRequest.ID, URL?)
     case revealPanel
@@ -238,7 +168,6 @@ struct AgentFeature {
 
   enum CancelID { case autoSend }
 
-  @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.soundEffects) var soundEffect
   @Dependency(\.agentTranscript) var agentTranscript
   @Dependency(\.speechSynthesizer) var speechSynthesizer
@@ -268,17 +197,15 @@ struct AgentFeature {
         // Assign (or recall) this session's voice so each project sounds consistent across
         // turns and concurrent projects are distinguishable by ear.
         request.voice = sessionVoice(&state, for: request.sessionID)
-        // Reuse a previously-resolved avatar so a re-show of a known session renders its
-        // icon instantly instead of refetching.
-        if let sessionID = request.sessionID,
-           let knownIcon = state.recentSessions[id: sessionID]?.context.projectIconURL {
-          request.context.projectIconURL = knownIcon
-        }
 
         if let existing = state.requests[id: id] {
           // Same session re-presenting: release its now-stale hook before replacing it.
           if let oldPath = existing.payloadPath, oldPath != request.payloadPath {
             AgentHookResponder.respond(payloadPath: oldPath, json: nil)
+          }
+          // Preserve a previously-resolved avatar so the re-show doesn't flicker / refetch.
+          if request.context.projectIconURL == nil {
+            request.context.projectIconURL = existing.context.projectIconURL
           }
           state.requests[id: id] = request
         } else {
@@ -286,8 +213,6 @@ struct AgentFeature {
           // one — it joins the queue behind it.
           state.requests.append(request)
         }
-        // Remember this session so the selector can target it later, even once it unblocks.
-        rememberSession(&state, from: request)
 
         // Become the visible card only when nothing is showing, or when the card being
         // updated IS the current one. Otherwise it waits its turn (FIFO) silently.
@@ -310,28 +235,16 @@ struct AgentFeature {
           return .cancel(id: CancelID.autoSend)
         }
         agentFeatureLogger.notice("Agent window summoned via hotkey")
-        // A manual summon shows immediately and focused — there's no incoming prompt to read
-        // aloud first, and you invoked it to reply.
         state.isVisible = true
         state.pendingReveal = false
         state.noSessionsError = false
         state.wantsFocus = true
 
-        // Prefer a session already blocked and waiting for an answer.
+        // Summoning only does something when a session is blocked and waiting. There's no
+        // proactive "talk to an idle session" anymore — that needs a live hook to answer.
         if let blocked = state.requests.first {
           return .merge(.cancel(id: CancelID.autoSend), present(&state, id: blocked.id))
         }
-        // Else address the most-recently-seen session, so the summon lands on whatever you
-        // were last working with and the selector lets you switch from there.
-        if let recent = state.recentSessions.first {
-          let request = AgentRequest(composeFor: recent)
-          state.requests.insert(request, at: 0)
-          return .merge(.cancel(id: CancelID.autoSend), present(&state, id: request.id))
-        }
-        // Nothing registered this run. Quick prompting needs a session that has actually
-        // blocked at least once (so we have a real in-band/terminal target) — a bare
-        // "locate any running claude" would just type into the frontmost window. Show the
-        // empty state instead.
         state.noSessionsError = true
         return .cancel(id: CancelID.autoSend)
 
@@ -340,15 +253,8 @@ struct AgentFeature {
         if state.current?.sessionID == sessionID { return .none }
         // Tapping the selector is active engagement — focus the card you switched to.
         state.wantsFocus = true
-        // A blocked session is already queued: just bring its live card to the front.
-        if state.requests[id: sessionID] != nil {
-          return .merge(.cancel(id: CancelID.autoSend), present(&state, id: sessionID))
-        }
-        // An idle remembered session: compose a fresh card addressed to its terminal.
-        guard let info = state.recentSessions[id: sessionID] else { return .none }
-        let request = AgentRequest(composeFor: info)
-        state.requests.insert(request, at: 0)
-        return .merge(.cancel(id: CancelID.autoSend), present(&state, id: request.id))
+        guard state.requests[id: sessionID] != nil else { return .none }
+        return .merge(.cancel(id: CancelID.autoSend), present(&state, id: sessionID))
 
       case let .promptLoaded(id, prompt):
         state.requests[id: id]?.prompt = prompt
@@ -358,10 +264,6 @@ struct AgentFeature {
 
       case let .projectIconResolved(id, url):
         state.requests[id: id]?.context.projectIconURL = url
-        // Cache it on the registry too, so the selector and future re-shows reuse it.
-        if let sessionID = state.requests[id: id]?.sessionID {
-          state.recentSessions[id: sessionID]?.context.projectIconURL = url
-        }
         return .none
 
       case .revealPanel:
@@ -459,93 +361,50 @@ struct AgentFeature {
         return .none
 
       case let .respondPermission(allow):
-        guard let id = state.currentID, let request = state.requests[id: id] else { return .none }
-        if let payloadPath = request.payloadPath {
-          state.requests.remove(id: id)
-          return .merge(
-            .cancel(id: CancelID.autoSend),
-            .run { _ in await speechSynthesizer.stop() },
-            advance(&state),
-            .run { send in
-              AgentHookResponder.respondPermission(payloadPath: payloadPath, allow: allow)
-              await send(.sent)
-            }
-          )
-        }
-        // Legacy fallback (no payload file): the terminal permission prompt is a
-        // numbered menu, 1 = allow, 2 = deny.
-        state.requests[id: id]?.draftReply = allow ? "1" : "2"
-        return .send(.send)
+        guard let id = state.currentID,
+              let payloadPath = state.requests[id: id]?.payloadPath else { return .none }
+        state.requests.remove(id: id)
+        return .merge(
+          .cancel(id: CancelID.autoSend),
+          .run { _ in await speechSynthesizer.stop() },
+          advance(&state),
+          .run { send in
+            AgentHookResponder.respondPermission(payloadPath: payloadPath, allow: allow)
+            await send(.sent)
+          }
+        )
 
       case .send:
         guard let id = state.currentID, let request = state.requests[id: id] else { return .none }
         let text = request.draftReply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return .none }
 
-        let payloadPath = request.payloadPath
         let prompt = request.prompt
-        let pid = request.context.sourceAppPID
-        let bundleID = request.context.sourceAppBundleID
-        let autoSubmit = state.hexSettings.agentAutoSubmit
+        // Without a payload file there's no in-band channel to answer through; just tear the
+        // card down. (In practice every presented hook carries one.)
+        guard let payloadPath = request.payloadPath else {
+          state.requests.remove(id: id)
+          return .merge(
+            .cancel(id: CancelID.autoSend),
+            .run { _ in await speechSynthesizer.stop() },
+            advance(&state)
+          )
+        }
         state.requests.remove(id: id)
-
-        let teardown: Effect<Action> = .merge(
+        return .merge(
           .cancel(id: CancelID.autoSend),
           .run { _ in await speechSynthesizer.stop() },
-          advance(&state)
-        )
-
-        // In-band path: answer the blocked hook directly. The hook script relays this
-        // JSON to Claude Code on stdout, so the right session gets it without focus.
-        if let payloadPath {
-          return .merge(teardown, .run { send in
+          advance(&state),
+          .run { send in
             AgentHookResponder.respondAnswer(payloadPath: payloadPath, prompt: prompt, answer: text)
             await send(.sent)
-          })
-        }
-
-        // Legacy fallback: re-focus the captured terminal and type the answer.
-        return .merge(teardown, .run { send in
-          let activated = await Self.activateTargetApp(pid: pid, bundleID: bundleID)
-          if !activated {
-            agentFeatureLogger.error("Could not bring target app to front; typing anyway")
           }
-          // Let the frontmost-app handoff settle before posting keystrokes.
-          try? await Task.sleep(for: .milliseconds(160))
-          // Type (not paste) so Claude Code's terminal prompt receives it.
-          await pasteboard.type(text)
-          if autoSubmit {
-            try? await Task.sleep(for: .milliseconds(90))
-            await pasteboard.sendKeyboardCommand(.enter)
-          }
-          await send(.sent)
-        })
+        )
 
       case .sent:
         soundEffect.play(.pasteTranscript)
         return .none
       }
-    }
-  }
-
-  // MARK: Recent-session registry
-
-  /// How many recently-blocked sessions the selector remembers.
-  static let maxRecentSessions = 8
-
-  /// Records (or refreshes) a session in the recency-ordered registry so the selector can
-  /// target it later, even after its hook releases. Only carries non-nil fields forward, so
-  /// a sparse re-show never erases a previously-resolved avatar or terminal.
-  private func rememberSession(_ state: inout State, from request: AgentRequest) {
-    guard let sessionID = request.sessionID, !sessionID.isEmpty else { return }
-    var info = state.recentSessions[id: sessionID] ?? RecentSession(sessionID: sessionID)
-    info.context.merge(request.context)
-    if let voice = request.voice { info.voice = voice }
-    // Move-to-front so the array stays most-recent-first.
-    state.recentSessions.remove(id: sessionID)
-    state.recentSessions.insert(info, at: 0)
-    if state.recentSessions.count > Self.maxRecentSessions {
-      state.recentSessions.removeLast(state.recentSessions.count - Self.maxRecentSessions)
     }
   }
 
@@ -608,41 +467,6 @@ struct AgentFeature {
   /// Grace period before a pasted/dictated reply is sent automatically.
   static let autoSendDelay: Duration = .milliseconds(1500)
 
-  /// Brings the captured terminal to the front and confirms it actually became
-  /// frontmost. macOS 14 activation is cooperative — a plain `activate()` from a
-  /// background app (Hex's panel is non-activating) is often silently declined, so
-  /// retry and escalate to relaunching the app bundle, which reliably activates.
-  @MainActor
-  private static func activateTargetApp(pid: pid_t?, bundleID: String?) async -> Bool {
-    guard let app = pid.flatMap({ NSRunningApplication(processIdentifier: $0) })
-      ?? bundleID.flatMap({ NSRunningApplication.runningApplications(withBundleIdentifier: $0).first })
-    else { return false }
-
-    func isFrontmost() -> Bool {
-      NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-    }
-    if isFrontmost() { return true }
-
-    for attempt in 0 ..< 8 {
-      if #available(macOS 14.0, *) {
-        NSApp.yieldActivation(to: app)
-        app.activate()
-      } else {
-        app.activate(options: [.activateIgnoringOtherApps])
-      }
-      // Halfway through, escalate: openApplication on a running app just activates
-      // it, and is honored even when cooperative activation is declined.
-      if attempt == 3, let url = app.bundleURL {
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        try? await NSWorkspace.shared.openApplication(at: url, configuration: config)
-      }
-      try? await Task.sleep(for: .milliseconds(120))
-      if isFrontmost() { return true }
-    }
-    return isFrontmost()
-  }
-
   // MARK: Project icon
 
   /// The GitHub owner avatar for a repo, derived from its `origin` remote. nil when the
@@ -699,7 +523,7 @@ struct AgentFeature {
 
   /// Resolves the voice for a session, assigning and remembering one on first sight when the
   /// "distinct session voices" setting is on. Returns nil — meaning "use the default" — when
-  /// the setting is off or there's no session id (e.g. a manually-summoned card).
+  /// the setting is off or there's no session id.
   private func sessionVoice(_ state: inout State, for sessionID: String?) -> String? {
     guard state.hexSettings.agentDistinctSessionVoices, let sessionID else { return nil }
     if let remembered = state.sessionVoices[sessionID] { return remembered }

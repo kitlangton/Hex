@@ -13,9 +13,6 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	var statusItem: NSStatusItem!
 	private var launchedAtLogin = false
 
-	/// The most recent non-Hex app to come to the foreground — the terminal we paste
-	/// agent replies back into. Tracked because opening the hex:// URL activates Hex.
-	private var lastForegroundApp: NSRunningApplication?
 	private var agentVisibilityToken: ObserveToken?
 
 	@Dependency(\.soundEffects) var soundEffect
@@ -49,9 +46,6 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			name: .updateAppMode,
 			object: nil
 		)
-
-		// Track the foreground app so Agent Plugins can paste back into the terminal.
-		startTrackingForegroundApp()
 
 		// Show/hide the agent voice window whenever the feature's visibility changes.
 		agentVisibilityToken = observe { [weak self] in
@@ -156,24 +150,6 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 
 	// MARK: - Agent Plugins (Claude Code integration)
 
-	private func startTrackingForegroundApp() {
-		lastForegroundApp = NSWorkspace.shared.frontmostApplication
-		NSWorkspace.shared.notificationCenter.addObserver(
-			self,
-			selector: #selector(activeAppDidChange(_:)),
-			name: NSWorkspace.didActivateApplicationNotification,
-			object: nil
-		)
-	}
-
-	@objc private func activeAppDidChange(_ notification: Notification) {
-		guard
-			let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-			app.bundleIdentifier != Bundle.main.bundleIdentifier
-		else { return }
-		lastForegroundApp = app
-	}
-
 	/// Handles `hex://agent-update?…` deeplinks fired by the Claude Code hook script.
 	func application(_: NSApplication, open urls: [URL]) {
 		for url in urls where url.scheme == "hex" {
@@ -192,7 +168,6 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			items.first { $0.name == name }?.value
 		}
 
-		let source = lastForegroundApp
 		let payload = AgentFeature.ShowPayload(
 			event: value("event"),
 			tool: value("tool"),
@@ -200,9 +175,7 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			cwd: value("cwd"),
 			transcriptPath: value("transcript"),
 			payloadPath: value("payload"),
-			inlineMessage: value("message"),
-			sourceAppBundleID: source?.bundleIdentifier,
-			sourceAppPID: source?.processIdentifier
+			inlineMessage: value("message")
 		)
 		Task { @MainActor in
 			HexApp.appStore.send(.agent(.show(payload)))

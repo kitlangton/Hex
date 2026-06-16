@@ -137,8 +137,8 @@ struct AgentView: View {
     }
   }
 
-  /// A tappable avatar per remembered session. The current one is ringed and larger; a dot
-  /// marks sessions still blocked and waiting for an answer.
+  /// A tappable avatar per blocked session. The current one is ringed and larger; tapping a
+  /// sibling switches the visible card to it.
   private func agentSelector(_ agents: [AgentFeature.State.SelectableAgent]) -> some View {
     HStack(spacing: 7) {
       ForEach(agents) { agent in
@@ -151,15 +151,6 @@ struct AgentView: View {
               RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(agent.isCurrent ? Color.accentColor : .clear, lineWidth: 2)
             )
-            .overlay(alignment: .topTrailing) {
-              if agent.isBlocked {
-                Circle()
-                  .fill(Color.orange)
-                  .frame(width: 7, height: 7)
-                  .overlay(Circle().strokeBorder(.black.opacity(0.35), lineWidth: 0.5))
-                  .offset(x: 2.5, y: -2.5)
-              }
-            }
             .opacity(agent.isCurrent ? 1 : 0.7)
             .contentShape(Rectangle())
         }

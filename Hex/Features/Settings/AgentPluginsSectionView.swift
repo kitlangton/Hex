@@ -40,19 +40,6 @@ struct AgentPluginsSectionView: View {
 			}
 
 			Label {
-				Toggle(
-					"Submit on Send",
-					isOn: Binding(
-						get: { store.hexSettings.agentAutoSubmit },
-						set: { store.send(.setAgentAutoSubmit($0)) }
-					)
-				)
-				Text("Press Return after pasting your reply into the terminal. Turn off to paste without submitting.")
-			} icon: {
-				Image(systemName: "return")
-			}
-
-			Label {
 				HStack {
 					Picker(
 						"Read-Aloud Voice",
