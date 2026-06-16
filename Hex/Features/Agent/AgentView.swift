@@ -29,7 +29,12 @@ struct AgentView: View {
           }
           inputCard
         }
-        .onAppear { DispatchQueue.main.async { replyFocused = true } }
+        // Focus the reply field only when the user has summoned or engaged the window — never
+        // on a passive hook appearance, so it can't steal keystrokes from the editor.
+        .onAppear { if store.wantsFocus { focusReply() } }
+        .onChange(of: store.wantsFocus) { _, wants in
+          if wants { focusReply() } else { replyFocused = false }
+        }
       }
     }
     .frame(width: cardWidth)
@@ -62,6 +67,11 @@ struct AgentView: View {
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
     .modifier(FloatingCard())
+  }
+
+  /// Async hop so the field is in the hierarchy before we make it first responder.
+  private func focusReply() {
+    DispatchQueue.main.async { replyFocused = true }
   }
 
   private var hasOutput: Bool {

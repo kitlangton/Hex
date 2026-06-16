@@ -57,9 +57,10 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		agentVisibilityToken = observe { [weak self] in
 			guard let self else { return }
 			let visible = HexApp.appStore.agent.isVisible
-			appLogger.notice("Agent panel visibility observed: \(visible, privacy: .public)")
+			let wantsFocus = HexApp.appStore.agent.wantsFocus
+			appLogger.notice("Agent panel visibility observed: visible=\(visible, privacy: .public) focus=\(wantsFocus, privacy: .public)")
 			if visible {
-				self.showAgentPanel()
+				self.showAgentPanel(focus: wantsFocus)
 			} else {
 				self.hideAgentPanel()
 			}
@@ -208,14 +209,23 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		}
 	}
 
-	private func showAgentPanel() {
+	private func showAgentPanel(focus: Bool) {
 		if agentWindow == nil {
 			let agentStore = HexApp.appStore.scope(state: \.agent, action: \.agent)
 			agentWindow = AgentPanel.fromView(AgentView(store: agentStore))
 		}
-		agentWindow?.positionNearMouse()
-		agentWindow?.orderFrontRegardless()
-		agentWindow?.makeKey()
+		guard let panel = agentWindow else { return }
+		// Only (re)position when first coming on screen — never when merely engaging focus or
+		// advancing the queue, which would make the card jump under the cursor.
+		if !panel.isVisible {
+			panel.positionNearMouse()
+			panel.orderFrontRegardless()
+		}
+		// Become key only when the user summoned or engaged the window. A hook-driven passive
+		// appearance must NOT steal keyboard focus from whatever the user is typing in.
+		if focus {
+			panel.makeKey()
+		}
 	}
 
 	private func hideAgentPanel() {

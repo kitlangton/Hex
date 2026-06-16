@@ -168,6 +168,11 @@ struct AgentFeature {
     /// session and no live `claude` terminal — so the card explains that instead of opening
     /// a compose box that would type into a random frontmost window.
     var noSessionsError: Bool = false
+    /// Whether the panel should hold keyboard focus. False when a hook auto-presents, so the
+    /// card appears passively and never steals keystrokes from the editor you're typing in;
+    /// true once you summon or "engage" it (agent hotkey / tapping the selector), which is
+    /// when we make it key so typing and dictation land in the reply field.
+    var wantsFocus: Bool = false
 
     @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -287,19 +292,30 @@ struct AgentFeature {
         // Become the visible card only when nothing is showing, or when the card being
         // updated IS the current one. Otherwise it waits its turn (FIFO) silently.
         if state.currentID == nil || state.currentID == id {
+          // A hook bringing the panel up from hidden appears passively — never grabbing focus
+          // from the editor. (Advancing an already-engaged queue keeps its focus.)
+          if !state.isVisible { state.wantsFocus = false }
           return present(&state, id: id)
         }
         return .none
 
       case .openManually:
         guard state.hexSettings.agentPluginsEnabled else { return .none }
-        // Second press toggles the panel away.
-        if state.isVisible { return .send(.dismiss) }
+        // A passive card on screen (a hook appeared while you were working): the first press
+        // "engages" it — grab focus so you can type or dictate a reply. Once it's focused, a
+        // second press toggles it away.
+        if state.isVisible {
+          if state.wantsFocus { return .send(.dismiss) }
+          state.wantsFocus = true
+          return .cancel(id: CancelID.autoSend)
+        }
         agentFeatureLogger.notice("Agent window summoned via hotkey")
-        // A manual summon shows immediately — there's no incoming prompt to read aloud first.
+        // A manual summon shows immediately and focused — there's no incoming prompt to read
+        // aloud first, and you invoked it to reply.
         state.isVisible = true
         state.pendingReveal = false
         state.noSessionsError = false
+        state.wantsFocus = true
 
         // Prefer a session already blocked and waiting for an answer.
         if let blocked = state.requests.first {
@@ -322,6 +338,8 @@ struct AgentFeature {
       case let .selectAgent(sessionID):
         // Already showing it — nothing to do.
         if state.current?.sessionID == sessionID { return .none }
+        // Tapping the selector is active engagement — focus the card you switched to.
+        state.wantsFocus = true
         // A blocked session is already queued: just bring its live card to the front.
         if state.requests[id: sessionID] != nil {
           return .merge(.cancel(id: CancelID.autoSend), present(&state, id: sessionID))
