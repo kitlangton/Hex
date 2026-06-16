@@ -52,10 +52,23 @@ known-good config plus solving the IPC relocation.
 
 ## Design overview
 
+> **Pivot (local-first):** the original draft used an **App Group** container as
+> the rendezvous. App Groups need a real Developer-ID provisioning profile, which
+> doesn't work under local ad-hoc signing. Since the near-term goal is "works on my
+> machine," we instead use **Hex's own sandbox container**
+> (`~/Library/Containers/com.kitlangton.Hex/Data`, == `NSHomeDirectory()` under the
+> sandbox). A sandboxed app reads/writes its own container with **no entitlement and
+> no provisioning**, so plain ad-hoc signing works; the unsandboxed hook (a
+> user-owned process) can also write into it. We can switch to an App Group later
+> for the upstream PR. Also: `git` for avatar resolution can't run sandboxed against
+> a project dir outside the container, so avatar resolution moves into the hook too
+> (follow-up).
+
 Four moving parts:
 
-1. **App Group container** becomes the IPC rendezvous (a path both the sandboxed
-   app and the unsandboxed hook can reach).
+1. **Hex's sandbox container** is the IPC rendezvous (a path both the sandboxed app
+   — via `NSHomeDirectory()` — and the unsandboxed hook — via
+   `$HOME/Library/Containers/com.kitlangton.Hex/Data` — reach). No App Group.
 2. **Install becomes a copy-paste terminal command** the user runs once. Hex
    never writes `~/.claude`.
 3. **A thin stub hook** in `~/.claude` execs the **real hook logic from the group

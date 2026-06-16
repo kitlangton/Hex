@@ -58,6 +58,7 @@ struct AppFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
   @Dependency(\.permissions) var permissions
+  @Dependency(\.claudePlugin) var claudePlugin
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -90,7 +91,9 @@ struct AppFeature {
         return .merge(
           startPasteLastTranscriptMonitoring(),
           ensureSelectedModelReadiness(),
-          startPermissionMonitoring()
+          startPermissionMonitoring(),
+          // Keep the generated Claude hook + install scripts current in our container.
+          .run { _ in await claudePlugin.prepare() }
         )
         
       case .pasteLastTranscript:

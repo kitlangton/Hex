@@ -1,3 +1,4 @@
+import AppKit
 import ComposableArchitecture
 import HexCore
 import Inject
@@ -95,13 +96,23 @@ struct AgentPluginsSectionView: View {
 		}
 
 		Section {
-			pluginRow(
-				name: "Claude Code",
-				systemImage: "chevron.left.forwardslash.chevron.right",
-				installed: store.agentPluginInstalled,
-				install: { store.send(.installAgentPlugin) },
-				uninstall: { store.send(.uninstallAgentPlugin) }
-			)
+			VStack(alignment: .leading, spacing: 10) {
+				Label("Claude Code", systemImage: "chevron.left.forwardslash.chevron.right")
+					.font(.body.weight(.medium))
+				Text("Run this once in a terminal to register the Hex hooks with Claude Code:")
+					.settingsCaption()
+				commandRow(store.agentInstallCommand)
+
+				DisclosureGroup("Remove integration") {
+					VStack(alignment: .leading, spacing: 6) {
+						Text("Run this to remove the hooks, then restart your claude sessions:")
+							.settingsCaption()
+						commandRow(store.agentUninstallCommand)
+					}
+					.padding(.top, 4)
+				}
+				.font(.caption)
+			}
 
 			// Codex support is planned — shown disabled to mirror the competitor UI.
 			Label {
@@ -117,34 +128,33 @@ struct AgentPluginsSectionView: View {
 		} header: {
 			Text("Integrations")
 		} footer: {
-			Text("Installing writes a hook to ~/.claude so Claude Code can open Hex. Uninstalling removes it.")
+			Text("Hex is sandboxed and can't edit ~/.claude itself, so you run a one-time command. Re-run the install command if an app update changes the integration.")
 				.settingsCaption()
 		}
 		.enableInjection()
 	}
 
+	/// A monospaced, selectable command with a Copy button.
 	@ViewBuilder
-	private func pluginRow(
-		name: String,
-		systemImage: String,
-		installed: Bool,
-		install: @escaping () -> Void,
-		uninstall: @escaping () -> Void
-	) -> some View {
-		Label {
-			HStack {
-				Text(name)
-				Spacer()
-				if installed {
-					Text("Installed").settingsCaption()
-					Button("Uninstall", role: .destructive, action: uninstall)
-				} else {
-					Button("Install", action: install)
-						.buttonStyle(.borderedProminent)
-				}
+	private func commandRow(_ command: String) -> some View {
+		HStack(spacing: 8) {
+			Text(command.isEmpty ? "Preparing…" : command)
+				.font(.system(.caption, design: .monospaced))
+				.textSelection(.enabled)
+				.lineLimit(1)
+				.truncationMode(.middle)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(6)
+				.background(RoundedRectangle(cornerRadius: 6).fill(.black.opacity(0.15)))
+			Button {
+				NSPasteboard.general.clearContents()
+				NSPasteboard.general.setString(command, forType: .string)
+			} label: {
+				Image(systemName: "doc.on.doc")
 			}
-		} icon: {
-			Image(systemName: systemImage)
+			.buttonStyle(.bordered)
+			.disabled(command.isEmpty)
+			.help("Copy to clipboard")
 		}
 	}
 }

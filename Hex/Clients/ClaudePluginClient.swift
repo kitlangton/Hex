@@ -2,12 +2,23 @@
 //  ClaudePluginClient.swift
 //  Hex
 //
-//  Installs/uninstalls the Hex ↔ Claude Code integration by writing a local hook
-//  script under ~/.claude and merging hook registrations into ~/.claude/settings.json.
-//  No GitHub marketplace required — everything lives on the user's machine.
+//  Bridges Hex (sandboxed) to Claude Code. Hex itself never writes ~/.claude — instead it
+//  generates three scripts inside its OWN sandbox container (which it can write freely, and
+//  which the user's unsandboxed `claude` hook process can also reach by absolute path):
 //
-//  Requires the app to be UNSANDBOXED (see Hex.entitlements) so it can read/write
-//  the real ~/.claude directory.
+//    <container>/agent/hook.sh        the real hook logic (refreshed by Hex on launch)
+//    <container>/agent/install.sh     run once by the user to register the hooks
+//    <container>/agent/uninstall.sh   run by the user to remove them
+//    <container>/agent/io/            payload + response rendezvous files
+//
+//  The user pastes `sh <…>/agent/install.sh` into a terminal once. That writes a thin STUB
+//  to ~/.claude/hex/hex-agent-hook.sh which `exec`s the real hook in the container, and
+//  merges the hook registrations into ~/.claude/settings.json. Because the real logic lives
+//  in the container, Hex can update it on launch without the user re-running anything.
+//
+//  Rendezvous lives in the container so a sandboxed Hex can read the payload and write the
+//  <payload>.response in-band, while the unsandboxed hook writes the payload and polls the
+//  response — no App Group / provisioning required, so plain local ad-hoc signing works.
 //
 
 import ComposableArchitecture
@@ -20,25 +31,22 @@ private let pluginLogger = HexLog.app
 
 @DependencyClient
 struct ClaudePluginClient {
-  /// True if the Hex hook script exists and is referenced by ~/.claude/settings.json.
-  var isInstalled: @Sendable () async -> Bool = { false }
-  /// Writes the hook script and registers all five hook events.
-  var install: @Sendable () async throws -> Void
-  /// Removes Hex's hook registrations and deletes the hook script directory.
-  var uninstall: @Sendable () async throws -> Void
-  /// If the hook is installed but its script is out of date (e.g. an app update changed
-  /// the delivery logic), rewrite the script in place. No-op when not installed.
-  var refreshIfStale: @Sendable () async -> Void = {}
+  /// Writes/refreshes the generated scripts in Hex's container. Cheap; call on launch and
+  /// whenever the Agent Plugins settings open. Idempotent.
+  var prepare: @Sendable () async -> Void = {}
+  /// The one-line command the user pastes into a terminal to register the hooks.
+  var installCommand: @Sendable () async -> String = { "" }
+  /// The one-line command the user pastes to remove the hooks.
+  var uninstallCommand: @Sendable () async -> String = { "" }
 }
 
 extension ClaudePluginClient: DependencyKey {
   static var liveValue: Self {
     let live = ClaudePluginClientLive()
     return .init(
-      isInstalled: { live.isInstalled() },
-      install: { try live.install() },
-      uninstall: { try live.uninstall() },
-      refreshIfStale: { live.refreshIfStale() }
+      prepare: { live.prepare() },
+      installCommand: { live.installCommand },
+      uninstallCommand: { live.uninstallCommand }
     )
   }
 }
@@ -54,10 +62,6 @@ extension DependencyValues {
 
 struct ClaudePluginClientLive {
   /// Hook events to register, with their matcher. Empty matcher == match all.
-  /// PreToolUse only fires our window when Claude asks a question.
-  // Fire at the end of a turn, and on the two moments that genuinely need user input:
-  // a multiple-choice question and a permission request. We deliberately skip the noisy
-  // Notification hook that pops mid-conversation.
   private let events: [(event: String, matcher: String)] = [
     ("Stop", ""),
     ("PreToolUse", "AskUserQuestion"),
@@ -67,172 +71,208 @@ struct ClaudePluginClientLive {
     ("UserPromptSubmit", ""),
   ]
 
-  private var claudeDir: URL {
-    URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude", isDirectory: true)
-  }
-  private var hexDir: URL { claudeDir.appendingPathComponent("hex", isDirectory: true) }
-  private var scriptURL: URL { hexDir.appendingPathComponent("hex-agent-hook.sh") }
-  private var settingsURL: URL { claudeDir.appendingPathComponent("settings.json") }
-  private var scriptPath: String { scriptURL.path }
+  /// Hex's container Data dir. Under the sandbox this is
+  /// `~/Library/Containers/com.kitlangton.Hex/Data`; the user's shell reaches the same place
+  /// via `$HOME/Library/Containers/…`. Both sides therefore agree on absolute paths.
+  private var containerRoot: URL { URL(fileURLWithPath: NSHomeDirectory()) }
+  private var agentDir: URL { containerRoot.appendingPathComponent("agent", isDirectory: true) }
+  private var ioDir: URL { agentDir.appendingPathComponent("io", isDirectory: true) }
+  private var realHookURL: URL { agentDir.appendingPathComponent("hook.sh") }
+  private var installScriptURL: URL { agentDir.appendingPathComponent("install.sh") }
+  private var uninstallScriptURL: URL { agentDir.appendingPathComponent("uninstall.sh") }
 
-  // MARK: Status
+  var installCommand: String { "sh '\(installScriptURL.path)'" }
+  var uninstallCommand: String { "sh '\(uninstallScriptURL.path)'" }
 
-  func isInstalled() -> Bool {
-    guard FileManager.default.fileExists(atPath: scriptPath) else { return false }
-    guard let hooks = readSettings()["hooks"] as? [String: Any] else { return false }
-    return hooks.values.contains { value in
-      guard let groups = value as? [[String: Any]] else { return false }
-      return groups.contains { groupReferencesScript($0) }
-    }
-  }
+  // MARK: Prepare
 
-  // MARK: Install
-
-  func install() throws {
-    try FileManager.default.createDirectory(at: hexDir, withIntermediateDirectories: true)
-    // Bake in OUR bundle id + path so the hook delivers the deeplink to this exact Hex,
-    // never launching a different (or extra) Hex that also claims the hex:// scheme.
-    let bundleID = Bundle.main.bundleIdentifier ?? "com.kitlangton.Hex"
-    let appPath = Bundle.main.bundlePath
-    try Self.hookScript(bundleID: bundleID, appPath: appPath)
-      .write(to: scriptURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath)
-
-    var settings = readSettings()
-    var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-    for (event, matcher) in events {
-      var groups = hooks[event] as? [[String: Any]] ?? []
-      // Re-register from scratch so upgrades (e.g. the blocking timeout) take effect.
-      groups.removeAll { groupReferencesScript($0) }
-      groups.append([
-        "matcher": matcher,
-        "hooks": [["type": "command", "command": scriptPath, "timeout": 600]],
-      ])
-      hooks[event] = groups
-    }
-
-    settings["hooks"] = hooks
-    try writeSettings(settings)
-    pluginLogger.notice("Installed Claude Code agent hooks at \(self.scriptPath, privacy: .private)")
-  }
-
-  // MARK: Refresh
-
-  /// Rewrites the hook script if it exists but doesn't match what this app would install
-  /// now. Only touches the script file — the settings.json registration points at the same
-  /// path, so it needs no change. Cheap to call on every launch (skips when already current).
-  func refreshIfStale() {
-    guard FileManager.default.fileExists(atPath: scriptPath) else { return }
-    let bundleID = Bundle.main.bundleIdentifier ?? "com.kitlangton.Hex"
-    let desired = Self.hookScript(bundleID: bundleID, appPath: Bundle.main.bundlePath)
-    let current = try? String(contentsOf: scriptURL, encoding: .utf8)
-    guard current != desired else { return }
+  /// (Re)writes the three scripts if missing or out of date. Bakes in OUR bundle id + app
+  /// path (so the hook delivers the deeplink to this exact Hex) and the absolute container
+  /// paths (so the stub and the rendezvous resolve from the user's shell).
+  func prepare() {
     do {
-      try desired.write(to: scriptURL, atomically: true, encoding: .utf8)
-      try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath)
-      pluginLogger.notice("Refreshed Claude Code agent hook script for \(bundleID, privacy: .public)")
+      try FileManager.default.createDirectory(at: ioDir, withIntermediateDirectories: true)
+      let bundleID = Bundle.main.bundleIdentifier ?? "com.kitlangton.Hex"
+      let appPath = Bundle.main.bundlePath
+      writeIfChanged(
+        Self.hookScript(bundleID: bundleID, appPath: appPath, ioDir: ioDir.path),
+        to: realHookURL, executable: true
+      )
+      writeIfChanged(
+        Self.installScript(stubReferences: realHookURL.path, events: events),
+        to: installScriptURL, executable: true
+      )
+      writeIfChanged(Self.uninstallScript(), to: uninstallScriptURL, executable: true)
     } catch {
-      pluginLogger.error("Failed to refresh agent hook script: \(error.localizedDescription)")
+      pluginLogger.error("Failed to prepare Claude agent scripts: \(error.localizedDescription)")
     }
   }
 
-  // MARK: Uninstall
-
-  func uninstall() throws {
-    var settings = readSettings()
-    if var hooks = settings["hooks"] as? [String: Any] {
-      for (event, _) in events {
-        guard var groups = hooks[event] as? [[String: Any]] else { continue }
-        groups.removeAll { groupReferencesScript($0) }
-        if groups.isEmpty {
-          hooks.removeValue(forKey: event)
-        } else {
-          hooks[event] = groups
-        }
+  private func writeIfChanged(_ contents: String, to url: URL, executable: Bool) {
+    if (try? String(contentsOf: url, encoding: .utf8)) == contents { return }
+    do {
+      try contents.write(to: url, atomically: true, encoding: .utf8)
+      if executable {
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
       }
-      if hooks.isEmpty {
-        settings.removeValue(forKey: "hooks")
-      } else {
-        settings["hooks"] = hooks
-      }
-      try writeSettings(settings)
+    } catch {
+      pluginLogger.error("Failed to write \(url.lastPathComponent, privacy: .public): \(error.localizedDescription)")
     }
-
-    if FileManager.default.fileExists(atPath: hexDir.path) {
-      try FileManager.default.removeItem(at: hexDir)
-    }
-    pluginLogger.notice("Uninstalled Claude Code agent hooks")
   }
 
-  // MARK: Helpers
+  // MARK: install.sh / uninstall.sh
 
-  /// Whether a hook group references our script (so we can find/remove only ours).
-  private func groupReferencesScript(_ group: [String: Any]) -> Bool {
-    guard let entries = group["hooks"] as? [[String: Any]] else { return false }
-    return entries.contains { ($0["command"] as? String) == scriptPath }
+  private static func installScript(stubReferences realHookPath: String, events: [(event: String, matcher: String)]) -> String {
+    // The events the python merge will register, as a Python list literal.
+    let eventLiteral = events.map { "(\"\($0.event)\", \"\($0.matcher)\")" }.joined(separator: ", ")
+    return installScriptTemplate
+      .replacingOccurrences(of: "__REAL_HOOK_PATH__", with: realHookPath)
+      .replacingOccurrences(of: "__EVENTS__", with: eventLiteral)
   }
 
-  private func readSettings() -> [String: Any] {
-    guard
-      let data = try? Data(contentsOf: settingsURL),
-      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
-    return obj
+  private static let installScriptTemplate = #"""
+  #!/bin/sh
+  # Hex Agent Plugins installer. Generated by Hex.app — safe to re-run.
+  set -e
+  STUB="$HOME/.claude/hex/hex-agent-hook.sh"
+  mkdir -p "$HOME/.claude/hex"
+
+  # A thin stub that execs the real hook from Hex's container, so Hex can update the real
+  # logic on launch without you re-running this installer.
+  cat > "$STUB" <<'STUBEOF'
+  #!/bin/sh
+  exec sh "__REAL_HOOK_PATH__" "$@"
+  STUBEOF
+  chmod 755 "$STUB"
+
+  if command -v python3 >/dev/null 2>&1; then
+    STUB="$STUB" python3 <<'PYEOF'
+  import json, os
+  stub = os.environ["STUB"]
+  p = os.path.expanduser("~/.claude/settings.json")
+  try:
+      d = json.load(open(p))
+      if not isinstance(d, dict): d = {}
+  except Exception:
+      d = {}
+  hooks = d.get("hooks") if isinstance(d.get("hooks"), dict) else {}
+  events = [__EVENTS__]
+  for ev, matcher in events:
+      groups = [g for g in hooks.get(ev, []) if not any(h.get("command") == stub for h in g.get("hooks", []))]
+      groups.append({"matcher": matcher, "hooks": [{"type": "command", "command": stub, "timeout": 600}]})
+      hooks[ev] = groups
+  d["hooks"] = hooks
+  os.makedirs(os.path.dirname(p), exist_ok=True)
+  json.dump(d, open(p, "w"), indent=2)
+  print("Hex: registered Claude Code hooks in ~/.claude/settings.json")
+  PYEOF
+  else
+    echo "Hex installer needs python3 (Xcode Command Line Tools: xcode-select --install)." >&2
+    exit 1
+  fi
+  echo "Done. Restart any running 'claude' sessions to pick up the hooks."
+  """#
+
+  private static func uninstallScript() -> String {
+    #"""
+    #!/bin/sh
+    # Hex Agent Plugins uninstaller. Generated by Hex.app.
+    STUB="$HOME/.claude/hex/hex-agent-hook.sh"
+    if command -v python3 >/dev/null 2>&1; then
+      STUB="$STUB" python3 <<'PYEOF'
+    import json, os
+    stub = os.environ["STUB"]
+    p = os.path.expanduser("~/.claude/settings.json")
+    try:
+        d = json.load(open(p))
+        if not isinstance(d, dict): d = {}
+    except Exception:
+        d = {}
+    hooks = d.get("hooks") if isinstance(d.get("hooks"), dict) else {}
+    for ev in list(hooks.keys()):
+        groups = [g for g in hooks.get(ev, []) if not any(h.get("command") == stub for h in g.get("hooks", []))]
+        if groups: hooks[ev] = groups
+        else: hooks.pop(ev, None)
+    if hooks: d["hooks"] = hooks
+    else: d.pop("hooks", None)
+    json.dump(d, open(p, "w"), indent=2)
+    print("Hex: removed Claude Code hooks from ~/.claude/settings.json")
+    PYEOF
+    fi
+    rm -rf "$HOME/.claude/hex"
+    echo "Removed. Restart any running 'claude' sessions."
+    """#
   }
 
-  private func writeSettings(_ settings: [String: Any]) throws {
-    let data = try JSONSerialization.data(
-      withJSONObject: settings,
-      options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    )
-    try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
-    try data.write(to: settingsURL, options: .atomic)
-  }
+  // MARK: Real hook
 
-  // MARK: Hook script
-
-  /// Reads the Claude Code hook JSON on stdin, opens a `hex://agent-update` deeplink, then
-  /// BLOCKS polling for `<payload>.response`. Hex writes the complete hook-output JSON into
-  /// that file (or an empty file for "dismissed, yield to the terminal UI") and this script
-  /// relays it on stdout. The answer travels in-band to the exact Claude session — no app
-  /// focusing, no synthetic keystrokes. Prefers jq, falls back to python3.
-  ///
-  /// `bundleID` and `appPath` identify the installing app, baked into the script so every
-  /// invocation targets that exact Hex (`open -b`, then `open -a` as a fallback) rather than
-  /// letting the URL scheme launch a different — or extra — Hex.
-  static func hookScript(bundleID: String, appPath: String) -> String {
+  static func hookScript(bundleID: String, appPath: String, ioDir: String) -> String {
     hookScriptTemplate
       .replacingOccurrences(of: "__HEX_BUNDLE_ID__", with: bundleID)
       .replacingOccurrences(of: "__HEX_APP_PATH__", with: appPath)
+      .replacingOccurrences(of: "__IO_DIR__", with: ioDir)
   }
 
   private static let hookScriptTemplate: String = #"""
   #!/bin/sh
   # Hex Agent Plugins hook — bridges Claude Code to the Hex voice window.
-  # Installed and managed by Hex.app (Settings → Agent Plugins). Safe to delete there.
+  # Generated and managed by Hex.app (Settings → Agent Plugins).
   input=$(cat)
 
-  # The exact Hex that installed this hook. Delivering the deeplink to this specific app
-  # keeps every Claude terminal talking to one Hex window — otherwise the hex:// scheme can
-  # launch a different, or additional, Hex and the queue never coalesces. We try the bundle
-  # id first (survives the app moving), then the absolute path (robust when LaunchServices
-  # has stale/duplicate registrations), then the bare scheme as a last resort.
   HEX_BUNDLE_ID="__HEX_BUNDLE_ID__"
   HEX_APP_PATH="__HEX_APP_PATH__"
 
-  # NB: we deliberately do NOT bail on stop_hook_active. That flag stays set on every
-  # Stop that follows a decision:block reply, but since this hook always blocks for real
-  # user input there's no auto-continue loop to guard against — skipping it here would
-  # suppress the panel on every turn after the first voice reply.
-
-  # Dump the full hook JSON to a temp file so Hex can read the CURRENT tool_input
-  # (the live question / permission), avoiding stale transcript data and URL limits.
-  dir="${TMPDIR:-/tmp}/hex-agent"
+  # Rendezvous inside Hex's sandbox container so the sandboxed app can read the payload and
+  # write the <payload>.response, while this (unsandboxed) hook writes the payload and polls.
+  dir="__IO_DIR__"
   mkdir -p "$dir" 2>/dev/null
   payload="$dir/hook.$$.json"
   printf '%s' "$input" > "$payload" 2>/dev/null
   response="$payload.response"
+
+  # For Stop, fold the last assistant message into the payload so Hex (sandboxed, no access
+  # to ~/.claude) never needs to read the transcript itself.
+  if command -v python3 >/dev/null 2>&1; then
+    PAYLOAD="$payload" python3 <<'PYEOF' 2>/dev/null || true
+  import json, os
+  path = os.environ["PAYLOAD"]
+  try:
+      d = json.load(open(path))
+  except Exception:
+      raise SystemExit(0)
+  if d.get("hook_event_name") != "Stop" or d.get("last_assistant_message"):
+      raise SystemExit(0)
+  tp = os.path.expanduser(d.get("transcript_path") or "")
+  try:
+      lines = open(tp, encoding="utf-8").read().splitlines()
+  except Exception:
+      raise SystemExit(0)
+  collected = []
+  for line in reversed(lines):
+      line = line.strip()
+      if not line:
+          continue
+      try:
+          obj = json.loads(line)
+      except Exception:
+          continue
+      t = obj.get("type")
+      if t == "assistant":
+          content = (obj.get("message") or {}).get("content")
+          text = ""
+          if isinstance(content, list):
+              text = "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+          elif isinstance(content, str):
+              text = content
+          if text.strip():
+              collected.append(text)
+      elif t == "user" and collected:
+          break
+  if collected:
+      d["last_assistant_message"] = "\n".join(reversed(collected)).strip()
+      json.dump(d, open(path, "w"))
+  PYEOF
+  fi
 
   encode() {
     if command -v python3 >/dev/null 2>&1; then
@@ -242,8 +282,6 @@ struct ClaudePluginClientLive {
     fi
   }
 
-  # Deliver a hex:// URL to the specific Hex that installed us: bundle id, then exact app
-  # path, then the default scheme handler as a last resort.
   open_url() {
     if [ -n "$HEX_BUNDLE_ID" ] && /usr/bin/open -b "$HEX_BUNDLE_ID" "$1" >/dev/null 2>&1; then
       return 0
@@ -282,8 +320,6 @@ struct ClaudePluginClientLive {
 
   [ -z "$base" ] && { rm -f "$payload"; exit 0; }
 
-  # User answered in the terminal: release every hook still blocked on this session,
-  # tell Hex to hide its panel, and get out of the way.
   case "$base" in
     *"event=UserPromptSubmit"*)
       sid=${base#*session=}
@@ -303,7 +339,6 @@ struct ClaudePluginClientLive {
   open_url "${base}&payload=${penc}"
 
   # Block until Hex answers (or ~9.5 min, under the 600s hook timeout).
-  # Non-empty response = hook-output JSON to relay; empty = user dismissed.
   i=0
   while [ "$i" -lt 2850 ]; do
     if [ -f "$response" ]; then

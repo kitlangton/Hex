@@ -67,7 +67,8 @@ struct SettingsFeature {
     var shouldFlashModelSection = false
 
     // Agent Plugins
-    var agentPluginInstalled = false
+    var agentInstallCommand = ""
+    var agentUninstallCommand = ""
     /// Non-nil while the Kokoro TTS model is downloading (0...1).
     var kokoroDownloadProgress: Double?
     var kokoroReady = false
@@ -125,9 +126,7 @@ struct SettingsFeature {
     case prepareKokoro
     case kokoroPrepareProgress(Double)
     case kokoroPrepared(success: Bool)
-    case installAgentPlugin
-    case uninstallAgentPlugin
-    case agentPluginStatusLoaded(Bool)
+    case agentCommandsLoaded(install: String, uninstall: String)
 
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
@@ -301,9 +300,13 @@ struct SettingsFeature {
 
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
-          // Self-heal an out-of-date hook script (e.g. after an app update) before reporting status.
-          await claudePlugin.refreshIfStale()
-          await send(.agentPluginStatusLoaded(await claudePlugin.isInstalled()))
+          // Refresh the generated agent scripts in our container, then surface the
+          // copy-paste install/uninstall commands for the Settings UI.
+          await claudePlugin.prepare()
+          await send(.agentCommandsLoaded(
+            install: await claudePlugin.installCommand(),
+            uninstall: await claudePlugin.uninstallCommand()
+          ))
 
           // Listen for device connection/disconnection notifications
           // Using a simpler debounced approach with a single task
@@ -675,28 +678,9 @@ struct SettingsFeature {
         state.kokoroReady = success
         return success ? .send(.previewAgentVoice) : .none
 
-      case .installAgentPlugin:
-        return .run { send in
-          do {
-            try await claudePlugin.install()
-          } catch {
-            settingsLogger.error("Failed to install Claude Code plugin: \(error.localizedDescription)")
-          }
-          await send(.agentPluginStatusLoaded(await claudePlugin.isInstalled()))
-        }
-
-      case .uninstallAgentPlugin:
-        return .run { send in
-          do {
-            try await claudePlugin.uninstall()
-          } catch {
-            settingsLogger.error("Failed to uninstall Claude Code plugin: \(error.localizedDescription)")
-          }
-          await send(.agentPluginStatusLoaded(await claudePlugin.isInstalled()))
-        }
-
-      case let .agentPluginStatusLoaded(installed):
-        state.agentPluginInstalled = installed
+      case let .agentCommandsLoaded(install, uninstall):
+        state.agentInstallCommand = install
+        state.agentUninstallCommand = uninstall
         return .none
 
       }
