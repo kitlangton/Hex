@@ -6,12 +6,16 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var model = DictationModel()
+    let model: DictationModel
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
                 modelStatusBanner
+
+                if model.awaitingSwipeBack {
+                    swipeBackBanner
+                }
 
                 if model.entries.isEmpty {
                     emptyState
@@ -60,6 +64,19 @@ struct ContentView: View {
                 .foregroundStyle(.orange)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var swipeBackBanner: some View {
+        Label {
+            Text("Transcript ready — **swipe back to your app** to insert it.")
+        } icon: {
+            Image(systemName: "arrow.uturn.backward")
+        }
+        .font(.callout)
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.15), in: .rect(cornerRadius: 12))
+        .onTapGesture { model.dismissSwipeBackHint() }
     }
 
     private var emptyState: some View {
@@ -111,5 +128,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(model: DictationModel())
 }

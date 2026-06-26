@@ -12,6 +12,13 @@
 
 import Foundation
 
+/// The App Group shared by the iOS host app and the keyboard extension. Must
+/// match the `group.*` identifier configured (identically) on both targets in
+/// Xcode (Signing & Capabilities ▸ App Groups).
+public enum HexAppGroup {
+    public static let identifier = "group.stonefrontier.hex"
+}
+
 /// A transcription result handed from the host app to the keyboard.
 public struct DictationResult: Codable, Equatable, Sendable, Identifiable {
     /// Stable id so the keyboard can ignore a result it has already inserted.
