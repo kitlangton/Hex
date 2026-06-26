@@ -51,6 +51,7 @@ final class DictationModel {
     private let recorder = AudioRecorder()
     private let transcriber = WhisperTranscriber()
     private let ipc = KeyboardIPC(appGroupIdentifier: HexAppGroup.identifier)
+    private var prepareTask: Task<Void, Never>?
 
     var canRecord: Bool { modelState == .ready && phase != .transcribing }
 
@@ -62,8 +63,17 @@ final class DictationModel {
         }
     }
 
-    /// Load the model + request mic permission. Call once from `.task`.
+    /// Load the model + request mic permission. Idempotent: callers (the view's
+    /// `.task` and the keyboard bounce) share one underlying run, so a cold launch
+    /// via `hexkb://` doesn't kick off a second model load.
     func prepare() async {
+        if let prepareTask { return await prepareTask.value }
+        let task = Task { await self.runPrepare() }
+        prepareTask = task
+        await task.value
+    }
+
+    private func runPrepare() async {
         _ = await recorder.requestPermission()
         do {
             try await transcriber.load(model: modelName)
@@ -86,6 +96,12 @@ final class DictationModel {
     func beginKeyboardDictation() async {
         awaitingSwipeBack = false
         keyboardMode = true
+        // Cold launch via URL can beat the view's prepare(); ensure the model is ready.
+        if modelState != .ready { await prepare() }
+        guard modelState == .ready else {
+            keyboardMode = false
+            return
+        }
         if phase == .idle { await startRecording() }
     }
 
