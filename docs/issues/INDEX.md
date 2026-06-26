@@ -19,9 +19,9 @@ independently shippable). Phases 2 + 3 are tightly coupled. Phase 4 last.
 | [P0-2](P0-2-decouple-settings-input-types.md) | Decouple settings/input models from Sauce + Cocoa | 0 | P0-1 | M | DONE |
 | [P0-3](P0-3-ios-permission-sleep-clients.md) | iOS `PermissionClient` + `SleepManagementClient` | 0 | P0-1 | M | DONE |
 | [P0-4](P0-4-move-engine-into-hexcore.md) | Move transcription engine into HexCore | 0 | P0-1 | L | TODO |
-| [P1-1](P1-1-ios-app-target.md) | Create `HexiOS` app target | 1 | P0-2, P0-3, P0-4 | S | TODO |
-| [P1-2](P1-2-ios-recording-client.md) | iOS `RecordingClient` (AVAudioSession) | 1 | P1-1 | M | TODO |
-| [P1-3](P1-3-ios-host-ui.md) | iOS host UI + reuse TCA features | 1 | P1-2 | L | TODO |
+| [P1-1](P1-1-ios-app-target.md) | Create `HexiOS` app target | 1 | P0-2, P0-3, P0-4 | S | DONE (target `HexIOS`) |
+| [P1-2](P1-2-ios-recording-client.md) | iOS `RecordingClient` (AVAudioSession) | 1 | P1-1 | M | PROTOTYPE (AudioRecorder in HexIOS; migrate to HexCore later) |
+| [P1-3](P1-3-ios-host-ui.md) | iOS host UI + reuse TCA features | 1 | P1-2 | L | PROTOTYPE (SwiftUI+@Observable; WhisperKit-direct, no TCA yet) |
 | [P2-1](P2-1-keyboard-target-app-group.md) | `HexKeyboard` extension + App Group | 2 | P1-1 | M | TODO |
 | [P2-2](P2-2-keyboard-ui.md) | Mic-centric keyboard UI + insertion | 2 | P2-1 | M | TODO |
 | [P2-3](P2-3-ipc-layer.md) | IPC layer (App Group + Darwin notifications) | 2 | P2-1 | M | DONE (logic; runtime pending targets) |
