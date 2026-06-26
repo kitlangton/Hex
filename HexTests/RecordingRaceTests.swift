@@ -193,7 +193,7 @@ struct RecordingRaceTests {
       TranscriptionFeature()
     }
 
-    await store.send(.transcriptionResult("", audioURL, 1.25))
+    await store.send(.transcriptionResult("", audioURL, 1.25, .zero))
     await store.finish()
 
     #expect(!FileManager.default.fileExists(atPath: audioURL.path))
@@ -223,7 +223,14 @@ struct RecordingRaceTests {
       $0.soundEffects.play = { _ in }
     }
 
-    await store.send(.transcriptionResult("hello", audioURL, duration))
+    await store.send(
+      .transcriptionResult(
+        "hello",
+        audioURL,
+        duration,
+        SpeechActivityMetrics(peakRMS: 0.05, peakSample: 0.12)
+      )
+    )
     await store.finish()
 
     let storedDuration = await probe.duration

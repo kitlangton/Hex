@@ -31,6 +31,10 @@ extension SharedReaderKey
   static var isRemappingScratchpadFocused: Self {
     Self[.inMemory("isRemappingScratchpadFocused"), default: false]
   }
+
+  static var isConfirmingCancel: Self {
+    Self[.inMemory("isConfirmingCancel"), default: false]
+  }
 }
 
 // MARK: - Settings Feature
@@ -77,6 +81,7 @@ struct SettingsFeature {
     case toggleSuperFastMode(Bool)
     case setUseClipboardPaste(Bool)
     case setCopyToClipboard(Bool)
+    case setLivePreviewDisplayMode(LivePreviewDisplayMode)
     case setDoubleTapLockEnabled(Bool)
     case setUseDoubleTapOnly(Bool)
     case setMinimumKeyTime(Double)
@@ -89,6 +94,7 @@ struct SettingsFeature {
     case requestMicrophone
     case requestAccessibility
     case requestInputMonitoring
+    case revealAppInFinder
 
     // Microphone selection
     case loadAvailableInputDevices
@@ -115,8 +121,7 @@ struct SettingsFeature {
     case setRemappingScratchpadFocused(Bool)
   }
 
-  @Dependency(\.keyEventMonitor) var keyEventMonitor
-  @Dependency(\.transcription) var transcription
+
   @Dependency(\.recording) var recording
   @Dependency(\.soundEffects) var soundEffects
   @Dependency(\.transcriptPersistence) var transcriptPersistence
@@ -174,7 +179,10 @@ struct SettingsFeature {
     case .recording:
       state.$hexSettings.withLock {
         $0.hotkey.key = key
-        $0.hotkey.modifiers = modifiers.erasingSides()
+        // For modifier-only hotkeys, preserve the captured side (left/right) so the
+        // side picker pre-selects the physical key that was pressed. For key+modifier
+        // combos, erase sides — no picker exists and either side should trigger.
+        $0.hotkey.modifiers = key == nil ? modifiers : modifiers.erasingSides()
       }
     case .pasteLastTranscript:
       guard let key else { return }
@@ -197,15 +205,19 @@ struct SettingsFeature {
       return .none
     }
 
+    if target == .recording, !updatedModifiers.isEmpty {
+      // Confirm modifier-only hotkeys after all modifiers are released.
+      if keyEvent.key == nil, keyEvent.modifiers.isEmpty {
+        applyCapturedHotKey(key: nil, modifiers: updatedModifiers, for: target, state: &state)
+        endCapture(target, state: &state)
+        return .none
+      }
+    }
+
     if let key = keyEvent.key {
       applyCapturedHotKey(key: key, modifiers: updatedModifiers, for: target, state: &state)
       endCapture(target, state: &state)
       return .none
-    }
-
-    if target == .recording, keyEvent.modifiers.isEmpty {
-      applyCapturedHotKey(key: nil, modifiers: updatedModifiers, for: target, state: &state)
-      endCapture(target, state: &state)
     }
 
     return .none
@@ -327,7 +339,6 @@ struct SettingsFeature {
           installAudioHardwareObserver(kAudioHardwarePropertyDefaultInputDevice)
           installAudioHardwareObserver(kAudioHardwarePropertyDevices)
 
-          // Be sure to clean up resources when the task is finished
           defer {
             deviceUpdateTask?.cancel()
             NotificationCenter.default.removeObserver(deviceConnectionObserver)
@@ -349,13 +360,20 @@ struct SettingsFeature {
             }
           }
 
-          for try await keyEvent in await keyEventMonitor.listenForKeyPress() {
-            await send(.keyEvent(keyEvent))
+          while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(60))
           }
-          
         }
 
       case .startSettingHotKey:
+        if state.hotkeyPermissionState.accessibility != .granted
+          || state.hotkeyPermissionState.inputMonitoring != .granted
+        {
+          return .merge(
+            .send(.requestAccessibility),
+            .send(.requestInputMonitoring)
+          )
+        }
         beginCapture(.recording, state: &state)
         return .none
 
@@ -447,6 +465,10 @@ struct SettingsFeature {
         state.$hexSettings.withLock { $0.copyToClipboard = enabled }
         return .none
 
+      case let .setLivePreviewDisplayMode(mode):
+        state.$hexSettings.withLock { $0.livePreviewDisplayMode = mode }
+        return .none
+
       case let .setRecordingAudioBehavior(behavior):
         state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
         return .none
@@ -507,6 +529,10 @@ struct SettingsFeature {
 
       case .requestInputMonitoring:
         settingsLogger.info("User requested input monitoring permission from settings")
+        return .none
+
+      case .revealAppInFinder:
+        settingsLogger.info("User requested reveal app in Finder")
         return .none
 
       // Model Management

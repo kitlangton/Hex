@@ -6,9 +6,18 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 	case doNothing
 }
 
+/// Where live dictation preview text appears while recording.
+public enum LivePreviewDisplayMode: String, Codable, CaseIterable, Equatable, Sendable {
+	/// Insert preview text at the cursor in the frontmost app.
+	case cursor
+	/// Show preview text in Hex's floating overlay; paste final text on release.
+	case overlay
+}
+
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
+	public static let defaultRecordingHotkey = HotKey(key: nil, modifiers: [.control, .option])
 	public static let baseSoundEffectsVolume: Double = HexCoreConstants.baseSoundEffectsVolume
 	public static let defaultWordRemovals: [WordRemoval] = [
 		.init(pattern: "uh+"),
@@ -44,10 +53,14 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var pasteLastTranscriptHotkey: HotKey?
 	public var hasCompletedModelBootstrap: Bool
 	public var hasCompletedStorageMigration: Bool
+	public var hasMigratedLegacyRecordingHotkey: Bool
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
 	public var coach: CoachSettings
+	public var livePreviewDisplayMode: LivePreviewDisplayMode
+
+	private static let legacyRecordingHotkey = HotKey(key: nil, modifiers: [.option])
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -55,10 +68,27 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		}
 	}
 
+	/// Upgrades the old default (Option-only) to Control+Option once for existing installs.
+	private mutating func normalizeLegacyRecordingHotkey() {
+		guard !hasMigratedLegacyRecordingHotkey else { return }
+
+		if hotkey.key == nil,
+		   hotkey.modifiers.erasingSides() == Self.legacyRecordingHotkey.modifiers.erasingSides() {
+			hotkey = Self.defaultRecordingHotkey
+		}
+
+		hasMigratedLegacyRecordingHotkey = true
+	}
+
+	private mutating func normalizeSettings() {
+		normalizeDoubleTapSettings()
+		normalizeLegacyRecordingHotkey()
+	}
+
 	public init(
 		soundEffectsEnabled: Bool = true,
 		soundEffectsVolume: Double = HexSettings.baseSoundEffectsVolume,
-		hotkey: HotKey = .init(key: nil, modifiers: [.option]),
+		hotkey: HotKey = HexSettings.defaultRecordingHotkey,
 		openOnLogin: Bool = false,
 		showDockIcon: Bool = true,
 		selectedModel: String = ParakeetModel.multilingualV3.identifier,
@@ -77,10 +107,12 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		pasteLastTranscriptHotkey: HotKey? = HexSettings.defaultPasteLastTranscriptHotkey,
 		hasCompletedModelBootstrap: Bool = false,
 		hasCompletedStorageMigration: Bool = false,
+		hasMigratedLegacyRecordingHotkey: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
 		wordRemappings: [WordRemapping] = [],
-		coach: CoachSettings = .init()
+		coach: CoachSettings = .init(),
+		livePreviewDisplayMode: LivePreviewDisplayMode = .cursor
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -103,11 +135,13 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.pasteLastTranscriptHotkey = pasteLastTranscriptHotkey
 		self.hasCompletedModelBootstrap = hasCompletedModelBootstrap
 		self.hasCompletedStorageMigration = hasCompletedStorageMigration
+		self.hasMigratedLegacyRecordingHotkey = hasMigratedLegacyRecordingHotkey
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
 		self.coach = coach
-		normalizeDoubleTapSettings()
+		self.livePreviewDisplayMode = livePreviewDisplayMode
+		normalizeSettings()
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -116,7 +150,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		for field in HexSettingsSchema.fields {
 			try field.decode(into: &self, from: container)
 		}
-		normalizeDoubleTapSettings()
+		normalizeSettings()
 	}
 
 	public func encode(to encoder: Encoder) throws {
@@ -152,10 +186,12 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case pasteLastTranscriptHotkey
 	case hasCompletedModelBootstrap
 	case hasCompletedStorageMigration
+	case hasMigratedLegacyRecordingHotkey
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
 	case coach
+	case livePreviewDisplayMode
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -278,6 +314,7 @@ private enum HexSettingsSchema {
 		).eraseToAny(),
 		SettingsField(.hasCompletedModelBootstrap, keyPath: \.hasCompletedModelBootstrap, default: defaults.hasCompletedModelBootstrap).eraseToAny(),
 		SettingsField(.hasCompletedStorageMigration, keyPath: \.hasCompletedStorageMigration, default: defaults.hasCompletedStorageMigration).eraseToAny(),
+		SettingsField(.hasMigratedLegacyRecordingHotkey, keyPath: \.hasMigratedLegacyRecordingHotkey, default: false).eraseToAny(),
 		SettingsField(.wordRemovalsEnabled, keyPath: \.wordRemovalsEnabled, default: defaults.wordRemovalsEnabled).eraseToAny(),
 		SettingsField(
 			.wordRemovals,
@@ -293,6 +330,11 @@ private enum HexSettingsSchema {
 			.coach,
 			keyPath: \.coach,
 			default: defaults.coach
+		).eraseToAny(),
+		SettingsField(
+			.livePreviewDisplayMode,
+			keyPath: \.livePreviewDisplayMode,
+			default: defaults.livePreviewDisplayMode
 		).eraseToAny()
 	]
 }

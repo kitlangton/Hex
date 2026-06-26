@@ -5,6 +5,7 @@
 //  Created by Kit Langton on 1/25/25.
 
 import AppKit
+import HexCore
 import Inject
 import Pow
 import SwiftUI
@@ -22,6 +23,8 @@ struct TranscriptionIndicatorView: View {
 
   var status: Status
   var meter: Meter
+  var liveTranscript: String = ""
+  var livePreviewDisplayMode: LivePreviewDisplayMode = .cursor
 
   let transcribeBaseColor: Color = .blue
   private var backgroundColor: Color {
@@ -67,9 +70,16 @@ struct TranscriptionIndicatorView: View {
   private let cornerRadius: CGFloat = 8
   private let baseWidth: CGFloat = 16
   private let expandedWidth: CGFloat = 56
+  private let liveTranscriptMaxWidth: CGFloat = 420
 
   var isHidden: Bool {
     status == .hidden
+  }
+
+  private var showsLiveTranscriptOverlay: Bool {
+    livePreviewDisplayMode == .overlay
+      && status == .recording
+      && !liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   @State var transcribeEffect = 0
@@ -137,6 +147,24 @@ struct TranscriptionIndicatorView: View {
             try? await Task.sleep(for: .seconds(0.25))
           }
         }
+
+      if showsLiveTranscriptOverlay {
+        Text(liveTranscript)
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(.white)
+          .multilineTextAlignment(.leading)
+          .lineLimit(8)
+          .frame(maxWidth: liveTranscriptMaxWidth, alignment: .leading)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 8)
+          .background(
+            RoundedRectangle(cornerRadius: 8)
+              .fill(Color.black.opacity(0.85))
+          )
+          .offset(y: 40)
+          .transition(.opacity.combined(with: .move(edge: .top)))
+          .animation(.easeOut(duration: 0.15), value: liveTranscript)
+      }
       
       // Show tooltip when prewarming
       if status == .prewarming {

@@ -24,6 +24,18 @@ struct TranscriptionClient {
   /// Reports transcription progress via `progressCallback`.
   var transcribe: @Sendable (URL, String, DecodingOptions, @escaping (Progress) -> Void) async throws -> String
 
+  /// Fast Parakeet preview on a growing capture file while recording is in progress.
+  var transcribePreview: @Sendable (URL, String) async throws -> String = { _, _ in "" }
+
+  /// Waits until preview and final Parakeet transcribes are not in flight.
+  var waitForParakeetIdle: @Sendable () async -> Void = {}
+
+  /// Clears FluidAudio decoder state between preview and final passes.
+  var resetParakeetTranscriberState: @Sendable () async throws -> Void = {}
+
+  /// Rebuilds the Parakeet AsrManager from cached models after repeated preview passes.
+  var reinitializeParakeetTranscriber: @Sendable () async throws -> Void = {}
+
   /// Ensures a model is downloaded (if missing) and loaded into memory, reporting progress via `progressCallback`.
   var downloadModel: @Sendable (String, @escaping (Progress) -> Void) async throws -> Void
 
@@ -45,6 +57,10 @@ extension TranscriptionClient: DependencyKey {
     let live = TranscriptionClientLive()
     return Self(
       transcribe: { try await live.transcribe(url: $0, model: $1, options: $2, progressCallback: $3) },
+      transcribePreview: { try await live.transcribePreview(url: $0, model: $1) },
+      waitForParakeetIdle: { await live.waitForParakeetIdle() },
+      resetParakeetTranscriberState: { try await live.resetParakeetTranscriberState() },
+      reinitializeParakeetTranscriber: { try await live.reinitializeParakeetTranscriber() },
       downloadModel: { try await live.downloadAndLoadModel(variant: $0, progressCallback: $1) },
       deleteModel: { try await live.deleteModel(variant: $0) },
       isModelDownloaded: { await live.isModelDownloaded($0) },
@@ -73,6 +89,10 @@ actor TranscriptionClientLive {
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
   private var parakeet: ParakeetClient = ParakeetClient()
+  private var qwen: QwenClient = QwenClient()
+  private var parakeetPipelineHeld = false
+  private var parakeetPipelineWaiters: [CheckedContinuation<Void, Never>] = []
+  private var parakeetPipelineIdleWaiters: [CheckedContinuation<Void, Never>] = []
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -91,6 +111,12 @@ actor TranscriptionClientLive {
     // If Parakeet, use Parakeet client path
     if isParakeet(variant) {
       try await parakeet.ensureLoaded(modelName: variant, progress: progressCallback)
+      currentModelName = variant
+      return
+    }
+    // If Qwen, use Qwen client path
+    if isQwen(variant) {
+      try await qwen.ensureLoaded(modelName: variant, progress: progressCallback)
       currentModelName = variant
       return
     }
@@ -145,6 +171,11 @@ actor TranscriptionClientLive {
       if currentModelName == variant { unloadCurrentModel() }
       return
     }
+    if isQwen(variant) {
+      try await qwen.deleteCaches(modelName: variant)
+      if currentModelName == variant { unloadCurrentModel() }
+      return
+    }
     let modelFolder = modelPath(for: variant)
 
     // Check if the model exists
@@ -172,30 +203,28 @@ actor TranscriptionClientLive {
       parakeetLogger.debug("Parakeet available? \(available)")
       return available
     }
-    let modelFolderPath = modelPath(for: modelName).path
+    if isQwen(modelName) {
+      let available = await qwen.isModelAvailable(modelName)
+      modelsLogger.debug("Qwen available? \(available)")
+      return available
+    }
+    let modelFolder = effectiveModelPath(for: modelName)
     let fileManager = FileManager.default
 
-    // First, check if the basic model directory exists
-    guard fileManager.fileExists(atPath: modelFolderPath) else {
-      // Don't print logs that would spam the console
+    guard fileManager.fileExists(atPath: modelFolder.path) else {
       return false
     }
 
     do {
-      // Check if the directory has actual model files in it
-      let contents = try fileManager.contentsOfDirectory(atPath: modelFolderPath)
+      let contents = try fileManager.contentsOfDirectory(atPath: modelFolder.path)
+      guard !contents.isEmpty else { return false }
 
-      // Model should have multiple files and certain key components
-      guard !contents.isEmpty else {
-        return false
-      }
-
-      // Check for specific model structure - need both tokenizer and model files
+      // WhisperKit expects a model folder laid out as `<model>/*.mlmodelc` plus a
+      // sibling `tokenizer/` directory. Both must be present for the model to load.
       let hasModelFiles = contents.contains { $0.hasSuffix(".mlmodelc") || $0.contains("model") }
-      let tokenizerFolderPath = tokenizerPath(for: modelName).path
-      let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolderPath)
+      let tokenizerFolder = modelFolder.appendingPathComponent("tokenizer", isDirectory: true)
+      let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolder.path)
 
-      // Both conditions must be true for a model to be considered downloaded
       return hasModelFiles && hasTokenizer
     } catch {
       return false
@@ -215,6 +244,13 @@ actor TranscriptionClientLive {
       if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
     }
     #endif
+    
+    // Add Qwen3 model to available models (if not already present)
+    let qwenName = "mlx-community/Qwen3-ASR-0.6B-4bit"
+    if !names.contains(qwenName) {
+      names.insert(qwenName, at: 0)
+    }
+    
     return names
   }
 
@@ -229,6 +265,9 @@ actor TranscriptionClientLive {
   ) async throws -> String {
     let startAll = Date()
     if isParakeet(model) {
+      await acquireParakeetPipeline()
+      defer { releaseParakeetPipeline() }
+
       transcriptionLogger.notice("Transcribing with Parakeet model=\(model) file=\(url.lastPathComponent)")
       let startLoad = Date()
       try await downloadAndLoadModel(variant: model) { p in
@@ -243,6 +282,27 @@ actor TranscriptionClientLive {
       transcriptionLogger.info("Parakeet request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
       return text
     }
+
+    if isQwen(model) {
+      transcriptionLogger.notice("Transcribing with Qwen model=\(model) file=\(url.lastPathComponent)")
+
+      let startLoad = Date()
+
+      try await downloadAndLoadModel(variant: model) { p in
+        progressCallback(p)
+      }
+
+      transcriptionLogger.info("Qwen ensureLoaded took \(String(format: "%.2f", Date().timeIntervalSince(startLoad)))s")
+
+      let startTx = Date()
+      let text = try await qwen.transcribe(url)
+
+      transcriptionLogger.info("Qwen transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
+      transcriptionLogger.info("Qwen request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
+
+      return text
+    }
+
     let model = await resolveVariant(model)
     // Load or switch to the required model if needed.
     if whisperKit == nil || model != currentModelName {
@@ -278,27 +338,110 @@ actor TranscriptionClientLive {
     return text
   }
 
+  func waitForParakeetIdle() async {
+    await parakeet.waitUntilTranscribeIdle()
+    if parakeetPipelineHeld {
+      await withCheckedContinuation { continuation in
+        parakeetPipelineIdleWaiters.append(continuation)
+      }
+    }
+  }
+
+  func resetParakeetTranscriberState() async throws {
+    await acquireParakeetPipeline()
+    defer { releaseParakeetPipeline() }
+    try await parakeet.resetTranscriberState()
+  }
+
+  func reinitializeParakeetTranscriber() async throws {
+    await acquireParakeetPipeline()
+    defer { releaseParakeetPipeline() }
+    try await parakeet.reinitializeTranscriber()
+  }
+
+  /// Lightweight Parakeet pass for live preview while a capture file is still growing.
+  func transcribePreview(url: URL, model: String) async throws -> String {
+    try Task.checkCancellation()
+    await acquireParakeetPipeline()
+    defer { releaseParakeetPipeline() }
+
+    guard isParakeet(model) else { return "" }
+    guard FileManager.default.fileExists(atPath: url.path) else { return "" }
+
+    try await parakeet.ensureLoaded(modelName: model) { _ in }
+    let preparedClip = try ParakeetClipPreparer.ensureMinimumDuration(
+      url: url,
+      minimumDuration: ParakeetClipPreparer.previewMinimumDuration,
+      logger: parakeetLogger
+    )
+    defer { preparedClip.cleanup() }
+    return try await parakeet.transcribe(preparedClip.url, reinitializeOnEmpty: false)
+  }
+
+  private func acquireParakeetPipeline() async {
+    if !parakeetPipelineHeld {
+      parakeetPipelineHeld = true
+      return
+    }
+    await withCheckedContinuation { continuation in
+      parakeetPipelineWaiters.append(continuation)
+    }
+  }
+
+  private func releaseParakeetPipeline() {
+    if parakeetPipelineWaiters.isEmpty {
+      parakeetPipelineHeld = false
+      let idleWaiters = parakeetPipelineIdleWaiters
+      parakeetPipelineIdleWaiters.removeAll()
+      idleWaiters.forEach { $0.resume() }
+      return
+    }
+    parakeetPipelineWaiters.removeFirst().resume()
+  }
+
   // MARK: - Private Helpers
 
-  /// Resolve wildcard patterns (e.g. "distil*large-v3") to a concrete model name.
+  /// Resolve wildcard patterns (e.g. "distil*large-v3") or stale model names
+  /// to a concrete model name from the current HuggingFace repository.
   /// Preference: downloaded > non-turbo > any match.
   private func resolveVariant(_ variant: String) async -> String {
-    guard variant.contains("*") || variant.contains("?") else { return variant }
+    let hasGlob = variant.contains("*") || variant.contains("?")
+
+    // Fast path: a concrete name whose folder is already on disk does not need
+    // network resolution. Keeps the hot path (already-downloaded models) offline-safe.
+    if !hasGlob, FileManager.default.fileExists(atPath: modelPath(for: variant).path) {
+      return variant
+    }
 
     let names: [String]
     do { names = try await WhisperKit.fetchAvailableModels() } catch { return variant }
 
-    // Build tuple array with download status for matching models
-    var models: [(name: String, isDownloaded: Bool)] = []
-    for name in names where ModelPatternMatcher.matches(variant, name) {
-      models.append((name, await isModelDownloaded(name)))
+    // Exact match -- no resolution needed
+    if names.contains(variant) { return variant }
+
+    // Glob pattern -- use fnmatch-based resolution
+    if hasGlob {
+      var models: [(name: String, isDownloaded: Bool)] = []
+      for name in names where ModelPatternMatcher.matches(variant, name) {
+        models.append((name, await isModelDownloaded(name)))
+      }
+      return ModelPatternMatcher.resolvePattern(variant, from: models) ?? variant
     }
 
-    return ModelPatternMatcher.resolvePattern(variant, from: models) ?? variant
+    // Stale name -- check for size-suffix variant (e.g. _626MB appended by HuggingFace)
+    if let match = names.first(where: { ModelPatternMatcher.matchesFlexible(variant, $0) }) {
+      return match
+    }
+
+    return variant
   }
 
   private func isParakeet(_ name: String) -> Bool {
     ParakeetModel(rawValue: name) != nil
+  }
+
+  private func isQwen(_ name: String) -> Bool {
+    name.lowercased().contains("qwen")
   }
 
   /// Creates or returns the local folder (on disk) for a given `variant` model.
@@ -310,6 +453,32 @@ actor TranscriptionClientLive {
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")
       .appendingPathComponent(sanitizedVariant, isDirectory: true)
+  }
+
+  /// Returns the on-disk model folder, tolerating HuggingFace `_NNNMB` size-suffix
+  /// renames in either direction:
+  /// - variant carries the suffix, folder does not -> strip and retry.
+  /// - variant is the bare name, folder has the suffix -> scan siblings for a
+  ///   size-suffix variant (handles upgrade users whose persisted `selectedModel`
+  ///   was stored under the pre-rename name).
+  private func effectiveModelPath(for variant: String) -> URL {
+    let exact = modelPath(for: variant)
+    if FileManager.default.fileExists(atPath: exact.path) { return exact }
+    let stripped = ModelPatternMatcher.stripSizeSuffix(variant)
+    if stripped != variant {
+      let fallback = modelPath(for: stripped)
+      if FileManager.default.fileExists(atPath: fallback.path) { return fallback }
+    } else {
+      // variant has no suffix; look for a suffixed sibling on disk.
+      let parent = exact.deletingLastPathComponent()
+      if let siblings = try? FileManager.default.contentsOfDirectory(atPath: parent.path),
+         let match = siblings.first(where: { name in
+           name != variant && ModelPatternMatcher.matchesFlexible(variant, name)
+         }) {
+        return parent.appendingPathComponent(match, isDirectory: true)
+      }
+    }
+    return exact
   }
 
   /// Creates or returns the local folder for the tokenizer files of a given `variant`.
@@ -390,8 +559,8 @@ actor TranscriptionClientLive {
     loadingProgress.completedUnitCount = 0
     progressCallback(loadingProgress)
 
-    let modelFolder = modelPath(for: modelName)
-    let tokenizerFolder = tokenizerPath(for: modelName)
+    let modelFolder = effectiveModelPath(for: modelName)
+    let tokenizerFolder = modelFolder.appendingPathComponent("tokenizer", isDirectory: true)
 
     // Use WhisperKit's config to load the model
     let config = WhisperKitConfig(

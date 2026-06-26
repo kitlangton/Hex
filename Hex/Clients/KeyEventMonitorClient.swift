@@ -30,9 +30,8 @@ struct KeyEventMonitorToken: Sendable {
 public extension KeyEvent {
   init(cgEvent: CGEvent, type: CGEventType, isFnPressed: Bool) {
     let keyCode = Int(cgEvent.getIntegerValueField(.keyboardEventKeycode))
-    // Accessing keyboard layout / input source via Sauce must be on main thread.
     let key: Key?
-    if cgEvent.type == .keyDown {
+    if type == .keyDown, !Self.isModifierKeyCode(keyCode) {
       if Thread.isMainThread {
         key = Sauce.shared.key(for: keyCode)
       } else {
@@ -47,6 +46,18 @@ public extension KeyEvent {
       modifiers = modifiers.removing(kind: .fn)
     }
     self.init(key: key, modifiers: modifiers)
+  }
+
+  /// Modifier keys can emit keyDown/keyUp in addition to flagsChanged; treat them as modifier-only.
+  private static func isModifierKeyCode(_ keyCode: Int) -> Bool {
+    switch keyCode {
+    case Int(kVK_Command), Int(kVK_Shift), Int(kVK_CapsLock), Int(kVK_Option), Int(kVK_Control),
+      Int(kVK_RightCommand), Int(kVK_RightShift), Int(kVK_RightOption), Int(kVK_RightControl),
+      Int(kVK_Function):
+      return true
+    default:
+      return false
+    }
   }
 }
 
@@ -394,6 +405,10 @@ class KeyEventMonitorClientLive {
           }
 
           guard hotKeyClientLive.hasRequiredPermissions else {
+            return Unmanaged.passUnretained(cgEvent)
+          }
+
+          if SyntheticKeyboardEvent.isTagged(cgEvent) {
             return Unmanaged.passUnretained(cgEvent)
           }
 

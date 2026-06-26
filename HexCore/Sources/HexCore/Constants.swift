@@ -47,7 +47,7 @@ public enum HexCoreConstants {
     /// key within 1 second, it's likely accidental (fat-finger, muscle memory for different shortcut).
     /// After 1 second, we assume the user wants to type while recording.
     ///
-    /// Does NOT apply to modifier-only hotkeys (they use `modifierOnlyMinimumDuration` instead).
+    /// Does NOT apply to modifier-only hotkeys (they use the user's `minimumKeyTime` directly).
     ///
     /// **Used in:**
     /// - `HotKeyProcessor`: Accidental key press detection for key+modifier hotkeys
@@ -60,8 +60,7 @@ public enum HexCoreConstants {
     /// **Value:** 0.2 seconds
     ///
     /// **Rationale:** Prevents very quick accidental taps while still feeling responsive.
-    /// User-configurable in Settings. Modifier-only hotkeys override this with
-    /// `modifierOnlyMinimumDuration` if higher.
+    /// User-configurable in Settings. Applies to all hotkey types.
     ///
     /// **Used in:**
     /// - `HexSettings`: Default value for user preference

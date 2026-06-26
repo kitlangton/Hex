@@ -34,6 +34,7 @@ struct AppFeature {
     var microphonePermission: PermissionStatus = .notDetermined
     var accessibilityPermission: PermissionStatus = .notDetermined
     var inputMonitoringPermission: PermissionStatus = .notDetermined
+    @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
   }
 
   enum Action: BindableAction {
@@ -56,6 +57,7 @@ struct AppFeature {
   @Dependency(\.keyEventMonitor) var keyEventMonitor
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
+  @Dependency(\.liveTranscription) var liveTranscription
   @Dependency(\.permissions) var permissions
 
   var body: some ReducerOf<Self> {
@@ -85,6 +87,7 @@ struct AppFeature {
       case .task:
         return .merge(
           startPasteLastTranscriptMonitoring(),
+          startHotKeyCaptureMonitoring(),
           ensureSelectedModelReadiness(),
           startPermissionMonitoring(),
           .send(.coach(.task))
@@ -140,6 +143,11 @@ struct AppFeature {
           }
         }
 
+      case .settings(.revealAppInFinder):
+        return .run { _ in
+          NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        }
+
       case .settings:
         return .none
 
@@ -168,6 +176,11 @@ struct AppFeature {
         state.microphonePermission = mic
         state.accessibilityPermission = acc
         state.inputMonitoringPermission = input
+        state.$hotkeyPermissionState.withLock {
+          $0.accessibility = acc
+          $0.inputMonitoring = input
+          $0.lastUpdated = Date()
+        }
         return .none
 
       case .appActivated:
@@ -179,15 +192,16 @@ struct AppFeature {
       }
     }
   }
-  
+
   private func startPasteLastTranscriptMonitoring() -> Effect<Action> {
     .run { send in
+      @Shared(.isSettingHotKey) var isSettingHotKey: Bool
       @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       let token = keyEventMonitor.handleKeyEvent { keyEvent in
-        // Skip if user is setting a hotkey
-        if isSettingPasteLastTranscriptHotkey {
+        // Skip while the user is configuring a hotkey in Settings.
+        if isSettingPasteLastTranscriptHotkey || isSettingHotKey {
           return false
         }
 
@@ -204,6 +218,34 @@ struct AppFeature {
           send(.pasteLastTranscript)
         }
         return true // Intercept the key event
+      }
+
+      defer { token.cancel() }
+
+      await withTaskCancellationHandler {
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(60))
+        }
+      } onCancel: {
+        token.cancel()
+      }
+    }
+  }
+
+  private func startHotKeyCaptureMonitoring() -> Effect<Action> {
+    .run { send in
+      @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+      @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
+
+      let token = keyEventMonitor.handleKeyEvent { keyEvent in
+        guard isSettingHotKey || isSettingPasteLastTranscriptHotkey else {
+          return false
+        }
+
+        MainActor.assumeIsolated {
+          send(.settings(.keyEvent(keyEvent)))
+        }
+        return true
       }
 
       defer { token.cancel() }
