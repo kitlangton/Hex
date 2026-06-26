@@ -57,27 +57,34 @@ extension URL {
 
 class AudioPlayerController: NSObject, AVAudioPlayerDelegate {
 	private var player: AVAudioPlayer?
-	var onPlaybackFinished: (() -> Void)?
+	private let (playbackFinishedStream, playbackFinishedContinuation) = AsyncStream<Void>.makeStream()
 
-	func play(url: URL) throws -> AVAudioPlayer {
+	func play(url: URL) throws {
 		let player = try AVAudioPlayer(contentsOf: url)
 		player.delegate = self
-		player.play()
 		self.player = player
-		return player
+		player.play()
 	}
 
 	func stop() {
 		player?.stop()
 		player = nil
+		finishPlayback()
+	}
+
+	func waitForPlaybackToFinish() async {
+		for await _ in playbackFinishedStream {}
 	}
 
 	// AVAudioPlayerDelegate method
 	func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+		guard self.player === player else { return }
 		self.player = nil
-		Task { @MainActor in
-			onPlaybackFinished?()
-		}
+		finishPlayback()
+	}
+
+	private func finishPlayback() {
+		playbackFinishedContinuation.finish()
 	}
 }
 
@@ -89,14 +96,14 @@ struct HistoryFeature {
 	struct State: Equatable {
 		@Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
 		var playingTranscriptID: UUID?
-		var audioPlayer: AVAudioPlayer?
+		var playbackID: UUID?
 		var audioPlayerController: AudioPlayerController?
 
 		mutating func stopAudioPlayback() {
 			audioPlayerController?.stop()
-			audioPlayer = nil
 			audioPlayerController = nil
 			playingTranscriptID = nil
+			playbackID = nil
 		}
 	}
 
@@ -107,7 +114,7 @@ struct HistoryFeature {
 		case deleteTranscript(UUID)
 		case deleteAllTranscripts
 		case confirmDeleteAll
-		case playbackFinished
+		case playbackFinished(UUID)
 		case navigateToSettings
 	}
 
@@ -142,31 +149,28 @@ struct HistoryFeature {
 
 				do {
 					let controller = AudioPlayerController()
-					let player = try controller.play(url: transcript.audioPath)
+					try controller.play(url: transcript.audioPath)
+					let playbackID = UUID()
 
-					state.audioPlayer = player
 					state.audioPlayerController = controller
 					state.playingTranscriptID = id
+					state.playbackID = playbackID
 
 					return .run { send in
-						// Using non-throwing continuation since we don't need to throw errors
-						await withCheckedContinuation { continuation in
-							controller.onPlaybackFinished = {
-								continuation.resume()
-
-								// Use Task to switch to MainActor for sending the action
-								Task { @MainActor in
-									send(.playbackFinished)
-								}
-							}
-						}
+						await controller.waitForPlaybackToFinish()
+						await send(.playbackFinished(playbackID))
 					}
 				} catch {
 					historyLogger.error("Failed to play audio: \(error.localizedDescription)")
 					return .none
 				}
 
-			case .stopPlayback, .playbackFinished:
+			case .stopPlayback:
+				state.stopAudioPlayback()
+				return .none
+
+			case let .playbackFinished(playbackID):
+				guard state.playbackID == playbackID else { return .none }
 				state.stopAudioPlayback()
 				return .none
 

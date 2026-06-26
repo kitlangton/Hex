@@ -311,6 +311,13 @@ final class SuperFastCaptureController {
     }
   }
 
+  func clearWarmBuffer() {
+    processingQueue.sync {
+      guard activeRecording == nil else { return }
+      ringBuffer.clear()
+    }
+  }
+
   private func enqueue(_ buffer: AVAudioPCMBuffer) {
     guard let copy = clone(buffer) else { return }
     processingQueue.async { [weak self] in
