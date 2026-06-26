@@ -27,13 +27,27 @@ struct AudioInputDevice: Identifiable, Equatable {
 
 @DependencyClient
 struct RecordingClient {
-  var startRecording: @Sendable () async -> Void = {}
+  var startRecording: @Sendable (_ requiresLiveAudio: Bool) async -> Void = { _ in }
   var stopRecording: @Sendable () async -> URL = { URL(fileURLWithPath: "") }
   var requestMicrophoneAccess: @Sendable () async -> Bool = { false }
   var observeAudioLevel: @Sendable () async -> AsyncStream<Meter> = { AsyncStream { _ in } }
+  var observeLiveAudio: @Sendable () async -> AsyncStream<AVAudioPCMBuffer> = { AsyncStream { _ in } }
+  /// Registers a per-recording sink for live PCM. Uses a persistent pump so each session
+  /// does not compete for a single AsyncStream iterator (which dropped audio after session 1).
+  var setLiveAudioConsumer: @Sendable ((@Sendable (AVAudioPCMBuffer) async -> Void)?) async -> Void = { _ in }
+  var snapshotRecordingForPreview: @Sendable () async -> URL? = { nil }
+  var previewRecordingDuration: @Sendable () async -> TimeInterval = { 0 }
+  var recordingSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
+  var previewSpeechMetrics: @Sendable () async -> SpeechActivityMetrics = { .zero }
+  var previewHasSpeechActivity: @Sendable () async -> Bool = { false }
+  var previewSpeechEvaluation: @Sendable () async -> (metrics: SpeechActivityMetrics, hasActivity: Bool) = { (.zero, false) }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
   var getDefaultInputDeviceName: @Sendable () async -> String? = { nil }
   var warmUpRecorder: @Sendable () async -> Void = {}
+  /// Arms the capture engine without starting a recording (call on hotkey press).
+  var prewarmCapture: @Sendable () async -> Void = {}
+  /// Restores volume / resumes media paused or muted for the active recording session.
+  var resumeMediaIfNeeded: @Sendable () async -> Void = {}
   var cleanup: @Sendable () async -> Void = {}
 }
 
@@ -42,15 +56,26 @@ extension RecordingClient: DependencyKey {
     let live = RecordingClientLive()
     Task {
       await live.startObservingSystemChanges()
+      await live.startLiveAudioPump()
     }
     return Self(
-      startRecording: { await live.startRecording() },
+      startRecording: { await live.startRecording(requiresLiveAudio: $0) },
       stopRecording: { await live.stopRecording() },
       requestMicrophoneAccess: { await live.requestMicrophoneAccess() },
       observeAudioLevel: { await live.observeAudioLevel() },
+      observeLiveAudio: { await live.observeLiveAudio() },
+      setLiveAudioConsumer: { await live.setLiveAudioConsumer($0) },
+      snapshotRecordingForPreview: { await live.snapshotRecordingForPreview() },
+      previewRecordingDuration: { await live.previewRecordingDuration() },
+      recordingSpeechMetrics: { await live.recordingSpeechMetrics() },
+      previewSpeechMetrics: { await live.previewSpeechMetrics() },
+      previewHasSpeechActivity: { await live.previewHasSpeechActivity() },
+      previewSpeechEvaluation: { await live.previewSpeechEvaluation() },
       getAvailableInputDevices: { await live.getAvailableInputDevices() },
       getDefaultInputDeviceName: { await live.getDefaultInputDeviceName() },
       warmUpRecorder: { await live.warmUpRecorder() },
+      prewarmCapture: { await live.prewarmCapture() },
+      resumeMediaIfNeeded: { await live.resumeMediaIfNeeded() },
       cleanup: { await live.cleanup() }
     )
   }
@@ -334,8 +359,10 @@ actor RecordingClientLive {
   private var lastPrimedDeviceID: AudioDeviceID?
   private var recordingSessionID: UUID?
   private var activeRecordingSession: ActiveRecordingSession?
+  private var sessionSpeechMetrics = SpeechActivityMetrics.zero
   private var lastRecordingEndedAt: Date?
   private var deferredCaptureRestartReason: String?
+  private var isLiveMonitoringActive = false
   private var environmentChangeDebounceTask: Task<Void, Never>?
   private var mediaControlTask: Task<Void, Never>?
   private var resumeMediaTask: Task<Void, Never>?
@@ -350,9 +377,13 @@ actor RecordingClientLive {
     AVLinearPCMIsNonInterleaved: false,
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
+  private let (liveAudioStream, liveAudioContinuation) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+  private var liveAudioConsumer: (@Sendable (AVAudioPCMBuffer) async -> Void)?
+  private var liveAudioPumpTask: Task<Void, Never>?
   private var meterTask: Task<Void, Never>?
   private lazy var captureController = SuperFastCaptureController(
     meterContinuation: meterContinuation,
+    liveAudioContinuation: liveAudioContinuation,
     onEngineConfigurationChange: { [weak self] in
       Task {
         await self?.enqueueCaptureEnvironmentChange(reason: "capture-engine-configuration-changed")
@@ -361,6 +392,8 @@ actor RecordingClientLive {
   )
   private var captureControllerDeviceID: AudioDeviceID?
   private var captureControllerNeedsRestartReason: String?
+  private var captureEngineLastArmedAt: Date?
+  private static let captureConfigChangeGracePeriod: TimeInterval = 2.0
   private var notificationObservers: [NSObjectProtocol] = []
   private var audioHardwareObservers: [AudioHardwareObserver] = []
   private var isObservingSystemChanges = false
@@ -499,7 +532,7 @@ actor RecordingClientLive {
     reason: String
   ) {
     let listener: CoreAudioPropertyListenerBlock = { _, _ in
-      Task { await self.enqueueCaptureEnvironmentChange(reason: reason) }
+      Task { self.enqueueCaptureEnvironmentChange(reason: reason) }
     }
 
     var address = audioPropertyAddress(selector)
@@ -522,10 +555,17 @@ actor RecordingClientLive {
   private func enqueueCaptureEnvironmentChange(reason: String) {
     environmentChangeDebounceTask?.cancel()
     environmentChangeDebounceTask = Task { [self] in
-      try? await Task.sleep(for: .milliseconds(250))
+      try? await Task.sleep(for: .milliseconds(500))
       guard !Task.isCancelled else { return }
       await handleCaptureEnvironmentChange(reason: reason)
     }
+  }
+
+  private func shouldIgnoreCaptureEngineConfigChange(_ reason: String) -> Bool {
+    guard reason.contains("capture-engine-configuration-changed") else { return false }
+    guard let captureEngineLastArmedAt else { return false }
+    guard activeRecordingSession == nil, !captureController.isRecording else { return false }
+    return Date().timeIntervalSince(captureEngineLastArmedAt) < Self.captureConfigChangeGracePeriod
   }
 
   private func stopObservingSystemChanges() {
@@ -573,12 +613,38 @@ actor RecordingClientLive {
       return
     }
 
+    if shouldIgnoreCaptureEngineConfigChange(reason) {
+      recordingLogger.debug(
+        "Ignoring capture engine config change within grace period reason=\(reason) armedAgo=\(String(format: "%.3f", Date().timeIntervalSince(self.captureEngineLastArmedAt ?? Date())))s running=\(self.captureController.isRunning)"
+      )
+      captureControllerNeedsRestartReason = nil
+      if !captureController.isRunning {
+        let activeInputDevice = applyPreferredInputDevice()
+        do {
+          try ensureCaptureControllerReady(
+            for: activeInputDevice,
+            reason: "config-change-grace-rearm",
+            forceRestart: false
+          )
+          await waitForCaptureEngineReady(
+            minimumRingDuration: SuperFastCaptureController.Readiness.prewarmRingDuration,
+            timeout: SuperFastCaptureController.Readiness.warmUpTimeout,
+            reason: "config-change-grace-rearm"
+          )
+        } catch {
+          recordingLogger.error("Grace period capture re-arm failed: \(error.localizedDescription)")
+        }
+      }
+      return
+    }
+
     deferredCaptureRestartReason = nil
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "environment-change-\(reason)")
       captureControllerNeedsRestartReason = reason
       captureController.clearWarmBuffer()
-      recordingLogger.notice("Deferring capture engine rebuild until next recording reason=\(reason)")
+      recordingLogger.notice("Scheduling idle capture engine rebuild reason=\(reason)")
+      await applyPendingCaptureRestartIfIdle()
       return
     }
 
@@ -592,6 +658,82 @@ actor RecordingClientLive {
     guard let deferredCaptureRestartReason else { return }
     recordingLogger.notice("Applying deferred capture restart reason=\(deferredCaptureRestartReason)")
     await handleCaptureEnvironmentChange(reason: "deferred-\(deferredCaptureRestartReason)")
+  }
+
+  private func applyPendingCaptureRestartIfIdle() async {
+    guard activeRecordingSession == nil, !captureController.isRecording else { return }
+    guard captureControllerNeedsRestartReason != nil else { return }
+
+    let activeInputDevice = applyPreferredInputDevice()
+    do {
+      try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "idle-rebuild")
+      recordingLogger.notice("Capture engine rebuilt while idle")
+      await waitForCaptureEngineReady(
+        minimumRingDuration: SuperFastCaptureController.Readiness.minimumRingDuration,
+        timeout: SuperFastCaptureController.Readiness.warmUpTimeout,
+        reason: "idle-rebuild"
+      )
+    } catch {
+      recordingLogger.error("Idle capture engine rebuild failed: \(error.localizedDescription)")
+      guard captureControllerNeedsRestartReason != nil else { return }
+      try? await Task.sleep(for: .milliseconds(250))
+      do {
+        try ensureCaptureControllerReadyAfterDeferredRestart(
+          for: applyPreferredInputDevice(),
+          reason: "idle-rebuild-retry"
+        )
+        recordingLogger.notice("Capture engine rebuilt while idle after retry")
+        await waitForCaptureEngineReady(
+          minimumRingDuration: SuperFastCaptureController.Readiness.minimumRingDuration,
+          timeout: SuperFastCaptureController.Readiness.warmUpTimeout,
+          reason: "idle-rebuild-retry"
+        )
+      } catch {
+        recordingLogger.error("Idle capture engine rebuild retry failed: \(error.localizedDescription)")
+        captureControllerNeedsRestartReason = nil
+      }
+    }
+  }
+
+  private func waitForCaptureEngineReady(
+    minimumRingDuration: TimeInterval,
+    timeout: TimeInterval,
+    reason: String
+  ) async {
+    guard hexSettings.superFastModeEnabled else { return }
+
+    let ringFill = captureController.ringBufferFillDuration
+    if ringFill >= minimumRingDuration {
+      recordingLogger.debug(
+        "Capture engine already ready reason=\(reason) ringFill=\(String(format: "%.3f", ringFill))s"
+      )
+      return
+    }
+
+    let ready = await captureController.waitUntilReady(
+      minimumRingDuration: minimumRingDuration,
+      timeout: timeout
+    )
+    let finalFill = captureController.ringBufferFillDuration
+    if ready {
+      recordingLogger.notice(
+        "Capture engine ready reason=\(reason) ringFill=\(String(format: "%.3f", finalFill))s"
+      )
+    } else {
+      recordingLogger.notice(
+        "Capture engine armed without full ring buffer reason=\(reason) ringFill=\(String(format: "%.3f", finalFill))s"
+      )
+    }
+  }
+
+  private func ensureCaptureReadyForRecording(reason: String) async throws {
+    let activeInputDevice = applyPreferredInputDevice()
+    try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: reason)
+    await waitForCaptureEngineReady(
+      minimumRingDuration: SuperFastCaptureController.Readiness.minimumRingDuration,
+      timeout: SuperFastCaptureController.Readiness.readyTimeout,
+      reason: reason
+    )
   }
 
   /// Get all available audio devices
@@ -885,6 +1027,7 @@ actor RecordingClientLive {
       keepWarmBuffer: currentCaptureMode().keepsWarmBuffer
     )
     captureControllerDeviceID = deviceID
+    captureEngineLastArmedAt = Date()
   }
 
   private func ensureCaptureControllerReadyAfterDeferredRestart(
@@ -1048,12 +1191,16 @@ actor RecordingClientLive {
     }
   }
 
-  func startRecording() async {
+  func startRecording(requiresLiveAudio: Bool = false) async {
     resumeMediaTask?.cancel()
     resumeMediaTask = nil
 
+    // Assign the session ID before any early return so an in-flight stop from a
+    // prior recording is ignored once the user starts again during the stop grace window.
     let sessionID = UUID()
     recordingSessionID = sessionID
+    sessionSpeechMetrics = .zero
+    captureController.resetSessionSpeechMetrics()
     mediaControlTask?.cancel()
     mediaControlTask = nil
 
@@ -1104,7 +1251,7 @@ actor RecordingClientLive {
     let startRequestAt = Date()
 
     do {
-      try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "startRecording")
+      try await ensureCaptureReadyForRecording(reason: "startRecording")
       let recordingURL = makeCaptureRecordingURL()
       try captureController.beginRecording(to: recordingURL, requestedAt: startRequestAt, mode: mode)
       let startedAt = Date()
@@ -1120,6 +1267,17 @@ actor RecordingClientLive {
     } catch {
       recordingLogger.error("Failed to start capture engine for mode=\(mode.rawValue): \(error.localizedDescription); falling back to AVAudioRecorder")
       stopCaptureController(reason: "capture-engine-start-failed")
+
+      if requiresLiveAudio {
+        do {
+          try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "live-audio-fallback")
+          try captureController.beginLiveMonitoring()
+          isLiveMonitoringActive = true
+          recordingLogger.notice("Started capture engine live monitoring alongside recorder fallback")
+        } catch {
+          recordingLogger.error("Failed to start live audio monitoring: \(error.localizedDescription)")
+        }
+      }
     }
 
     do {
@@ -1148,6 +1306,8 @@ actor RecordingClientLive {
   }
 
   func stopRecording() async -> URL {
+    defer { stopLiveMonitoringIfNeeded() }
+
     let stopSessionID = recordingSessionID
     let activeSession = activeRecordingSession
 
@@ -1189,7 +1349,6 @@ actor RecordingClientLive {
       }
 
       await flushDeferredCaptureRestartIfNeeded()
-      scheduleResumeMediaIfNeeded()
       return captureURL
     }
 
@@ -1208,7 +1367,6 @@ actor RecordingClientLive {
       clearActiveRecordingMetadata()
       lastRecordingEndedAt = stoppedAt
       await flushDeferredCaptureRestartIfNeeded()
-      scheduleResumeMediaIfNeeded()
       return makeIgnoredStopURL()
     }
     recorder?.stop()
@@ -1232,9 +1390,14 @@ actor RecordingClientLive {
     }
 
     await flushDeferredCaptureRestartIfNeeded()
-    scheduleResumeMediaIfNeeded()
 
     return exportedURL
+  }
+
+  private func stopLiveMonitoringIfNeeded() {
+    guard isLiveMonitoringActive else { return }
+    captureController.endLiveMonitoring()
+    isLiveMonitoringActive = false
   }
 
   private func scheduleMediaControl(sessionID: UUID, action: @escaping @Sendable () async -> Void) {
@@ -1243,7 +1406,7 @@ actor RecordingClientLive {
       if activationDelay > 0 {
         try? await Task.sleep(for: .seconds(activationDelay))
       }
-      guard await self.isCurrentSession(sessionID), !Task.isCancelled else { return }
+      guard self.isCurrentSession(sessionID), !Task.isCancelled else { return }
       await action()
     }
   }
@@ -1294,6 +1457,10 @@ actor RecordingClientLive {
       return
     }
     setPreviousVolume(volume, sessionID: sessionID)
+  }
+
+  func resumeMediaIfNeeded() {
+    scheduleResumeMediaIfNeeded()
   }
 
   private func scheduleResumeMediaIfNeeded() {
@@ -1483,7 +1650,13 @@ actor RecordingClientLive {
         let averageNormalized = pow(10, averagePower / 20.0)
         let peakPower = r.peakPower(forChannel: 0)
         let peakNormalized = pow(10, peakPower / 20.0)
-        meterContinuation.yield(Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized)))
+        let meter = Meter(averagePower: Double(averageNormalized), peakPower: Double(peakNormalized))
+        meterContinuation.yield(meter)
+        if activeRecordingSession != nil {
+          sessionSpeechMetrics.merge(
+            SpeechActivityMetrics(peakRMS: meter.averagePower, peakSample: meter.peakPower)
+          )
+        }
         try? await Task.sleep(for: .milliseconds(100))
       }
     }
@@ -1498,6 +1671,55 @@ actor RecordingClientLive {
     meterStream
   }
 
+  func observeLiveAudio() -> AsyncStream<AVAudioPCMBuffer> {
+    liveAudioStream
+  }
+
+  func startLiveAudioPump() {
+    guard liveAudioPumpTask == nil else { return }
+    liveAudioPumpTask = Task {
+      for await buffer in liveAudioStream {
+        guard !Task.isCancelled else { break }
+        await deliverLiveAudio(buffer)
+      }
+    }
+  }
+
+  func setLiveAudioConsumer(_ consumer: (@Sendable (AVAudioPCMBuffer) async -> Void)?) {
+    liveAudioConsumer = consumer
+  }
+
+  private func deliverLiveAudio(_ buffer: AVAudioPCMBuffer) async {
+    guard let consumer = liveAudioConsumer else { return }
+    await consumer(buffer)
+  }
+
+  func snapshotRecordingForPreview() -> URL? {
+    captureController.makePreviewSnapshotURL()
+  }
+
+  func previewRecordingDuration() -> TimeInterval {
+    captureController.previewCaptureDuration
+  }
+
+  func recordingSpeechMetrics() -> SpeechActivityMetrics {
+    var metrics = sessionSpeechMetrics
+    metrics.merge(captureController.recordingSpeechMetrics())
+    return metrics
+  }
+
+  func previewSpeechMetrics() -> SpeechActivityMetrics {
+    captureController.previewSpeechMetrics()
+  }
+
+  func previewHasSpeechActivity() -> Bool {
+    captureController.previewHasSpeechActivity()
+  }
+
+  func previewSpeechEvaluation() -> (metrics: SpeechActivityMetrics, hasActivity: Bool) {
+    captureController.previewSpeechEvaluation()
+  }
+
   func warmUpRecorder() async {
     guard activeRecordingSession == nil, recorder?.isRecording != true, !captureController.isRecording else {
       recordingLogger.notice("Skipping recorder warm-up while recording is active")
@@ -1509,6 +1731,11 @@ actor RecordingClientLive {
       releaseRecorder(reason: "warm-up-super-fast")
       do {
         try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "warmUpRecorder")
+        await waitForCaptureEngineReady(
+          minimumRingDuration: SuperFastCaptureController.Readiness.minimumRingDuration,
+          timeout: SuperFastCaptureController.Readiness.warmUpTimeout,
+          reason: "warmUpRecorder"
+        )
       } catch {
         recordingLogger.error("Failed to arm capture engine for super fast mode: \(error.localizedDescription)")
       }
@@ -1518,6 +1745,21 @@ actor RecordingClientLive {
     stopCaptureController(reason: "warm-up-standard")
     releaseRecorder(reason: "warm-up-standard")
     recordingLogger.debug("Standard mode uses on-demand capture engine startup; skipping idle recorder priming")
+  }
+
+  func prewarmCapture() async {
+    guard activeRecordingSession == nil, !captureController.isRecording else { return }
+    let activeInputDevice = applyPreferredInputDevice()
+    do {
+      try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "prewarmCapture")
+      await waitForCaptureEngineReady(
+        minimumRingDuration: SuperFastCaptureController.Readiness.prewarmRingDuration,
+        timeout: SuperFastCaptureController.Readiness.readyTimeout,
+        reason: "prewarmCapture"
+      )
+    } catch {
+      recordingLogger.debug("Capture prewarm skipped: \(error.localizedDescription)")
+    }
   }
 
   /// Release recorder resources. Call on app termination.

@@ -4,9 +4,6 @@
     "" : {
       "shouldTranslate" : false
     },
-    "(%@)" : {
-
-    },
     "%@ %@" : {
       "localizations" : {
         "en" : {
@@ -386,8 +383,28 @@
     "Input Monitoring is required so Hex can listen for your hotkey." : {
 
     },
+    "Insert at cursor" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am Cursor einfügen"
+          }
+        }
+      }
+    },
     "Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed." : {
 
+    },
+    "Live Preview" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau"
+          }
+        }
+      }
     },
     "Match" : {
 
@@ -479,6 +496,16 @@
         }
       }
     },
+    "Overlay" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overlay"
+          }
+        }
+      }
+    },
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
 
     },
@@ -539,8 +566,15 @@
     "Preview" : {
 
     },
-    "Quit" : {
-
+    "Quit Hex" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hex beenden"
+          }
+        }
+      }
     },
     "Refresh available input devices" : {
 
@@ -612,6 +646,7 @@
     },
     "Settings..." : {
       "comment" : "button in top bar for opening settings",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -620,6 +655,9 @@
           }
         }
       }
+    },
+    "Settings…" : {
+
     },
     "Show Changelog" : {
       "localizations" : {
@@ -647,6 +685,16 @@
     },
     "Show less" : {
 
+    },
+    "Show live transcription at the text cursor, or in Hex's floating overlay while recording. Requires a Parakeet model and Super Fast Mode." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die Live-Transkription am Textcursor oder in Hexs schwebendem Overlay während der Aufnahme. Erfordert ein Parakeet-Modell und den Super-Schnell-Modus."
+          }
+        }
+      }
     },
     "Show more" : {
 
