@@ -17,6 +17,7 @@ struct AppFeature {
     case settings
     case remappings
     case history
+    case agentPlugins
     case about
   }
 
@@ -25,6 +26,7 @@ struct AppFeature {
 		var transcription: TranscriptionFeature.State = .init()
 		var settings: SettingsFeature.State = .init()
 		var history: HistoryFeature.State = .init()
+		var agent: AgentFeature.State = .init()
 		var activeTab: ActiveTab = .settings
 		@Shared(.hexSettings) var hexSettings: HexSettings
 		@Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
@@ -40,6 +42,7 @@ struct AppFeature {
     case transcription(TranscriptionFeature.Action)
     case settings(SettingsFeature.Action)
     case history(HistoryFeature.Action)
+    case agent(AgentFeature.Action)
     case setActiveTab(ActiveTab)
     case task
     case pasteLastTranscript
@@ -55,6 +58,7 @@ struct AppFeature {
   @Dependency(\.pasteboard) var pasteboard
   @Dependency(\.transcription) var transcription
   @Dependency(\.permissions) var permissions
+  @Dependency(\.agentIntegrations) var agentIntegrations
 
   var body: some ReducerOf<Self> {
     BindingReducer()
@@ -71,16 +75,27 @@ struct AppFeature {
       HistoryFeature()
     }
 
+    Scope(state: \.agent, action: \.agent) {
+      AgentFeature()
+    }
+
     Reduce { state, action in
       switch action {
       case .binding:
+        return .none
+
+      case .agent:
         return .none
         
       case .task:
         return .merge(
           startPasteLastTranscriptMonitoring(),
           ensureSelectedModelReadiness(),
-          startPermissionMonitoring()
+          startPermissionMonitoring(),
+          // Refresh every registered agent integration's container scripts. The set of
+          // integrations is defined in AgentIntegrationsClient.liveValue — AppFeature is
+          // agnostic to which ones exist.
+          .run { _ in _ = await agentIntegrations.prepareAll() }
         )
         
       case .pasteLastTranscript:
@@ -181,19 +196,19 @@ struct AppFeature {
           return false
         }
 
-        // Check if this matches the paste last transcript hotkey
-        guard let pasteHotkey = hexSettings.pasteLastTranscriptHotkey,
-              let key = keyEvent.key,
-              key == pasteHotkey.key,
-              keyEvent.modifiers.matchesExactly(pasteHotkey.modifiers) else {
-          return false
+        guard let key = keyEvent.key else { return false }
+
+        // Paste last transcript hotkey
+        if let pasteHotkey = hexSettings.pasteLastTranscriptHotkey,
+           key == pasteHotkey.key,
+           keyEvent.modifiers.matchesExactly(pasteHotkey.modifiers) {
+          MainActor.assumeIsolated {
+            send(.pasteLastTranscript)
+          }
+          return true // Intercept the key event
         }
 
-        // Trigger paste action - use MainActor to avoid escaping send
-        MainActor.assumeIsolated {
-          send(.pasteLastTranscript)
-        }
-        return true // Intercept the key event
+        return false
       }
 
       defer { token.cancel() }
@@ -284,6 +299,14 @@ struct AppView: View {
         .tag(AppFeature.ActiveTab.history)
 
         Button {
+          store.send(.setActiveTab(.agentPlugins))
+        } label: {
+          Label("Agent Plugins", systemImage: "terminal")
+        }
+        .buttonStyle(.plain)
+        .tag(AppFeature.ActiveTab.agentPlugins)
+
+        Button {
           store.send(.setActiveTab(.about))
         } label: {
           Label("About", systemImage: "info.circle")
@@ -307,6 +330,9 @@ struct AppView: View {
       case .history:
         HistoryView(store: store.scope(state: \.history, action: \.history))
           .navigationTitle("History")
+      case .agentPlugins:
+        AgentPluginsSettingsView(store: store.scope(state: \.settings, action: \.settings))
+          .navigationTitle("Agent Plugins")
       case .about:
         AboutView(store: store.scope(state: \.settings, action: \.settings))
           .navigationTitle("About")

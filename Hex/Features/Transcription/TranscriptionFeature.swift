@@ -72,6 +72,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.speechSynthesizer) var speechSynthesizer
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -302,6 +303,8 @@ private extension TranscriptionFeature {
     // Prevent system sleep during recording
     return .merge(
       .cancel(id: CancelID.recordingCleanup),
+      // Silence the agent read-aloud voice so it doesn't talk over (or into) the mic.
+      .run { _ in await speechSynthesizer.stop() },
       .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] _ in
         // Play sound immediately for instant feedback
         soundEffect.play(.startRecording)

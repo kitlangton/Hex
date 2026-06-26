@@ -59,6 +59,17 @@ struct SettingsFeature {
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
 
+    // Agent Plugins — list of installed integrations. Populated by
+    // AgentIntegrationsClient; the view renders one row per entry.
+    var integrations: [AgentIntegration] = []
+    /// Non-nil while the Kokoro TTS model is downloading (0...1). Drives the internal
+    /// download guard; no longer shown as a bar (see `isPreviewingVoice`).
+    var kokoroDownloadProgress: Double?
+    var kokoroReady = false
+    /// True from tapping the voice-preview play button until the model is ready and the
+    /// sample has started playing — shown as a spinner in place of the play icon.
+    var isPreviewingVoice = false
+
   }
 
   enum Action: BindableAction {
@@ -101,6 +112,18 @@ struct SettingsFeature {
     case toggleSaveTranscriptionHistory(Bool)
     case setMaxHistoryEntries(Int?)
 
+    // Agent Plugins
+    case toggleAgentPluginsEnabled(Bool)
+    case setAgentAutoSubmit(Bool)
+    case setAgentVoice(String?)
+    case setAgentDistinctSessionVoices(Bool)
+    case previewAgentVoice
+    case voicePreviewFinished
+    case prepareKokoro
+    case kokoroPrepareProgress(Double)
+    case kokoroPrepared(success: Bool)
+    case integrationsLoaded([AgentIntegration])
+
     // Modifier configuration
     case setModifierSide(Modifier.Kind, Modifier.Side)
 
@@ -120,6 +143,8 @@ struct SettingsFeature {
   @Dependency(\.recording) var recording
   @Dependency(\.soundEffects) var soundEffects
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.agentIntegrations) var agentIntegrations
+  @Dependency(\.speechSynthesizer) var speechSynthesizer
 
   private func deleteAudioEffect(for transcripts: [Transcript]) -> Effect<Action> {
     .run { [transcriptPersistence] _ in
@@ -193,7 +218,7 @@ struct SettingsFeature {
     let updatedModifiers = keyEvent.modifiers.union(captureModifiers(for: target, state: state))
     updateCaptureModifiers(updatedModifiers, for: target, state: &state)
 
-    if target == .pasteLastTranscript, keyEvent.key != nil, updatedModifiers.isEmpty {
+    if target != .recording, keyEvent.key != nil, updatedModifiers.isEmpty {
       return .none
     }
 
@@ -256,6 +281,9 @@ struct SettingsFeature {
 
           await send(.modelDownload(.fetchModels))
           await send(.loadAvailableInputDevices)
+          // Refresh every registered agent integration's container scripts and surface
+          // their install/uninstall commands for the Settings UI.
+          await send(.integrationsLoaded(await agentIntegrations.prepareAll()))
 
           // Listen for device connection/disconnection notifications
           // Using a simpler debounced approach with a single task
@@ -404,7 +432,7 @@ struct SettingsFeature {
       case .startSettingPasteLastTranscriptHotkey:
         beginCapture(.pasteLastTranscript, state: &state)
         return .none
-        
+
       case .clearPasteLastTranscriptHotkey:
         state.$hexSettings.withLock { $0.pasteLastTranscriptHotkey = nil }
         return .none
@@ -562,6 +590,76 @@ struct SettingsFeature {
 
       case let .setWordRemovalsEnabled(enabled):
         state.$hexSettings.withLock { $0.wordRemovalsEnabled = enabled }
+        return .none
+
+      // MARK: - Agent Plugins
+
+      case let .toggleAgentPluginsEnabled(enabled):
+        state.$hexSettings.withLock { $0.agentPluginsEnabled = enabled }
+        // Re-sync each integration's on-disk sentinel so they short-circuit immediately when
+        // disabled (and resume when re-enabled), without re-running any install command.
+        return .run { _ in _ = await agentIntegrations.prepareAll() }
+
+      case let .setAgentAutoSubmit(enabled):
+        state.$hexSettings.withLock { $0.agentAutoSubmit = enabled }
+        return .none
+
+      case let .setAgentVoice(identifier):
+        state.$hexSettings.withLock { $0.agentVoiceIdentifier = identifier }
+        return .send(.previewAgentVoice)
+
+      case let .setAgentDistinctSessionVoices(enabled):
+        state.$hexSettings.withLock { $0.agentDistinctSessionVoices = enabled }
+        // Warm the Kokoro model so the extra voices are ready the first time a second
+        // project speaks (one model covers every voice, so this preloads them all).
+        return enabled && !state.kokoroReady ? .send(.prepareKokoro) : .none
+
+      case .previewAgentVoice:
+        // Spinner from the click through model download + playback, replacing the old
+        // download bar with a single non-janky busy state on the play button.
+        state.isPreviewingVoice = true
+        // The Kokoro model must be downloaded before it can make a sound.
+        guard state.kokoroReady else { return .send(.prepareKokoro) }
+        let voice = state.hexSettings.agentVoiceIdentifier
+        return .run { send in
+          await speechSynthesizer.speak("Hi! This is how Hex will read agent output aloud.", voice)
+          await send(.voicePreviewFinished)
+        }
+
+      case .voicePreviewFinished:
+        state.isPreviewingVoice = false
+        return .none
+
+      case .prepareKokoro:
+        guard state.kokoroDownloadProgress == nil else { return .none } // already downloading
+        state.kokoroDownloadProgress = 0
+        return .run { send in
+          do {
+            try await speechSynthesizer.prepareKokoro { progress in
+              Task { await send(.kokoroPrepareProgress(progress)) }
+            }
+            await send(.kokoroPrepared(success: true))
+          } catch {
+            settingsLogger.error("Kokoro model download failed: \(error.localizedDescription)")
+            await send(.kokoroPrepared(success: false))
+          }
+        }
+
+      case let .kokoroPrepareProgress(progress):
+        state.kokoroDownloadProgress = progress
+        return .none
+
+      case let .kokoroPrepared(success):
+        state.kokoroDownloadProgress = nil
+        state.kokoroReady = success
+        guard success else {
+          state.isPreviewingVoice = false
+          return .none
+        }
+        return .send(.previewAgentVoice)
+
+      case let .integrationsLoaded(integrations):
+        state.integrations = integrations
         return .none
 
       }

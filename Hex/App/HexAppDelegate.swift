@@ -1,3 +1,4 @@
+import AppKit
 import ComposableArchitecture
 import HexCore
 import SwiftUI
@@ -8,8 +9,11 @@ private let cacheLogger = HexLog.caches
 class HexAppDelegate: NSObject, NSApplicationDelegate {
 	var invisibleWindow: InvisibleWindow?
 	var settingsWindow: NSWindow?
+	var agentWindow: AgentPanel?
 	var statusItem: NSStatusItem!
 	private var launchedAtLogin = false
+
+	private var agentVisibilityToken: ObserveToken?
 
 	@Dependency(\.soundEffects) var soundEffect
 	@Dependency(\.recording) var recording
@@ -42,6 +46,19 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			name: .updateAppMode,
 			object: nil
 		)
+
+		// Show/hide the agent voice window whenever the feature's visibility changes.
+		agentVisibilityToken = observe { [weak self] in
+			guard let self else { return }
+			let visible = HexApp.appStore.agent.isVisible
+			let wantsFocus = HexApp.appStore.agent.wantsFocus
+			appLogger.notice("Agent panel visibility observed: visible=\(visible, privacy: .public) focus=\(wantsFocus, privacy: .public)")
+			if visible {
+				self.showAgentPanel(focus: wantsFocus)
+			} else {
+				self.hideAgentPanel()
+			}
+		}
 
 		// Start long-running app effects (global hotkeys, permissions, etc.)
 		startLifecycleTasksIfNeeded()
@@ -131,6 +148,66 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		self.settingsWindow = settingsWindow
 	}
 
+	// MARK: - Agent Plugins
+
+	/// Handles `hex://agent-update?…` deeplinks fired by an installed agent integration.
+	func application(_: NSApplication, open urls: [URL]) {
+		for url in urls where url.scheme == "hex" {
+			handleHexURL(url)
+		}
+	}
+
+	private func handleHexURL(_ url: URL) {
+		appLogger.notice("Received hex URL: \(url.absoluteString, privacy: .public)")
+		guard url.host == "agent-update" else {
+			appLogger.notice("Ignoring unknown hex URL host: \(url.host ?? "nil", privacy: .public)")
+			return
+		}
+		let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+		func value(_ name: String) -> String? {
+			items.first { $0.name == name }?.value
+		}
+
+		let payload = AgentFeature.ShowPayload(
+			event: value("event"),
+			tool: value("tool"),
+			sessionID: value("session"),
+			cwd: value("cwd"),
+			transcriptPath: value("transcript"),
+			payloadPath: value("payload"),
+			inlineMessage: value("message"),
+			githubOwner: value("owner"),
+			branch: value("branch")
+		)
+		Task { @MainActor in
+			HexApp.appStore.send(.agent(.show(payload)))
+		}
+	}
+
+	private func showAgentPanel(focus: Bool) {
+		if agentWindow == nil {
+			let agentStore = HexApp.appStore.scope(state: \.agent, action: \.agent)
+			agentWindow = AgentPanel.fromView(AgentView(store: agentStore))
+		}
+		guard let panel = agentWindow else { return }
+		// Only (re)position when first coming on screen — never when merely engaging focus or
+		// advancing the queue, which would make the card jump under the cursor.
+		if !panel.isVisible {
+			panel.positionNearMouse()
+		}
+		panel.orderFrontRegardless()
+		// Take the keyboard only for an engaged/summoned show. A hook-driven passive appearance
+		// leaves focus where it is — and `open -g` keeps Hex in the background so it can't steal
+		// it; the panel only becomes key when you actually click the card to reply.
+		if focus {
+			panel.makeKey()
+		}
+	}
+
+	private func hideAgentPanel() {
+		agentWindow?.orderOut(nil)
+	}
+
 	@objc private func handleAppModeUpdate() {
 		Task {
 			await updateAppMode()
@@ -153,6 +230,13 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationWillTerminate(_: Notification) {
+		// Release every still-blocked agent hook so quitting Hex never leaves an agent
+		// session hanging on its hook timeout. An empty response yields to the terminal UI.
+		for request in HexApp.appStore.agent.requests {
+			if let payloadPath = request.payloadPath {
+				AgentHookResponder.respond(payloadPath: payloadPath, json: nil)
+			}
+		}
 		Task {
 			await recording.cleanup()
 		}
