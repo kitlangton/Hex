@@ -58,6 +58,10 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
   /// Sentinel the hook checks first: present only while the feature is enabled, so a disabled
   /// toggle makes every hook exit instantly instead of blocking ~9.5 min on a response.
   private var enabledFlagURL: URL { agentDir.appendingPathComponent("enabled") }
+  /// Sentinel mirroring the read-aloud toggle: present only while the voice window is reading
+  /// output aloud. When set, the Stop hook generates a short spoken summary (via headless
+  /// `claude --safe-mode -p`) so Hex can offer a condensed read-aloud.
+  private var readAloudFlagURL: URL { agentDir.appendingPathComponent("read-aloud") }
 
   var installCommand: String { "sh '\(installScriptURL.path)'" }
   var uninstallCommand: String { "sh '\(uninstallScriptURL.path)'" }
@@ -87,7 +91,7 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
       let bundleID = Bundle.main.bundleIdentifier ?? "com.kitlangton.Hex"
       let appPath = Bundle.main.bundlePath
       writeIfChanged(
-        Self.hookScript(bundleID: bundleID, appPath: appPath, ioDir: ioDir.path, enabledFlag: enabledFlagURL.path),
+        Self.hookScript(bundleID: bundleID, appPath: appPath, ioDir: ioDir.path, enabledFlag: enabledFlagURL.path, readAloudFlag: readAloudFlagURL.path),
         to: realHookURL, executable: true
       )
       writeIfChanged(
@@ -101,15 +105,22 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
     }
   }
 
-  /// Mirrors the in-app toggle onto disk for the hook to read: present when enabled, absent
-  /// when disabled. Called from `prepare()` (launch / settings open / toggle).
+  /// Mirrors the in-app toggles onto disk for the hook to read: each sentinel is present when
+  /// its setting is on, absent when off. Called from `prepare()` (launch / settings open /
+  /// toggle), including when the voice window's read-aloud toggle flips.
   private func syncEnabledFlag() {
-    if hexSettings.agentPluginsEnabled {
-      if !FileManager.default.fileExists(atPath: enabledFlagURL.path) {
-        FileManager.default.createFile(atPath: enabledFlagURL.path, contents: nil)
+    setFlag(enabledFlagURL, on: hexSettings.agentPluginsEnabled)
+    // Only ask the agent for a spoken summary while the window is actually reading aloud.
+    setFlag(readAloudFlagURL, on: hexSettings.agentPluginsEnabled && hexSettings.agentSpeakOutput)
+  }
+
+  private func setFlag(_ url: URL, on: Bool) {
+    if on {
+      if !FileManager.default.fileExists(atPath: url.path) {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
       }
     } else {
-      try? FileManager.default.removeItem(at: enabledFlagURL)
+      try? FileManager.default.removeItem(at: url)
     }
   }
 
@@ -211,18 +222,24 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
 
   // MARK: Real hook
 
-  static func hookScript(bundleID: String, appPath: String, ioDir: String, enabledFlag: String) -> String {
+  static func hookScript(bundleID: String, appPath: String, ioDir: String, enabledFlag: String, readAloudFlag: String) -> String {
     hookScriptTemplate
       .replacingOccurrences(of: "__HEX_BUNDLE_ID__", with: bundleID)
       .replacingOccurrences(of: "__HEX_APP_PATH__", with: appPath)
       .replacingOccurrences(of: "__IO_DIR__", with: ioDir)
       .replacingOccurrences(of: "__ENABLED_FLAG__", with: enabledFlag)
+      .replacingOccurrences(of: "__READ_ALOUD_FLAG__", with: readAloudFlag)
   }
 
   private static let hookScriptTemplate: String = #"""
   #!/bin/sh
   # Hex Agent Plugins hook — bridges Claude Code to the Hex voice window.
   # Generated and managed by Hex.app (Settings → Agent Plugins).
+
+  # Re-entrancy guard: the read-aloud summary step shells out to `claude` to condense the reply.
+  # That call uses `--safe-mode` (hooks disabled) so it should never re-enter this hook, but we
+  # also stamp HEX_AGENT_SUMMARY and bail here as belt-and-suspenders against recursion.
+  [ -n "$HEX_AGENT_SUMMARY" ] && exit 0
   input=$(cat)
 
   # Agent Plugins disabled in Hex → do nothing and let Claude continue, instantly. No deeplink,
@@ -231,6 +248,7 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
 
   HEX_BUNDLE_ID="__HEX_BUNDLE_ID__"
   HEX_APP_PATH="__HEX_APP_PATH__"
+  READ_ALOUD_FLAG="__READ_ALOUD_FLAG__"
 
   # Rendezvous inside Hex's sandbox container so the sandboxed app can read the payload and
   # write the <payload>.response, while this (unsandboxed) hook writes the payload and polls.
@@ -280,6 +298,44 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
           break
   if collected:
       d["last_assistant_message"] = "\n".join(reversed(collected)).strip()
+      json.dump(d, open(path, "w"))
+  PYEOF
+  fi
+
+  # When the voice window is reading output aloud, generate a short spoken summary with headless
+  # Claude so Hex can offer a condensed read-aloud — without putting any marker in the visible
+  # reply. Gated on the read-aloud sentinel so we never spend a model call when it is off. The
+  # `--safe-mode` flag disables hooks/MCP/plugins (while keeping OAuth auth) so this nested call
+  # cannot recurse into this hook; HEX_AGENT_SUMMARY guards the same at the top of this script.
+  if [ -f "$READ_ALOUD_FLAG" ] && command -v claude >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    PAYLOAD="$payload" python3 <<'PYEOF' 2>/dev/null || true
+  import json, os, subprocess
+  path = os.environ["PAYLOAD"]
+  try:
+      d = json.load(open(path))
+  except Exception:
+      raise SystemExit(0)
+  if d.get("hook_event_name") != "Stop" or d.get("hex_condensed"):
+      raise SystemExit(0)
+  full = (d.get("last_assistant_message") or "").strip()
+  if not full:
+      raise SystemExit(0)
+  prompt = (
+      "Condense the assistant message below into one or two sentences (under 40 words) for a "
+      "text-to-speech reader. Plain prose, no markdown or code. Capture the key outcome and any "
+      "question being asked. Output only the summary.\n\n" + full
+  )
+  env = {**os.environ, "HEX_AGENT_SUMMARY": "1"}
+  try:
+      out = subprocess.run(
+          ["claude", "--safe-mode", "-p", prompt, "--model", "haiku"],
+          capture_output=True, text=True, timeout=45, env=env,
+      )
+  except Exception:
+      raise SystemExit(0)
+  summary = (out.stdout or "").strip()
+  if summary:
+      d["hex_condensed"] = summary
       json.dump(d, open(path, "w"))
   PYEOF
   fi

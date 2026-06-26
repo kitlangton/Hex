@@ -69,7 +69,10 @@ struct AgentFeature {
     var sessionID: String?
     var context: SessionContext
 
-    var prompt: AgentPrompt = .message("")
+    var prompt: AgentPrompt = .message("", condensed: nil)
+    /// Per-card read-aloud mode: when true this card speaks the agent's condensed summary
+    /// instead of the full reply. Each card keeps its own choice; not persisted.
+    var useCondensed: Bool = false
     var selectedOptions: Set<String> = []
     var draftReply: String = ""
     /// 0...1 while the auto-send countdown runs after a paste/dictation; nil otherwise.
@@ -96,7 +99,7 @@ struct AgentFeature {
         projectIconURL: payload.githubOwner.flatMap { Self.avatarURL(owner: $0) },
         branch: payload.branch
       )
-      prompt = .message(payload.inlineMessage ?? "")
+      prompt = .message(payload.inlineMessage ?? "", condensed: nil)
     }
 
     /// The GitHub owner avatar URL for the owner the hook resolved. nil when there's no owner.
@@ -132,8 +135,18 @@ struct AgentFeature {
     // MARK: Convenience accessors for the current card (keep the View unchanged).
 
     var current: AgentRequest? { currentID.flatMap { requests[id: $0] } }
-    var prompt: AgentPrompt { current?.prompt ?? .message("") }
+    var prompt: AgentPrompt { current?.prompt ?? .message("", condensed: nil) }
     var draftReply: String { current?.draftReply ?? "" }
+
+    /// True when the visible card's message carries a condensed summary — i.e. when offering
+    /// the condensed/full read-aloud toggle is meaningful.
+    var hasCondensed: Bool {
+      if case let .message(_, condensed) = prompt { return !(condensed ?? "").isEmpty }
+      return false
+    }
+
+    /// Whether the visible card is set to read its condensed summary aloud.
+    var useCondensed: Bool { current?.useCondensed ?? false }
     var selectedOptions: Set<String> { current?.selectedOptions ?? [] }
     var autoSendProgress: Double? { current?.autoSendProgress }
     /// The visible card's hook has timed out and can no longer be answered.
@@ -184,6 +197,7 @@ struct AgentFeature {
     case toggleOption(AgentOption)        // multi-select: toggles, Send submits
     case respondPermission(allow: Bool)   // permission allow/deny
     case toggleSpeakOutput
+    case toggleSpeakCondensed             // read the condensed summary vs the full reply
     case autoSendTicked(Double)
     case cancelAutoSend
     case send
@@ -195,6 +209,7 @@ struct AgentFeature {
   @Dependency(\.soundEffects) var soundEffect
   @Dependency(\.agentTranscript) var agentTranscript
   @Dependency(\.speechSynthesizer) var speechSynthesizer
+  @Dependency(\.agentIntegrations) var agentIntegrations
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -299,10 +314,19 @@ struct AgentFeature {
       case .toggleSpeakOutput:
         let nowEnabled = !state.hexSettings.agentSpeakOutput
         state.$hexSettings.withLock { $0.agentSpeakOutput = nowEnabled }
+        // Re-sync the on-disk read-aloud sentinel so the hook starts (or stops) generating a
+        // spoken summary for the condensed read-aloud on its next turn.
+        let resync: Effect<Action> = .run { _ in _ = await agentIntegrations.prepareAll() }
         if nowEnabled {
-          return speakIfEnabled(state)
+          return .merge(resync, speakIfEnabled(state))
         }
-        return .run { _ in await speechSynthesizer.stop() }
+        return .merge(resync, .run { _ in await speechSynthesizer.stop() })
+
+      case .toggleSpeakCondensed:
+        guard let id = state.currentID else { return .none }
+        state.requests[id: id]?.useCondensed.toggle()
+        // Re-read the visible card in the newly chosen mode (no-op when read-aloud is off).
+        return speakIfEnabled(state)
 
       case let .draftChanged(text):
         guard let id = state.currentID, let current = state.requests[id: id] else { return .none }
@@ -550,7 +574,7 @@ struct AgentFeature {
   /// Reads the current prompt aloud when the user has speech output enabled.
   private func speakIfEnabled(_ state: State) -> Effect<Action> {
     guard state.hexSettings.agentSpeakOutput else { return .none }
-    let text = Self.spokenText(for: state.prompt)
+    let text = Self.spokenText(for: state.prompt, condensed: state.useCondensed)
     guard !text.isEmpty else { return .none }
     let voice = voiceIdentifier(for: state)
     return .run { _ in await speechSynthesizer.speak(text, voice) }
@@ -561,7 +585,7 @@ struct AgentFeature {
   /// If the panel is already visible (or there is nothing to say), it just speaks.
   private func speakThenReveal(_ state: State) -> Effect<Action> {
     guard !state.isVisible else { return speakIfEnabled(state) }
-    let text = Self.spokenText(for: state.prompt)
+    let text = Self.spokenText(for: state.prompt, condensed: state.useCondensed)
     guard state.hexSettings.agentSpeakOutput, !text.isEmpty else { return .send(.revealPanel) }
     let voice = voiceIdentifier(for: state)
     return .run { send in
@@ -578,9 +602,14 @@ struct AgentFeature {
     }
   }
 
-  static func spokenText(for prompt: AgentPrompt) -> String {
+  static func spokenText(for prompt: AgentPrompt, condensed: Bool) -> String {
     switch prompt {
-    case let .message(text):
+    case let .message(text, summary):
+      // Speak the short condensed summary when condensed mode is on and one exists; otherwise
+      // fall back to the full reply.
+      if condensed, let summary, !summary.isEmpty {
+        return SpokenText.spoken(from: summary)
+      }
       return SpokenText.spoken(from: text)
     case let .question(question):
       let options = question.options.map(\.label).joined(separator: ". ")

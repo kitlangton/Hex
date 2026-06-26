@@ -49,7 +49,7 @@ struct AgentView: View {
 
   private var hasOutput: Bool {
     switch store.prompt {
-    case let .message(text): return !text.isEmpty
+    case let .message(text, _): return !text.isEmpty
     case .question, .permission: return true
     }
   }
@@ -61,8 +61,10 @@ struct AgentView: View {
       VStack(alignment: .leading, spacing: 12) {
         cardHeader
         switch store.prompt {
-        case let .message(text):
-          markdown(text)
+        case let .message(text, condensed):
+          // In condensed mode show the summary that's being read aloud, so the card matches
+          // the speech; fall back to the full reply when there's no summary.
+          markdown(store.useCondensed ? (condensed ?? text) : text)
         case let .question(question):
           questionView(question)
         case let .permission(permission):
@@ -307,6 +309,10 @@ struct AgentView: View {
 
       HStack(spacing: 10) {
         speakToggle
+        // Only meaningful while reading aloud and when the agent supplied a short summary.
+        if store.hexSettings.agentSpeakOutput, store.hasCondensed {
+          condensedToggle
+        }
 
         Spacer()
 
@@ -383,6 +389,27 @@ struct AgentView: View {
     }
     .buttonStyle(.plain)
     .help(enabled ? "Stop reading output aloud" : "Read output aloud")
+  }
+
+  /// Switches read-aloud between the condensed summary and the full reply. Shown only when
+  /// reading aloud and the current card actually has a summary.
+  private var condensedToggle: some View {
+    let condensed = store.useCondensed
+    return Button {
+      store.send(.toggleSpeakCondensed)
+    } label: {
+      Image(systemName: condensed ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.white)
+        .frame(width: 20, height: 20)
+        .background(
+          Circle().fill(condensed ? Color.accentColor : Color.secondary.opacity(0.7))
+        )
+    }
+    .buttonStyle(.plain)
+    .help(condensed
+      ? "Reading the condensed summary — tap to read the full reply"
+      : "Reading the full reply — tap to read the condensed summary")
   }
 
   private func hint(_ title: String, key: String, action: @escaping () -> Void) -> some View {

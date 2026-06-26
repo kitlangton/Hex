@@ -18,7 +18,10 @@ private let agentLogger = HexLog.app
 
 /// What the agent is presenting to the user.
 enum AgentPrompt: Equatable, Sendable {
-  case message(String)              // plain assistant text (markdown)
+  /// Plain assistant text (markdown). `condensed` is the optional short summary the hook
+  /// generated headlessly (via `claude --safe-mode -p`) for condensed read-aloud; nil when the
+  /// hook didn't produce one (read-aloud off, no Claude CLI, or generation failed).
+  case message(String, condensed: String?)
   case question(AgentQuestion)      // AskUserQuestion multiple choice
   case permission(AgentPermission)  // tool awaiting allow/deny
 }
@@ -46,7 +49,7 @@ struct AgentTranscriptClient {
   /// Resolves the prompt to display.
   /// - payloadPath: temp file the hook wrote with the full hook JSON (incl. tool_input).
   /// - transcriptPath: the session transcript (.jsonl), used for the last-message fallback.
-  var latestPrompt: @Sendable (_ payloadPath: String?, _ transcriptPath: String?) async throws -> AgentPrompt = { _, _ in .message("") }
+  var latestPrompt: @Sendable (_ payloadPath: String?, _ transcriptPath: String?) async throws -> AgentPrompt = { _, _ in .message("", condensed: nil) }
 }
 
 extension AgentTranscriptClient: DependencyKey {
@@ -64,9 +67,11 @@ extension AgentTranscriptClient: DependencyKey {
         if event == "PermissionRequest" {
           return .permission(AgentPermission(tool: toolName, summary: permissionSummary(toolName, input)))
         }
-        // Stop payloads carry the final text directly — no transcript parse needed.
+        // Stop payloads carry the final text directly — no transcript parse needed. When
+        // read-aloud is on, the hook also folds in a short spoken summary (hex_condensed),
+        // generated headlessly so nothing extra appears in the visible reply.
         if let last = hook["last_assistant_message"] as? String, !last.isEmpty {
-          return .message(last)
+          return .message(last, condensed: condensedText(hook["hex_condensed"]))
         }
       }
 
@@ -75,12 +80,19 @@ extension AgentTranscriptClient: DependencyKey {
         let expanded = (transcriptPath as NSString).expandingTildeInPath
         if let contents = try? String(contentsOf: URL(fileURLWithPath: expanded), encoding: .utf8) {
           let lines = contents.split(separator: "\n", omittingEmptySubsequences: true)
-          return .message(lastAssistantText(lines))
+          return .message(lastAssistantText(lines), condensed: nil)
         }
       }
-      return .message("")
+      return .message("", condensed: nil)
     })
   }
+}
+
+/// The hook's `hex_condensed` field as a non-empty trimmed summary, or nil when absent/blank.
+private func condensedText(_ value: Any?) -> String? {
+  guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !text.isEmpty else { return nil }
+  return text
 }
 
 private func readJSON(_ path: String?) -> [String: Any]? {
