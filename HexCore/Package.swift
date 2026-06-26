@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "HexCore",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "HexCore", targets: ["HexCore"]),
     ],
@@ -16,14 +16,16 @@ let package = Package(
 	    .target(
 	        name: "HexCore",
 	        dependencies: [
-	            "Sauce",
+	            // Sauce is macOS-only (Carbon-based keyboard library). On iOS the
+	            // in-module `Key` shim (Models/HexKeyCompat.swift) stands in for it.
+	            .product(name: "Sauce", package: "Sauce", condition: .when(platforms: [.macOS])),
 	            .product(name: "Dependencies", package: "swift-dependencies"),
 	            .product(name: "DependenciesMacros", package: "swift-dependencies"),
 	            .product(name: "Logging", package: "swift-log"),
 	        ],
 	        path: "Sources/HexCore",
 	        linkerSettings: [
-	            .linkedFramework("IOKit")
+	            .linkedFramework("IOKit", .when(platforms: [.macOS])),
 	        ]
 	    ),
         .testTarget(

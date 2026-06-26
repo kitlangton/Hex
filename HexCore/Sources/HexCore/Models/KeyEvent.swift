@@ -5,7 +5,9 @@
 //  Created by Kit Langton on 1/28/25.
 //
 
+#if os(macOS)
 import Sauce
+#endif
 
 public enum InputEvent {
     case keyboard(KeyEvent)

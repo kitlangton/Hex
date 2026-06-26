@@ -1,13 +1,22 @@
+import Dependencies
+import Foundation
+#if os(macOS)
+// AppKit must be the first framework import so its `@preconcurrency` treatment
+// covers transitively-exported ApplicationServices globals (e.g.
+// `kAXTrustedCheckOptionPrompt`) before AVFoundation imports them.
 @preconcurrency import AppKit
 import AVFoundation
 import CoreGraphics
-import Dependencies
-import Foundation
 import IOKit
 import IOKit.hidsystem
+#elseif canImport(UIKit)
+import AVFoundation
+import UIKit
+#endif
 
 private let logger = HexLog.permissions
 
+#if os(macOS)
 extension PermissionClient: DependencyKey {
   public static var liveValue: Self {
     let live = PermissionClientLive()
@@ -189,3 +198,90 @@ actor PermissionClientLive {
     }
   }
 }
+
+#elseif canImport(UIKit)
+
+extension PermissionClient: DependencyKey {
+  public static var liveValue: Self {
+    let live = PermissionClientLive()
+    return Self(
+      microphoneStatus: { await live.microphoneStatus() },
+      // Accessibility / input monitoring are macOS concepts; there is nothing to
+      // grant on iOS, so report them as satisfied.
+      accessibilityStatus: { .granted },
+      inputMonitoringStatus: { .granted },
+      requestMicrophone: { await live.requestMicrophone() },
+      requestAccessibility: {},
+      requestInputMonitoring: { true },
+      openMicrophoneSettings: { await live.openAppSettings() },
+      openAccessibilitySettings: { await live.openAppSettings() },
+      openInputMonitoringSettings: { await live.openAppSettings() },
+      observeAppActivation: { live.observeAppActivation() }
+    )
+  }
+}
+
+/// iOS implementation of the PermissionClient.
+///
+/// Only the microphone is meaningful on iOS. "Open settings" deep-links to the
+/// app's own Settings page (iOS has no per-permission settings URLs). App
+/// activation is observed via `UIApplication` lifecycle notifications.
+actor PermissionClientLive {
+  private let (activationStream, activationContinuation) = AsyncStream<AppActivation>.makeStream()
+  private nonisolated(unsafe) var observations: [Any] = []
+
+  init() {
+    let didBecomeActiveObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.didBecomeActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { self?.activationContinuation.yield(.didBecomeActive) }
+    }
+
+    let willResignActiveObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.willResignActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { self?.activationContinuation.yield(.willResignActive) }
+    }
+
+    observations = [didBecomeActiveObserver, willResignActiveObserver]
+  }
+
+  deinit {
+    observations.forEach { NotificationCenter.default.removeObserver($0) }
+  }
+
+  func microphoneStatus() async -> PermissionStatus {
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized: return .granted
+    case .denied, .restricted: return .denied
+    case .notDetermined: return .notDetermined
+    @unknown default: return .denied
+    }
+  }
+
+  func requestMicrophone() async -> Bool {
+    await withCheckedContinuation { continuation in
+      AVCaptureDevice.requestAccess(for: .audio) { granted in
+        continuation.resume(returning: granted)
+      }
+    }
+  }
+
+  func openAppSettings() async {
+    await MainActor.run {
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        UIApplication.shared.open(url)
+      }
+    }
+  }
+
+  nonisolated func observeAppActivation() -> AsyncStream<AppActivation> {
+    activationStream
+  }
+}
+
+#endif

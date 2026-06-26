@@ -15,9 +15,9 @@ independently shippable). Phases 2 + 3 are tightly coupled. Phase 4 last.
 | ID | Title | Phase | Depends on | Size | Status |
 |----|-------|-------|-----------|------|--------|
 | [SPIKE-1](SPIKE-1-background-audio-survival.md) | Background-audio session survival probe | risk spike | — | S | TODO |
-| [P0-1](P0-1-package-multiplatform.md) | Make HexCore `Package.swift` multiplatform | 0 | — | S | TODO |
-| [P0-2](P0-2-decouple-settings-input-types.md) | Decouple settings/input models from Sauce + Cocoa | 0 | P0-1 | M | TODO |
-| [P0-3](P0-3-ios-permission-sleep-clients.md) | iOS `PermissionClient` + `SleepManagementClient` | 0 | P0-1 | M | TODO |
+| [P0-1](P0-1-package-multiplatform.md) | Make HexCore `Package.swift` multiplatform | 0 | — | S | DONE |
+| [P0-2](P0-2-decouple-settings-input-types.md) | Decouple settings/input models from Sauce + Cocoa | 0 | P0-1 | M | DONE |
+| [P0-3](P0-3-ios-permission-sleep-clients.md) | iOS `PermissionClient` + `SleepManagementClient` | 0 | P0-1 | M | DONE |
 | [P0-4](P0-4-move-engine-into-hexcore.md) | Move transcription engine into HexCore | 0 | P0-1 | L | TODO |
 | [P1-1](P1-1-ios-app-target.md) | Create `HexiOS` app target | 1 | P0-2, P0-3, P0-4 | S | TODO |
 | [P1-2](P1-2-ios-recording-client.md) | iOS `RecordingClient` (AVAudioSession) | 1 | P1-1 | M | TODO |
