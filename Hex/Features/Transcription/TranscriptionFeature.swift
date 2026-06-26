@@ -98,8 +98,8 @@ struct TranscriptionFeature {
       // MARK: - HotKey Flow
 
       case .hotKeyPressed:
-        // If we're transcribing, send a cancel first. Otherwise start recording immediately.
-        // We'll decide later (on release) whether to keep or discard the recording.
+        // If transcribing, ignore this press (protects against finger twitches).
+        // Otherwise start recording — we'll decide on release whether to keep or discard.
         return handleHotKeyPressed(isTranscribing: state.isTranscribing)
 
       case .hotKeyReleased:
@@ -264,12 +264,14 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
-    // If already transcribing, cancel first. Otherwise start recording immediately.
-    guard isTranscribing else { return .send(.startRecording) }
-    return .concatenate(
-      .send(.cancel),
-      .send(.startRecording)
-    )
+    // If already transcribing, ignore the hotkey press entirely.
+    // This prevents finger twitches after releasing the hold-to-record
+    // hotkey from cancelling an in-progress transcription.
+    // The user can still cancel explicitly with ESC if needed.
+    if isTranscribing {
+      return .none
+    }
+    return .send(.startRecording)
   }
 
   func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
