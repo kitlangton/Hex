@@ -282,6 +282,7 @@ private extension TranscriptionFeature {
 
 private extension TranscriptionFeature {
   func handleStartRecording(_ state: inout State) -> Effect<Action> {
+    guard !state.isRecording, !state.isTranscribing else { return .none }
     guard state.modelBootstrapState.isModelReady else {
       return .merge(
         .send(.modelMissing),
