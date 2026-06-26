@@ -431,10 +431,12 @@ public struct ModelDownloadFeature {
 		// don't end up staring at an empty WhisperKit folder thinking the
 		// Parakeet download silently failed.
 		let usesParakeetRoot = ParakeetModel(rawValue: state.selectedModel) != nil
+		let usesQwenRoot = state.selectedModel.lowercased().contains("qwen")
+		
 		return .run { _ in
 			let base = try usesParakeetRoot
 				? URL.hexParakeetModelsDirectory
-				: URL.hexModelsDirectory
+				: (usesQwenRoot ? URL.hexModelsDirectory.appendingPathComponent("mlx") : URL.hexModelsDirectory)
 			NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: base.path)
 		}
 	}

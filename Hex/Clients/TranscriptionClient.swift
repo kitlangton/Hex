@@ -73,6 +73,7 @@ actor TranscriptionClientLive {
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
   private var parakeet: ParakeetClient = ParakeetClient()
+  private var qwen: QwenClient = QwenClient()
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -91,6 +92,12 @@ actor TranscriptionClientLive {
     // If Parakeet, use Parakeet client path
     if isParakeet(variant) {
       try await parakeet.ensureLoaded(modelName: variant, progress: progressCallback)
+      currentModelName = variant
+      return
+    }
+    // If Qwen, use Qwen client path
+    if isQwen(variant) {
+      try await qwen.ensureLoaded(modelName: variant, progress: progressCallback)
       currentModelName = variant
       return
     }
@@ -145,6 +152,11 @@ actor TranscriptionClientLive {
       if currentModelName == variant { unloadCurrentModel() }
       return
     }
+    if isQwen(variant) {
+      try await qwen.deleteCaches(modelName: variant)
+      if currentModelName == variant { unloadCurrentModel() }
+      return
+    }
     let modelFolder = modelPath(for: variant)
 
     // Check if the model exists
@@ -170,6 +182,11 @@ actor TranscriptionClientLive {
     if isParakeet(modelName) {
       let available = await parakeet.isModelAvailable(modelName)
       parakeetLogger.debug("Parakeet available? \(available)")
+      return available
+    }
+    if isQwen(modelName) {
+      let available = await qwen.isModelAvailable(modelName)
+      modelsLogger.debug("Qwen available? \(available)")
       return available
     }
     let modelFolder = effectiveModelPath(for: modelName)
@@ -208,6 +225,13 @@ actor TranscriptionClientLive {
       if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
     }
     #endif
+    
+    // Add Qwen3 model to available models (if not already present)
+    let qwenName = "mlx-community/Qwen3-ASR-0.6B-4bit"
+    if !names.contains(qwenName) {
+      names.insert(qwenName, at: 0)
+    }
+    
     return names
   }
 
@@ -236,6 +260,27 @@ actor TranscriptionClientLive {
       transcriptionLogger.info("Parakeet request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
       return text
     }
+
+    if isQwen(model) {
+      transcriptionLogger.notice("Transcribing with Qwen model=\(model) file=\(url.lastPathComponent)")
+
+      let startLoad = Date()
+
+      try await downloadAndLoadModel(variant: model) { p in
+        progressCallback(p)
+      }
+
+      transcriptionLogger.info("Qwen ensureLoaded took \(String(format: "%.2f", Date().timeIntervalSince(startLoad)))s")
+
+      let startTx = Date()
+      let text = try await qwen.transcribe(url)
+
+      transcriptionLogger.info("Qwen transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
+      transcriptionLogger.info("Qwen request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
+
+      return text
+    }
+
     let model = await resolveVariant(model)
     // Load or switch to the required model if needed.
     if whisperKit == nil || model != currentModelName {
@@ -310,6 +355,10 @@ actor TranscriptionClientLive {
 
   private func isParakeet(_ name: String) -> Bool {
     ParakeetModel(rawValue: name) != nil
+  }
+
+  private func isQwen(_ name: String) -> Bool {
+    name.lowercased().contains("qwen")
   }
 
   /// Creates or returns the local folder (on disk) for a given `variant` model.
