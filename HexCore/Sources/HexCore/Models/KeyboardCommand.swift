@@ -6,7 +6,9 @@
 //
 
 import Foundation
+#if os(macOS)
 import Sauce
+#endif
 
 /// Represents a keyboard command to simulate (e.g., Enter, Cmd+Enter, Shift+Enter)
 public struct KeyboardCommand: Codable, Equatable, Sendable {

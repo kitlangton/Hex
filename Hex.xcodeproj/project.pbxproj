@@ -17,6 +17,12 @@
 		47E05E0A2D44525B00D26DA6 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E092D44525B00D26DA6 /* Dependencies */; };
 		47E05E0C2D44525B00D26DA6 /* DependenciesMacros in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E0B2D44525B00D26DA6 /* DependenciesMacros */; };
 		47E16A622EC6C9D300885CF7 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 47E16A612EC6C9D300885CF7 /* FluidAudio */; };
+		4EF356212FEF3CE300DCA9C2 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356202FEF3CE300DCA9C2 /* HexCore */; };
+		4EF356232FEF3CEF00DCA9C2 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356222FEF3CEF00DCA9C2 /* WhisperKit */; };
+		4EF356252FEF3D0000DCA9C2 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356242FEF3D0000DCA9C2 /* FluidAudio */; };
+		4EF356E82FEF431A00DCA9C2 /* HexIOSKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4EF356F02FEF434B00DCA9C2 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356EF2FEF434B00DCA9C2 /* HexCore */; };
+		4EF356F62FEF5ABF00DCA9C2 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */; };
 		4F0D6A012F1A000100000001 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
 		4F0D6A022F1A000100000001 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		7BA7464C2FBD689B00814C43 /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = 7BA7464B2FBD689B00814C43 /* MLXAudioSTT */; };
@@ -32,13 +38,36 @@
 			remoteGlobalIDString = 47E05DED2D444EC600D26DA6;
 			remoteInfo = Hex;
 		};
+		4EF356E62FEF431A00DCA9C2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 47E05DE62D444EC600D26DA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4EF356E02FEF431A00DCA9C2;
+			remoteInfo = HexIOSKeyboard;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4EF356ED2FEF431A00DCA9C2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4EF356E82FEF431A00DCA9C2 /* HexIOSKeyboard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		473544502D445936001FBCB5 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		473544542D445959001FBCB5 /* Testing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Testing.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework; sourceTree = DEVELOPER_DIR; };
 		478637A52D48725900319BFA /* HexTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HexTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		47E05DEE2D444EC600D26DA6 /* Hex Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hex Debug.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4EF356152FEF3C2100DCA9C2 /* HexIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HexIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HexIOSKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; name = AppIcon.icon; path = Hex/AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -51,6 +80,20 @@
 			);
 			target = 47E05DED2D444EC600D26DA6 /* Hex */;
 		};
+		4EF356302FEF3C2100DCA9C2 /* Exceptions for "HexIOS" folder in "HexIOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4EF356142FEF3C2100DCA9C2 /* HexIOS */;
+		};
+		4EF356EC2FEF431A00DCA9C2 /* Exceptions for "HexIOSKeyboard" folder in "HexIOSKeyboard" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -60,6 +103,22 @@
 				476BAD402D47E8500088C61F /* Exceptions for "Hex" folder in "Hex" target */,
 			);
 			path = Hex;
+			sourceTree = "<group>";
+		};
+		4EF356162FEF3C2100DCA9C2 /* HexIOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4EF356302FEF3C2100DCA9C2 /* Exceptions for "HexIOS" folder in "HexIOS" target */,
+			);
+			path = HexIOS;
+			sourceTree = "<group>";
+		};
+		4EF356E22FEF431A00DCA9C2 /* HexIOSKeyboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4EF356EC2FEF431A00DCA9C2 /* Exceptions for "HexIOSKeyboard" folder in "HexIOSKeyboard" target */,
+			);
+			path = HexIOSKeyboard;
 			sourceTree = "<group>";
 		};
 		4F0D6A032F1A000100000001 /* HexTests */ = {
@@ -98,6 +157,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4EF356122FEF3C2100DCA9C2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4EF356232FEF3CEF00DCA9C2 /* WhisperKit in Frameworks */,
+				4EF356252FEF3D0000DCA9C2 /* FluidAudio in Frameworks */,
+				4EF356F62FEF5ABF00DCA9C2 /* ComposableArchitecture in Frameworks */,
+				4EF356212FEF3CE300DCA9C2 /* HexCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4EF356DE2FEF431A00DCA9C2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4EF356F02FEF434B00DCA9C2 /* HexCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -117,6 +195,8 @@
 				B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */,
 				47E05DF02D444EC600D26DA6 /* Hex */,
 				4F0D6A032F1A000100000001 /* HexTests */,
+				4EF356162FEF3C2100DCA9C2 /* HexIOS */,
+				4EF356E22FEF431A00DCA9C2 /* HexIOSKeyboard */,
 				4735444F2D445936001FBCB5 /* Frameworks */,
 				47E05DEF2D444EC600D26DA6 /* Products */,
 			);
@@ -127,6 +207,8 @@
 			children = (
 				47E05DEE2D444EC600D26DA6 /* Hex Debug.app */,
 				478637A52D48725900319BFA /* HexTests.xctest */,
+				4EF356152FEF3C2100DCA9C2 /* HexIOS.app */,
+				4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -193,6 +275,57 @@
 			productReference = 47E05DEE2D444EC600D26DA6 /* Hex Debug.app */;
 			productType = "com.apple.product-type.application";
 		};
+		4EF356142FEF3C2100DCA9C2 /* HexIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4EF3561F2FEF3C2300DCA9C2 /* Build configuration list for PBXNativeTarget "HexIOS" */;
+			buildPhases = (
+				4EF356112FEF3C2100DCA9C2 /* Sources */,
+				4EF356122FEF3C2100DCA9C2 /* Frameworks */,
+				4EF356132FEF3C2100DCA9C2 /* Resources */,
+				4EF356ED2FEF431A00DCA9C2 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4EF356E72FEF431A00DCA9C2 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				4EF356162FEF3C2100DCA9C2 /* HexIOS */,
+			);
+			name = HexIOS;
+			packageProductDependencies = (
+				4EF356202FEF3CE300DCA9C2 /* HexCore */,
+				4EF356222FEF3CEF00DCA9C2 /* WhisperKit */,
+				4EF356242FEF3D0000DCA9C2 /* FluidAudio */,
+				4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */,
+			);
+			productName = HexIOS;
+			productReference = 4EF356152FEF3C2100DCA9C2 /* HexIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4EF356E92FEF431A00DCA9C2 /* Build configuration list for PBXNativeTarget "HexIOSKeyboard" */;
+			buildPhases = (
+				4EF356DD2FEF431A00DCA9C2 /* Sources */,
+				4EF356DE2FEF431A00DCA9C2 /* Frameworks */,
+				4EF356DF2FEF431A00DCA9C2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4EF356E22FEF431A00DCA9C2 /* HexIOSKeyboard */,
+			);
+			name = HexIOSKeyboard;
+			packageProductDependencies = (
+				4EF356EF2FEF434B00DCA9C2 /* HexCore */,
+			);
+			productName = HexIOSKeyboard;
+			productReference = 4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -200,7 +333,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1620;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					478637A42D48725900319BFA = {
@@ -209,6 +342,12 @@
 					};
 					47E05DED2D444EC600D26DA6 = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					4EF356142FEF3C2100DCA9C2 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					4EF356E02FEF431A00DCA9C2 = {
+						CreatedOnToolsVersion = 26.5;
 					};
 				};
 			};
@@ -241,6 +380,8 @@
 			targets = (
 				47E05DED2D444EC600D26DA6 /* Hex */,
 				478637A42D48725900319BFA /* HexTests */,
+				4EF356142FEF3C2100DCA9C2 /* HexIOS */,
+				4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */,
 			);
 		};
 /* End PBXProject section */
@@ -261,6 +402,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4EF356132FEF3C2100DCA9C2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4EF356DF2FEF431A00DCA9C2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -278,6 +433,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4EF356112FEF3C2100DCA9C2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4EF356DD2FEF431A00DCA9C2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -285,6 +454,11 @@
 			isa = PBXTargetDependency;
 			target = 47E05DED2D444EC600D26DA6 /* Hex */;
 			targetProxy = 478637A92D48725900319BFA /* PBXContainerItemProxy */;
+		};
+		4EF356E72FEF431A00DCA9C2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */;
+			targetProxy = 4EF356E62FEF431A00DCA9C2 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -554,6 +728,142 @@
 			};
 			name = Release;
 		};
+		4EF3561D2FEF3C2300DCA9C2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HexIOS/HexIOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29YXKXD53B;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexIOS/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = stonefrontier.HexIOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4EF3561E2FEF3C2300DCA9C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HexIOS/HexIOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29YXKXD53B;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexIOS/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = stonefrontier.HexIOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4EF356EA2FEF431A00DCA9C2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HexIOSKeyboard/HexIOSKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29YXKXD53B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexIOSKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HexIOSKeyboard;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = stonefrontier.HexIOS.HexIOSKeyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4EF356EB2FEF431A00DCA9C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HexIOSKeyboard/HexIOSKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29YXKXD53B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexIOSKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HexIOSKeyboard;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = stonefrontier.HexIOS.HexIOSKeyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -580,6 +890,24 @@
 			buildConfigurations = (
 				47E05DFE2D444EC700D26DA6 /* Debug */,
 				47E05DFF2D444EC700D26DA6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4EF3561F2FEF3C2300DCA9C2 /* Build configuration list for PBXNativeTarget "HexIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4EF3561D2FEF3C2300DCA9C2 /* Debug */,
+				4EF3561E2FEF3C2300DCA9C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4EF356E92FEF431A00DCA9C2 /* Build configuration list for PBXNativeTarget "HexIOSKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4EF356EA2FEF431A00DCA9C2 /* Debug */,
+				4EF356EB2FEF431A00DCA9C2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -725,6 +1053,31 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		4EF356202FEF3CE300DCA9C2 /* HexCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */;
+			productName = HexCore;
+		};
+		4EF356222FEF3CEF00DCA9C2 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47512ABD2E14D8C9000E25BA /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+		4EF356242FEF3D0000DCA9C2 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E16A602EC6C9D300885CF7 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+		4EF356EF2FEF434B00DCA9C2 /* HexCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */;
+			productName = HexCore;
+		};
+		4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E05E002D444EE900D26DA6 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
+			productName = ComposableArchitecture;
 		};
 		7BA7464B2FBD689B00814C43 /* MLXAudioSTT */ = {
 			isa = XCSwiftPackageProductDependency;

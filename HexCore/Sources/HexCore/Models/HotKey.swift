@@ -4,8 +4,12 @@
 //
 //  Created by Kit Langton on 1/26/25.
 //
+#if os(macOS)
 import Cocoa
 import Sauce
+#else
+import Foundation
+#endif
 
 public struct Modifier: Identifiable, Codable, Equatable, Hashable, Comparable, Sendable {
   public enum Kind: String, Codable, CaseIterable, Comparable, Sendable {
@@ -248,6 +252,7 @@ public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Sendable
     Modifiers(modifiers: modifiers.filter { $0.kind != kind })
   }
 
+  #if os(macOS)
   public static func from(cocoa: NSEvent.ModifierFlags) -> Self {
     var modifiers: Set<Modifier> = []
     if cocoa.contains(.option) {
@@ -298,8 +303,10 @@ public struct Modifiers: Codable, Equatable, ExpressibleByArrayLiteral, Sendable
 
     return .init(modifiers: modifiers)
   }
+  #endif
 }
 
+#if os(macOS)
 private enum DeviceModifierMask {
   static let leftControl: UInt64 = 0x00000001
   static let leftShift: UInt64 = 0x00000002
@@ -310,6 +317,7 @@ private enum DeviceModifierMask {
   static let rightOption: UInt64 = 0x00000040
   static let rightControl: UInt64 = 0x00002000
 }
+#endif
 
 public struct HotKey: Codable, Equatable, Sendable {
   public var key: Key?
@@ -322,6 +330,7 @@ public struct HotKey: Codable, Equatable, Sendable {
   }
 }
 
+#if os(macOS)
 extension Key {
   public var toString: String {
     switch self {
@@ -372,3 +381,4 @@ extension Key {
     }
   }
 }
+#endif

@@ -1,5 +1,9 @@
 import Dependencies
+#if os(macOS)
 import IOKit.pwr_mgt
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 extension SleepManagementClient: DependencyKey {
   public static var liveValue: Self {
@@ -14,6 +18,8 @@ extension SleepManagementClient: DependencyKey {
     )
   }
 }
+
+#if os(macOS)
 
 /// Live implementation of SleepManagementClient that manages assertion lifecycle.
 actor SleepManagementClientLive {
@@ -48,3 +54,16 @@ actor SleepManagementClientLive {
     }
   }
 }
+#else
+/// iOS implementation: prevents the device from auto-locking by toggling
+/// `UIApplication.isIdleTimerDisabled` (which must be touched on the main actor).
+actor SleepManagementClientLive {
+  func preventSleep(reason _: String) async {
+    await MainActor.run { UIApplication.shared.isIdleTimerDisabled = true }
+  }
+
+  func allowSleep() async {
+    await MainActor.run { UIApplication.shared.isIdleTimerDisabled = false }
+  }
+}
+#endif
