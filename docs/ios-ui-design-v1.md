@@ -57,9 +57,10 @@ Reference mockup: the `hex_ios_app_designs_v3_ios26` widget (six screens). Summa
    waveform; accent stop button; "Tap to stop · swipe up to cancel". Then a transient
    "Transcribing…" state. **No live partial-transcript preview in V1** (see §6).
 3. **Keyboard** (the product) — shown docked under a host app. Tinted **"mic hot · MM:SS
-   left"** session pill; waveform; three primary controls — undo-last / **mic** / backspace;
-   bottom row globe (next keyboard) + settings. **No QWERTY.** Insertion via
-   `textDocumentProxy`.
+   left"** session pill; waveform; the mic button + minimal controls (globe / space /
+   backspace / return). **No QWERTY.** Insertion via `textDocumentProxy`. In-place **editing
+   controls** beyond the basics (a letter-free control surface) are scoped separately in
+   [P2-5](issues/P2-5-keyboard-editing-controls.md).
 4. **History** — search field; day-grouped rows (`text · time · source · duration`); inline
    play on rows that have audio; iCloud status glyph in the header.
 5. **Settings** — grouped inset lists: **Group 1** Model / Session length / Language /
@@ -70,6 +71,9 @@ Reference mockup: the `hex_ios_app_designs_v3_ios26` widget (six screens). Summa
    **real system state**; primary CTA.
 
 ## 5. Keyboard interaction states (to design/build under P2-2)
+
+> In-place editing (a letter-free control surface, caret trackpad, etc.) is scoped
+> separately — see [P2-5](issues/P2-5-keyboard-editing-controls.md).
 
 The keyboard must render and read clearly in every state:
 

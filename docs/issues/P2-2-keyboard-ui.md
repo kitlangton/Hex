@@ -10,14 +10,18 @@
 The keyboard's visible UI: a big mic button + status, and text insertion. No full QWERTY.
 
 > **UI design is LOCKED:** follow [ios-ui-design-v1.md](../ios-ui-design-v1.md) — monochrome
-> with the single iOS-blue accent on the mic + "mic hot" session pill; three primary controls
-> (undo-last / mic / backspace) + bottom row globe + settings. See §5 for the full state set.
+> with the single iOS-blue accent on the mic + "mic hot" session pill; the mic button + a few
+> minimal controls (globe / space / backspace / return). **No QWERTY.** See §5 for the state set.
+>
+> **Scope:** this issue is the **basic dictate keyboard** only. In-place **editing controls**
+> (caret trackpad, delete-word, punctuation, Replace-by-voice, etc.) are scoped separately in
+> [P2-5](P2-5-keyboard-editing-controls.md).
 
 ## Tasks
 - [ ] `KeyboardViewController` hosting SwiftUI: large accent mic button, live waveform,
-      tinted **"mic hot · MM:SS left"** session pill, controls (undo-last, mic, backspace,
+      tinted **"mic hot · MM:SS left"** session pill, minimal controls (mic, backspace,
       globe/next-keyboard, open settings).
-- [ ] Insert via `textDocumentProxy.insertText`; delete-last via `deleteBackward`.
+- [ ] Insert via `textDocumentProxy.insertText`; delete via `deleteBackward`.
 - [ ] **Design + handle all keyboard states** (per design §5): no-Full-Access, idle/ready,
       recording, inserting, session-expired/needs-bounce, error.
 - [ ] Keep memory minimal — the extension never loads an ML model (host app does inference).
