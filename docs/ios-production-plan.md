@@ -18,18 +18,18 @@ Flow Session. **Prototype debt to pay down:**
   features** (`TranscriptionFeature`/`HistoryFeature`/`SettingsFeature`).
 - No tests on the iOS side, no privacy manifest, no onboarding, no sync.
 
-## Decisions this plan depends on (confirm first)
+## Decisions — DECIDED (2026-06-27)
 
-1. **App architecture** — adopt **TCA** in HexIOS (reuse macOS reducers; consistent, testable
-   with `TestStore`) vs keep **MV/`@Observable`** (less ceremony, but diverges from the plan
-   and the macOS app). *Recommendation: TCA*, since History/Settings/Model logic already
-   exists as reducers and we want one shared brain.
-2. **Default on-device engine** — **Parakeet** (macOS default; multilingual, fast on ANE) vs
-   **Whisper** sizes vs **both, user-selectable** (design's Settings shows a model picker).
-   *Recommendation: both, Parakeet default.*
-3. **Release target** — **App Store** vs **TestFlight/personal**. This is load-bearing: the
-   `openURL` bounce + background-audio are App Store review risks (see Risks). *Recommendation:
-   build to App-Store quality but ship TestFlight first.*
+1. **App architecture → TCA.** Adopt The Composable Architecture in HexIOS, reusing the
+   macOS reducers (`TranscriptionFeature`/`HistoryFeature`/`SettingsFeature`). The prototype's
+   `@Observable` screens get rewritten as TCA in M-A so we build the UI once on the final
+   architecture. `TestStore`-tested.
+2. **Engine → both, Parakeet default.** Mirror macOS: Parakeet (multilingual, ANE) default +
+   Whisper sizes selectable in Settings. Validate Parakeet on the A14/8GB floor before locking
+   it as default.
+3. **Release → App-Store quality, TestFlight first.** Build to App Store standards (privacy
+   manifest, review prep, fallbacks) and ship TestFlight initially; submit when ready. Keep the
+   `openURL` hack + background-audio isolated and justifiable (see Risks).
 
 ## Workstreams
 
