@@ -57,10 +57,13 @@ Flow Session. **Prototype debt to pay down:**
 - *Skills:* `swiftui-liquid-glass`, `swiftui-patterns`, `swiftui-navigation`,
   `swiftui-layout-components`, `swiftui-animation`.
 
-### C — Hands-free entry  (P3-2)
+### C — Hands-free entry + session presence  (P3-2, P3-3)
 - App Intent **"Start Hex Dictation"** → starts a session (reuses the session controller);
   Shortcuts + **Action Button**. Control Center later.
-- *Skills:* `app-intents`.
+- **Live Activity (P3-3, V1):** Dynamic Island / Lock Screen "🎙 mic hot · MM:SS left" + End,
+  visible while dictating in other apps. New widget-extension target; shared
+  `FlowSessionAttributes` in HexCore; interactive End via App Intent.
+- *Skills:* `app-intents`, `activitykit`, `swiftui-liquid-glass`.
 
 ### D — Sync & unified data  (P4)
 - Unified History model (source + stable IDs, Codable). iCloud: settings/vocab via KVS,
@@ -133,11 +136,10 @@ CloudKit/SwiftData), `core-motion`, `swift-charts`, `swiftui-webkit`, `vision-fr
 
 ## New opportunities the tooling surfaces
 
-1. **Live Activity / Dynamic Island for the Flow Session** (`activitykit`). During a hot-mic
-   session, show a persistent **"🎙 mic hot · MM:SS left"** Live Activity with an **End**
-   control on the Lock Screen + Dynamic Island — visible *while you dictate in other apps*.
-   It turns the unavoidable orange recording dot into a branded, controllable, always-visible
-   affordance and a constant "session is live" reminder. Strong fit; **decide V1 vs V1.x.**
+1. **Live Activity / Dynamic Island for the Flow Session** (`activitykit`) — **DECIDED: V1**
+   (issue [P3-3](issues/P3-3-live-activity-session.md), workstream C). Persistent
+   **"🎙 mic hot · MM:SS left"** + End on Lock Screen + Dynamic Island, visible while dictating
+   in other apps — turns the unavoidable orange dot into a branded, controllable affordance.
 2. **On-device LLM cleanup via Foundation Models** (`apple-on-device-ai`). The deferred
    "Clean-up filler" toggle / formatter seam (#199) can be powered by Apple's on-device
    Foundation Models (iOS 26) — filler removal, punctuation, smart formatting, fully on-device,

@@ -32,6 +32,7 @@ independently shippable). Phases 2 + 3 are tightly coupled. Phase 4 last.
 | [P2-4](P2-4-bounce-and-swipe-back.md) | Keyboard→app bounce + swipe-back screen | 2 | P2-3 | M | DONE (bounce-per-dictation; continuous session = P3-1) |
 | [P3-1](P3-1-session-controller.md) | Continuous session controller + timeout | 3 | SPIKE-1, P2-4 | DONE ✅ (works on device) |
 | [P3-2](P3-2-app-intent-shortcuts.md) | App Intent (Shortcuts / Action Button) | 3 | P3-1 | S | TODO |
+| [P3-3](P3-3-live-activity-session.md) | Flow-Session Live Activity (Dynamic Island) | 3 | P3-1 | M | TODO (V1) |
 | [P4-1](P4-1-settings-vocab-sync.md) | iCloud sync: settings + vocab | 4 | P1-3 | M | TODO |
 | [P4-2](P4-2-history-sync-cloudkit.md) | iCloud sync: history (CloudKit) | 4 | P1-3 | L | TODO |
 | [P4-3](P4-3-audio-sync-optin.md) | iCloud sync: opt-in audio assets | 4 | P4-2 | M | TODO |
