@@ -65,7 +65,8 @@ final class KeyboardViewController: UIInputViewController {
         ])
         hosting.didMove(toParent: self)
 
-        let height = view.heightAnchor.constraint(equalToConstant: 268)
+        // Tall enough for four full QWERTY rows (~44pt each) plus a status banner.
+        let height = view.heightAnchor.constraint(equalToConstant: 300)
         height.priority = .defaultHigh
         height.isActive = true
     }
