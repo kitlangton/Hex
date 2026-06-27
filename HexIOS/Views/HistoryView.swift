@@ -3,22 +3,24 @@
 //  HexIOS
 //
 //  History tab (locked design §4.4): unified transcript list (notes + keyboard
-//  insertions), day-grouped, searchable. Source tagging + inline audio playback
-//  arrive with the unified-history data model (P4); for now every row is a note.
+//  insertions), day-grouped, searchable. Backed by SwiftData (@Query), so it
+//  persists across launches and syncs via CloudKit. Inline audio playback is a
+//  later add (P4-3).
 //
 
+import SwiftData
 import SwiftUI
 
 struct HistoryView: View {
-    let model: DictationModel
+    @Query(sort: \TranscriptEntry.date, order: .reverse) private var entries: [TranscriptEntry]
     @State private var query = ""
 
-    private var filtered: [DictationEntry] {
-        guard !query.isEmpty else { return model.entries }
-        return model.entries.filter { $0.text.localizedCaseInsensitiveContains(query) }
+    private var filtered: [TranscriptEntry] {
+        guard !query.isEmpty else { return entries }
+        return entries.filter { $0.text.localizedCaseInsensitiveContains(query) }
     }
 
-    private var grouped: [(day: Date, entries: [DictationEntry])] {
+    private var grouped: [(day: Date, entries: [TranscriptEntry])] {
         let cal = Calendar.current
         let groups = Dictionary(grouping: filtered) { cal.startOfDay(for: $0.date) }
         return groups.keys.sorted(by: >).map { ($0, groups[$0] ?? []) }
@@ -27,7 +29,7 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if model.entries.isEmpty {
+                if entries.isEmpty {
                     ContentUnavailableView(
                         "No transcripts yet",
                         systemImage: "text.bubble",
@@ -50,7 +52,7 @@ struct HistoryView: View {
         }
     }
 
-    private func row(_ entry: DictationEntry) -> some View {
+    private func row(_ entry: TranscriptEntry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(entry.text)
             HStack(spacing: 6) {

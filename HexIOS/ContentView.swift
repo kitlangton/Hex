@@ -7,6 +7,7 @@
 //  (prepare) and the global error alert.
 //
 
+import SwiftData
 import SwiftUI
 
 struct ContentView: View {
@@ -17,7 +18,7 @@ struct ContentView: View {
             HomeView(model: model)
                 .tabItem { Label("Home", systemImage: "mic") }
 
-            HistoryView(model: model)
+            HistoryView()
                 .tabItem { Label("History", systemImage: "clock") }
 
             SettingsView(model: model)
@@ -39,5 +40,10 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(model: DictationModel())
+    let container = try! ModelContainer(
+        for: TranscriptEntry.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+    return ContentView(model: DictationModel(modelContext: container.mainContext))
+        .modelContainer(container)
 }

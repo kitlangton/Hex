@@ -5,16 +5,26 @@
 //  Created by Conglei Shi on 6/26/26.
 //
 
+import SwiftData
 import SwiftUI
 
 @main
 struct HexIOSApp: App {
-    @State private var model = DictationModel()
+    private let modelContainer: ModelContainer
+    @State private var model: DictationModel
     @Environment(\.scenePhase) private var scenePhase
+
+    @MainActor
+    init() {
+        let container = TranscriptStore.makeContainer()
+        modelContainer = container
+        _model = State(initialValue: DictationModel(modelContext: container.mainContext))
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
+                .modelContainer(modelContainer)
                 .onOpenURL { url in
                     // Keyboard session bounce: hexkb://startSession
                     guard url.scheme == "hexkb", url.host == "startSession" else { return }
