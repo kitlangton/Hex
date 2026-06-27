@@ -56,7 +56,10 @@ struct HomeView: View {
 
     private var statusText: String {
         switch model.modelState {
-        case .loading: "Preparing model…"
+        case .loading:
+            model.modelProgress > 0
+                ? "Downloading model… \(Int(model.modelProgress * 100))%"
+                : "Preparing model… (first run downloads ~600MB+)"
         case .ready: "Keyboard ready · \(model.modelName)"
         case .failed: "Model unavailable"
         }
