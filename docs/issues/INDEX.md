@@ -30,6 +30,7 @@ independently shippable). Phases 2 + 3 are tightly coupled. Phase 4 last.
 | [P2-2](P2-2-keyboard-ui.md) | Mic-centric keyboard UI + insertion | 2 | P2-1 | M | DONE |
 | [P2-3](P2-3-ipc-layer.md) | IPC layer (App Group + Darwin notifications) | 2 | P2-1 | M | DONE |
 | [P2-4](P2-4-bounce-and-swipe-back.md) | Keyboard→app bounce + swipe-back screen | 2 | P2-3 | M | DONE (bounce-per-dictation; continuous session = P3-1) |
+| [P2-5](P2-5-keyboard-editing-controls.md) | Keyboard in-place editing controls (control surface) | 2 | P2-2 | M | TODO |
 | [P3-1](P3-1-session-controller.md) | Continuous session controller + timeout | 3 | SPIKE-1, P2-4 | DONE ✅ (works on device) |
 | [P3-2](P3-2-app-intent-shortcuts.md) | App Intent (Shortcuts / Action Button) | 3 | P3-1 | S | TODO |
 | [P3-3](P3-3-live-activity-session.md) | Flow-Session Live Activity (Dynamic Island) | 3 | P3-1 | M | TODO (V1) |
