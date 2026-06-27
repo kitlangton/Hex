@@ -82,7 +82,13 @@ final class KeyboardViewController: UIInputViewController {
         }
         guard let url = URL(string: "hexkb://dictate") else { return }
         state.statusText = "Opening Hex…"
-        openHostApp(url)
+        guard let application = firstUIApplicationInResponderChain() else {
+            state.statusText = "Couldn't reach the app (no UIApplication in chain)."
+            return
+        }
+        application.open(url, options: [:]) { [weak self] success in
+            if !success { self?.state.statusText = "iOS blocked opening Hex." }
+        }
     }
 
     // MARK: - Result delivery
@@ -113,19 +119,18 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Bounce
 
-    /// Opens the host app from the extension. Walking the responder chain to a
-    /// `openURL:`-responding object is unsupported by Apple but the standard way
-    /// keyboards launch their container; it requires Full Access. Isolated here so
-    /// there's a single place to fix if a future iOS changes the behavior.
-    private func openHostApp(_ url: URL) {
+    /// Opens the host app from the extension by finding `UIApplication` in the
+    /// responder chain and calling the modern `open(_:options:completionHandler:)`.
+    /// (The old `openURL:` selector hack no-ops on recent iOS.) Unsupported by
+    /// Apple but the standard way keyboards launch their container; requires Full
+    /// Access. Returns whether a UIApplication was found. Isolated here so there's
+    /// one place to fix if a future iOS changes the behavior.
+    private func firstUIApplicationInResponderChain() -> UIApplication? {
         var responder: UIResponder? = self
-        let selector = NSSelectorFromString("openURL:")
         while let current = responder {
-            if current.responds(to: selector) {
-                current.perform(selector, with: url)
-                return
-            }
+            if let application = current as? UIApplication { return application }
             responder = current.next
         }
+        return nil
     }
 }
