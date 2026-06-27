@@ -50,9 +50,14 @@ gets noisy.
 
 Reference mockup: the `hex_ios_app_designs_v3_ios26` widget (six screens). Summary:
 
-1. **Home** — title; keyboard-ready status pill (tinted: `⌨ Keyboard ready · <model>`); a
-   bordered **New note** card with the accent mic button + "Records & saves here. Won't
-   switch apps."; a **Recent** preview (last 2–3, with source icons); floating tab bar.
+1. **Home** (revised — see note below) — a small `Hex` wordmark with a **compact dictation
+   toggle** in the header (the whole Flow Session as one on/off bit: on starts the keyboard
+   session and shows a single muted "swipe back" line, off ends it — **no timer, no separate
+   "End" button**); the accent **New note** mic as the centered hero with "Records & saves
+   here"; a hairline **Recent** preview (last 3, kind shown by icon); floating tab bar.
+   Sized by state weight: dictation carries one bit so it's a chip, the in-app capture is the
+   action you take here so it's the hero. Model-download progress shows as the header status
+   line on first run.
 2. **Recording** (modal over Home) — "New note" label; red recording dot + timer pill;
    waveform; accent stop button; "Tap to stop · swipe up to cancel". Then a transient
    "Transcribing…" state. **No live partial-transcript preview in V1** (see §6).
@@ -93,6 +98,13 @@ The keyboard must render and read clearly in every state:
 - **"Clean-up filler" toggle** is the visible placeholder for the deferred formatter seam
   (#199); default **off**. It signals the architecture intent without shipping the feature.
 - **Coach** remains post-V1; History is its foundation and ships in V1.
+- **Home revised (post-V1 polish).** The original Home inverted the hierarchy — it made the
+  secondary feature (in-app notes) the hero while scattering the primary one (keyboard
+  dictation) across a model-ID status pill and two redundant session banners ("Flow session
+  active" + "swipe back"). The revision collapses dictation into a single header **toggle**
+  (on/off is the entire session state — the arbitrary countdown is gone), keeps the New note
+  mic as the deliberate hero, and presents Recent as hairline rows with a kind icon. Plain
+  language throughout ("Dictation" not "Flow session"; no raw model identifier on Home).
 
 ## 7. Where this is implemented
 

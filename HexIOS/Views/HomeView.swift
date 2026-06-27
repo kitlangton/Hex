@@ -2,9 +2,11 @@
 //  HomeView.swift
 //  HexIOS
 //
-//  Home tab (locked design §4.1): keyboard-ready status pill, a "New note"
-//  capture card (records & saves in-app, never switches apps), and a Recent
-//  preview. Monochrome surfaces; the single accent is on the mic + live signals.
+//  Home tab. Two ways to make text, sized by how much state each carries:
+//  dictation (keyboard, in other apps) is a single bit — on/off — so it lives in
+//  a compact header toggle; the in-app "New note" capture is the action you take
+//  here, so it's the hero. Monochrome surfaces; the single accent marks whatever
+//  is live or tappable. A Recent preview rounds it out (full list lives in History).
 //
 
 import SwiftData
@@ -17,19 +19,27 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    statusPill
+                VStack(alignment: .leading, spacing: 0) {
+                    header
 
-                    if model.sessionActive { sessionBanner }
-                    if model.awaitingSwipeBack { swipeBackBanner }
+                    if let status = statusLine {
+                        Text(status.text)
+                            .font(.footnote)
+                            .foregroundStyle(status.accent ? Color.accentColor : Color.secondary)
+                            .padding(.top, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
-                    newNoteCard
+                    newNoteHero
+                        .padding(.top, 44)
+                        .padding(.bottom, 48)
 
                     if !entries.isEmpty { recentSection }
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
             }
-            .navigationTitle("Hex")
+            .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(isPresented: Binding(
                 get: { model.phase != .idle },
                 set: { presented in
@@ -41,41 +51,58 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Status
+    // MARK: Header — brand + compact dictation toggle
 
-    private var statusPill: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "keyboard")
-            Text(statusText)
+    private var header: some View {
+        HStack {
+            Text("Hex")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Toggle("Dictation", isOn: dictationBinding)
+                .toggleStyle(DictationPillToggleStyle())
+                .disabled(model.modelState != .ready)
+                .opacity(model.modelState == .ready ? 1 : 0.5)
         }
-        .font(.footnote.weight(.medium))
-        .foregroundStyle(model.modelState == .ready ? Color.accentColor : .secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(pillBackground, in: .capsule)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var statusText: String {
+    /// The dictation toggle is the whole Flow Session in one bit: turning it on
+    /// starts the continuous keyboard session (then the user swipes back to their
+    /// app); turning it off ends it. No timers, no separate "End" button.
+    private var dictationBinding: Binding<Bool> {
+        Binding(
+            get: { model.sessionActive },
+            set: { on in
+                if on {
+                    Task { await model.startKeyboardSession() }
+                } else {
+                    model.endSession()
+                }
+            }
+        )
+    }
+
+    /// One quiet line under the header, by priority: model progress, then the
+    /// swipe-back hint while dictation is live, otherwise nothing.
+    private var statusLine: (text: String, accent: Bool)? {
         switch model.modelState {
         case .loading:
-            model.modelProgress > 0
+            return (model.modelProgress > 0
                 ? "Downloading model… \(Int(model.modelProgress * 100))%"
-                : "Preparing model… (first run downloads ~600MB+)"
-        case .ready: "Keyboard ready · \(model.modelName)"
-        case .failed: "Model unavailable"
+                : "Preparing model… first run downloads ~600MB", false)
+        case .failed:
+            return ("Model unavailable", false)
+        case .ready:
+            return model.sessionActive
+                ? ("Swipe back, then tap the Hex mic to dictate", true)
+                : nil
         }
     }
 
-    private var pillBackground: some ShapeStyle {
-        model.modelState == .ready ? AnyShapeStyle(Color.accentColor.opacity(0.12))
-                                   : AnyShapeStyle(Color(.secondarySystemBackground))
-    }
+    // MARK: New note — the in-app capture hero
 
-    // MARK: New note
-
-    private var newNoteCard: some View {
-        VStack(spacing: 12) {
+    private var newNoteHero: some View {
+        VStack(spacing: 14) {
             Button {
                 Task { await model.toggleRecording() }
             } label: {
@@ -87,15 +114,13 @@ struct HomeView: View {
             }
             .disabled(!model.canRecord && model.phase != .recording)
 
-            Text(captionText)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 3) {
+                Text("New note").font(.callout.weight(.medium))
+                Text(captionText).font(.footnote).foregroundStyle(.secondary)
+            }
+            .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-        .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
     }
 
     private var micSymbol: String {
@@ -108,61 +133,92 @@ struct HomeView: View {
 
     private var captionText: String {
         switch model.phase {
-        case .idle: "New note — records & saves here. Won't switch apps."
-        case .recording: "Listening… tap to stop."
+        case .idle: "Records & saves here"
+        case .recording: "Listening… tap to stop"
         case .transcribing: "Transcribing…"
         }
     }
 
-    // MARK: Recent
+    // MARK: Recent — last few transcripts, kind shown by icon
+
+    private var recentEntries: [TranscriptEntry] { Array(entries.prefix(3)) }
 
     private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Recent")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            ForEach(entries.prefix(3)) { entry in
-                HStack(alignment: .top, spacing: 10) {
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 4)
+
+            ForEach(Array(recentEntries.enumerated()), id: \.element.persistentModelID) { index, entry in
+                HStack(spacing: 12) {
                     Image(systemName: entry.kind.systemImage)
-                        .foregroundStyle(.secondary)
                         .font(.footnote)
-                        .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.text).lineLimit(2)
-                        Text(entry.date, style: .time)
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20)
+                    Text(entry.text)
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 8)
+                    Text(entry.date, style: .time)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 11)
+
+                if index < recentEntries.count - 1 { Divider() }
             }
         }
     }
+}
 
-    // MARK: Session banners
-
-    private var sessionBanner: some View {
-        HStack {
-            Label("Flow session active", systemImage: "dot.radiowaves.left.and.right")
-                .font(.footnote).foregroundStyle(Color.accentColor)
-            Spacer()
-            Button("End", role: .destructive) { model.endSession() }
-                .font(.footnote)
+/// Compact pill toggle for dictation: a status dot, the label, and a small
+/// switch, tinted with the accent when live. Custom-drawn so it stays small in
+/// the header rather than the full-width system switch.
+private struct DictationPillToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        let on = configuration.isOn
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) { configuration.isOn.toggle() }
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(on ? Color.accentColor : Color.secondary)
+                    .frame(width: 7, height: 7)
+                configuration.label
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                miniSwitch(on: on)
+            }
+            .padding(.vertical, 5)
+            .padding(.leading, 11)
+            .padding(.trailing, 7)
+            .background(
+                on ? AnyShapeStyle(Color.accentColor.opacity(0.12))
+                   : AnyShapeStyle(Color(.secondarySystemBackground)),
+                in: .capsule
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    on ? Color.accentColor.opacity(0.35) : Color(.separator),
+                    lineWidth: 1
+                )
+            )
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 10))
+        .buttonStyle(.plain)
     }
 
-    private var swipeBackBanner: some View {
-        Label {
-            Text("Session started — **swipe back to your app** and dictate from the Hex keyboard.")
-        } icon: {
-            Image(systemName: "arrow.uturn.backward")
+    private func miniSwitch(on: Bool) -> some View {
+        ZStack(alignment: on ? .trailing : .leading) {
+            Capsule()
+                .fill(on ? Color.accentColor : Color(.systemGray3))
+                .frame(width: 32, height: 19)
+            Circle()
+                .fill(.white)
+                .frame(width: 15, height: 15)
+                .padding(2)
         }
-        .font(.callout)
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 12))
-        .onTapGesture { model.dismissSwipeBackHint() }
     }
 }
