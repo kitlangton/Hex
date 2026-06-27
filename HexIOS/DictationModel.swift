@@ -12,6 +12,7 @@ import Dependencies
 import Foundation
 import HexCore
 import Observation
+import os
 import SwiftData
 import WhisperKit
 
@@ -307,7 +308,16 @@ final class DictationModel {
     private func handleCapture(_ signal: IPCSignal) async {
         switch signal {
         case .captureStart:
-            guard sessionEngine.isRunning, sessionCaptureURL == nil else { return }
+            guard sessionCaptureURL == nil else { return }
+            // iOS may have killed our backgrounded engine (interruption / route
+            // change). Verify it's actually live before capturing so we don't
+            // record an empty file. If it can't be recovered, end the session so
+            // the keyboard re-bounces for a fresh one instead of capturing silence.
+            guard sessionEngine.ensureRunning() else {
+                HexLog.recording.error("Flow Session capture aborted: audio engine could not be restarted")
+                endSession()
+                return
+            }
             sessionCaptureURL = try? sessionEngine.beginCapture()
             extendSession()
             updateActivity(capturing: true)
@@ -358,7 +368,11 @@ final class DictationModel {
                 DarwinSignal.post(.resultReady)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            // Background snippet failures shouldn't surface a modal alert in the
+            // app the user returns to later — log instead. (The user dictates from
+            // another app; a "Something went wrong" alert here is confusing and
+            // out of context.)
+            HexLog.transcription.error("Flow Session snippet transcription failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
