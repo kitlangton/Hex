@@ -84,9 +84,17 @@ final class KeyboardViewController: UIInputViewController {
             state.statusText = "Enable Full Access (Settings ▸ Keyboards) to dictate."
             return
         }
-        if currentSession()?.isUsable(at: Date()) == true {
+        // Re-read liveness fresh on every tap; a session can have died (app
+        // crashed/suspended) since we last refreshed, leaving a stale "active" flag.
+        let usable = currentSession()?.isUsable(at: Date()) == true
+        state.sessionActive = usable
+        if usable {
             toggleCapture()
         } else {
+            // Session is dead/stale — reset any stuck capturing state and bounce
+            // to start a fresh one instead of posting into the void.
+            isCapturing = false
+            state.isCapturing = false
             startSessionBounce()
         }
     }

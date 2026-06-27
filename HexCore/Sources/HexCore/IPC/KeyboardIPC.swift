@@ -39,19 +39,30 @@ public struct DictationSessionState: Codable, Equatable, Sendable {
     public var isActive: Bool
     /// When the continuous-mic session expires (nil when inactive).
     public var expiresAt: Date?
+    /// Last time the host app confirmed the session is genuinely alive. The host
+    /// refreshes this on a short interval while the engine runs; if the app dies
+    /// or is suspended without ending the session cleanly, it goes stale and the
+    /// keyboard stops trusting the (otherwise unexpired) state.
+    public var heartbeat: Date
 
-    public init(isActive: Bool, expiresAt: Date?) {
+    /// A session whose heartbeat is older than this is considered dead, even if
+    /// `expiresAt` is still in the future.
+    public static let livenessWindow: TimeInterval = 6
+
+    public init(isActive: Bool, expiresAt: Date?, heartbeat: Date = Date()) {
         self.isActive = isActive
         self.expiresAt = expiresAt
+        self.heartbeat = heartbeat
     }
 
-    public static let inactive = DictationSessionState(isActive: false, expiresAt: nil)
+    public static let inactive = DictationSessionState(isActive: false, expiresAt: nil, heartbeat: .distantPast)
 
-    /// Whether the session is currently usable at `now` (active and not expired).
+    /// Whether the session is currently usable at `now`: active, not expired, and
+    /// with a fresh heartbeat (proving the host app is actually running).
     public func isUsable(at now: Date) -> Bool {
         guard isActive else { return false }
-        guard let expiresAt else { return true }
-        return now < expiresAt
+        if let expiresAt, now >= expiresAt { return false }
+        return now.timeIntervalSince(heartbeat) < Self.livenessWindow
     }
 }
 
