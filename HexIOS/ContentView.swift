@@ -13,6 +13,12 @@ import SwiftUI
 struct ContentView: View {
     let model: DictationModel
 
+    /// First-run flag (stored in the shared App Group so the keyboard can read it
+    /// later if needed). When false, onboarding is presented full-screen.
+    @AppStorage(OnboardingState.didOnboardKey, store: OnboardingState.store)
+    private var didOnboard = false
+    @State private var showOnboarding = false
+
     var body: some View {
         TabView {
             HomeView(model: model)
@@ -21,11 +27,15 @@ struct ContentView: View {
             HistoryView()
                 .tabItem { Label("History", systemImage: "clock") }
 
-            SettingsView(model: model)
+            SettingsView(model: model, showOnboarding: $showOnboarding)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(.accentColor)
         .task { await model.prepare() }
+        .onAppear { if !didOnboard { showOnboarding = true } }
+        .fullScreenCover(isPresented: $showOnboarding, onDismiss: { didOnboard = true }) {
+            OnboardingView(model: model)
+        }
         .alert(
             "Something went wrong",
             isPresented: Binding(
