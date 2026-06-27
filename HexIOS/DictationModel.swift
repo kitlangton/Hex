@@ -2,14 +2,16 @@
 //  DictationModel.swift
 //  HexIOS
 //
-//  Observable orchestrator for the prototype: model loading, mic permission,
-//  record → transcribe → history. UI-facing state only; the actual work is done
-//  by AudioRecorder (main actor) and WhisperTranscriber (its own actor).
+//  Observable orchestrator: model loading, mic permission, record → transcribe →
+//  history, and the keyboard Flow Session. Transcription uses the shared engine
+//  (TranscriptionClient) so iOS gets Whisper + Parakeet, matching macOS.
 //
 
+import Dependencies
 import Foundation
 import HexCore
 import Observation
+import WhisperKit
 
 struct DictationEntry: Identifiable, Equatable {
     let id = UUID()
@@ -32,8 +34,9 @@ final class DictationModel {
         case transcribing
     }
 
-    /// WhisperKit short model name. "base" balances size/accuracy for a first run.
-    let modelName = "base"
+    /// Default transcription model. Parakeet v3 (multilingual) matches the macOS
+    /// default; the shared engine also supports Whisper sizes (user-selectable later).
+    let modelName = ParakeetModel.multilingualV3.identifier
 
     private(set) var modelState: ModelState = .loading
     private(set) var phase: Phase = .idle
@@ -55,7 +58,7 @@ final class DictationModel {
     let sessionDuration: TimeInterval = 900
 
     private let recorder = AudioRecorder()
-    private let transcriber = WhisperTranscriber()
+    @ObservationIgnored @Dependency(\.transcription) private var transcription
     private let ipc = KeyboardIPC(appGroupIdentifier: HexAppGroup.identifier)
     private var prepareTask: Task<Void, Never>?
 
@@ -88,7 +91,7 @@ final class DictationModel {
     private func runPrepare() async {
         _ = await recorder.requestPermission()
         do {
-            try await transcriber.load(model: modelName)
+            try await transcription.downloadModel(modelName) { _ in }
             modelState = .ready
         } catch {
             modelState = .failed(error.localizedDescription)
@@ -135,7 +138,7 @@ final class DictationModel {
         phase = .transcribing
         defer { phase = .idle }
         do {
-            let text = try await transcriber.transcribe(url: url)
+            let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
             try? FileManager.default.removeItem(at: url)
             guard !text.isEmpty else { return }
             entries.insert(DictationEntry(text: text, date: Date()), at: 0)
@@ -213,7 +216,7 @@ final class DictationModel {
 
     private func transcribeSessionSnippet(_ url: URL) async {
         do {
-            let text = try await transcriber.transcribe(url: url)
+            let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
             try? FileManager.default.removeItem(at: url)
             guard !text.isEmpty else { return }
             entries.insert(DictationEntry(text: text, date: Date()), at: 0)
