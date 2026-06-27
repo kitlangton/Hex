@@ -73,6 +73,12 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         state.hasFullAccess = hasFullAccess
+        // With Full Access we can touch the App Group — record presence + signal
+        // so the host app's onboarding can confirm the keyboard is set up.
+        if hasFullAccess {
+            KeyboardPresence.markActive(appGroupIdentifier: HexAppGroup.identifier)
+            DarwinSignal.post(.keyboardActive)
+        }
         refreshSessionState()
         insertPendingResult()
         startObservingResults()

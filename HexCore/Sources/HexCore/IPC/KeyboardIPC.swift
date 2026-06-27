@@ -79,6 +79,25 @@ public enum IPCSignal: String, Sendable, CaseIterable {
     case sessionChanged = "co.stonefrontier.hex.ipc.sessionChanged"
     /// Live Activity / any surface -> host: end the current session.
     case endSession = "co.stonefrontier.hex.ipc.endSession"
+    /// keyboard -> host: the keyboard became active (only fires with Full Access,
+    /// since App Group / Darwin access requires it) — used for setup confirmation.
+    case keyboardActive = "co.stonefrontier.hex.ipc.keyboardActive"
+}
+
+/// Records that the keyboard extension has run with Full Access. The keyboard can
+/// only write the App Group when Full Access is granted, so a present timestamp
+/// proves the keyboard is both enabled AND has Full Access — which the host app
+/// otherwise has no way to detect. Used by onboarding to confirm setup.
+public enum KeyboardPresence {
+    private static let key = "hex.keyboardLastActiveAt"
+
+    public static func markActive(appGroupIdentifier: String) {
+        UserDefaults(suiteName: appGroupIdentifier)?.set(Date(), forKey: key)
+    }
+
+    public static func lastActive(appGroupIdentifier: String) -> Date? {
+        UserDefaults(suiteName: appGroupIdentifier)?.object(forKey: key) as? Date
+    }
 }
 
 /// Standard filenames inside the App Group container.
