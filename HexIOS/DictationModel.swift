@@ -15,21 +15,23 @@ import Observation
 import SwiftData
 import WhisperKit
 
-enum DictationSource: String, Codable, Equatable {
-    case note      // recorded in-app from Home
-    case keyboard  // dictated via the keyboard session
+/// What produced a transcript — the coaching corpus distinguishes guided in-app
+/// notes from natural cross-app dictation (Review/Coach design §13, RC-0).
+enum TranscriptKind: String, Codable, Equatable {
+    case dictation  // cross-app / keyboard Flow Session
+    case note       // in-app capture from the app
 
     var label: String {
         switch self {
+        case .dictation: "Dictation"
         case .note: "Note"
-        case .keyboard: "Keyboard"
         }
     }
 
     var systemImage: String {
         switch self {
+        case .dictation: "keyboard"
         case .note: "note.text"
-        case .keyboard: "keyboard"
         }
     }
 }
@@ -85,8 +87,11 @@ final class DictationModel {
         }
     }
 
-    private func save(text: String, source: DictationSource) {
-        modelContext.insert(TranscriptEntry(text: text, date: Date(), source: source))
+    /// Persist a transcript, retaining its audio (moved into the App Group) so the
+    /// Coach corpus has both text and audio.
+    private func save(text: String, kind: TranscriptKind, audioURL: URL?) {
+        let filename = audioURL.flatMap { AudioStore.persist($0) }
+        modelContext.insert(TranscriptEntry(text: text, date: Date(), kind: kind, audioFilename: filename))
         try? modelContext.save()
     }
     /// When the current in-app note recording started (for the recording modal timer).
@@ -223,9 +228,8 @@ final class DictationModel {
         defer { phase = .idle }
         do {
             let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
-            try? FileManager.default.removeItem(at: url)
-            guard !text.isEmpty else { return }
-            save(text: text, source: .note)
+            guard !text.isEmpty else { try? FileManager.default.removeItem(at: url); return }
+            save(text: text, kind: .note, audioURL: url)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -347,9 +351,8 @@ final class DictationModel {
     private func transcribeSessionSnippet(_ url: URL) async {
         do {
             let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
-            try? FileManager.default.removeItem(at: url)
-            guard !text.isEmpty else { return }
-            save(text: text, source: .keyboard)
+            guard !text.isEmpty else { try? FileManager.default.removeItem(at: url); return }
+            save(text: text, kind: .dictation, audioURL: url)
             if let ipc {
                 try? ipc.resultMailbox.write(DictationResult(text: text, createdAt: Date()))
                 DarwinSignal.post(.resultReady)
