@@ -22,6 +22,7 @@
 		4EF356252FEF3D0000DCA9C2 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356242FEF3D0000DCA9C2 /* FluidAudio */; };
 		4EF356E82FEF431A00DCA9C2 /* HexIOSKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4EF356F02FEF434B00DCA9C2 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356EF2FEF434B00DCA9C2 /* HexCore */; };
+		4EF356F62FEF5ABF00DCA9C2 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */; };
 		4F0D6A012F1A000100000001 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
 		4F0D6A022F1A000100000001 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		7BA7464C2FBD689B00814C43 /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = 7BA7464B2FBD689B00814C43 /* MLXAudioSTT */; };
@@ -162,6 +163,7 @@
 			files = (
 				4EF356232FEF3CEF00DCA9C2 /* WhisperKit in Frameworks */,
 				4EF356252FEF3D0000DCA9C2 /* FluidAudio in Frameworks */,
+				4EF356F62FEF5ABF00DCA9C2 /* ComposableArchitecture in Frameworks */,
 				4EF356212FEF3CE300DCA9C2 /* HexCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -295,6 +297,7 @@
 				4EF356202FEF3CE300DCA9C2 /* HexCore */,
 				4EF356222FEF3CEF00DCA9C2 /* WhisperKit */,
 				4EF356242FEF3D0000DCA9C2 /* FluidAudio */,
+				4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */,
 			);
 			productName = HexIOS;
 			productReference = 4EF356152FEF3C2100DCA9C2 /* HexIOS.app */;
@@ -1070,6 +1073,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */;
 			productName = HexCore;
+		};
+		4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 47E05E002D444EE900D26DA6 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
+			productName = ComposableArchitecture;
 		};
 		7BA7464B2FBD689B00814C43 /* MLXAudioSTT */ = {
 			isa = XCSwiftPackageProductDependency;
