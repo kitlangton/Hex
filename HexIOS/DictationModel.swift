@@ -52,6 +52,8 @@ final class DictationModel {
     let modelName = ParakeetModel.multilingualV3.identifier
 
     private(set) var modelState: ModelState = .loading
+    /// 0…1 progress of the first-run model download/load (Parakeet is large).
+    private(set) var modelProgress: Double = 0
     private(set) var phase: Phase = .idle
     /// When the current in-app note recording started (for the recording modal timer).
     private(set) var recordingStartedAt: Date?
@@ -114,7 +116,10 @@ final class DictationModel {
     private func runPrepare() async {
         _ = await recorder.requestPermission()
         do {
-            try await transcription.downloadModel(modelName) { _ in }
+            try await transcription.downloadModel(modelName) { [weak self] progress in
+                let fraction = progress.fractionCompleted
+                Task { @MainActor in self?.modelProgress = fraction }
+            }
             modelState = .ready
         } catch {
             modelState = .failed(error.localizedDescription)
