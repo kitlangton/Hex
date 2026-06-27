@@ -10,7 +10,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    let model: DictationModel
+    @Bindable var model: DictationModel
 
     // Placeholder toggles (real backing arrives with P4 / formatter seam #199).
     @State private var iCloudSync = true
@@ -22,7 +22,9 @@ struct SettingsView: View {
             Form {
                 Section("Transcription") {
                     LabeledContent("Model", value: model.modelName)
-                    LabeledContent("Session length", value: "\(Int(model.sessionDuration / 60)) min")
+                    Picker("Session length", selection: $model.sessionLength) {
+                        ForEach(SessionLength.allCases) { Text($0.label).tag($0) }
+                    }
                     LabeledContent("Language", value: "Automatic")
                     NavigationLink("Vocabulary") { vocabularyPlaceholder }
                 }

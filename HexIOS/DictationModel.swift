@@ -19,6 +19,19 @@ struct DictationEntry: Identifiable, Equatable {
     let date: Date
 }
 
+/// How long a Flow Session stays hot after the last activity (product spec: 5/15/60/never).
+enum SessionLength: Int, CaseIterable, Identifiable {
+    case five = 5
+    case fifteen = 15
+    case sixty = 60
+    case never = 0
+
+    var id: Int { rawValue }
+    /// nil = no timeout ("never").
+    var duration: TimeInterval? { self == .never ? nil : TimeInterval(rawValue * 60) }
+    var label: String { self == .never ? "Never" : "\(rawValue) min" }
+}
+
 @MainActor
 @Observable
 final class DictationModel {
@@ -54,8 +67,11 @@ final class DictationModel {
     private(set) var sessionActive = false
     private(set) var sessionExpiresAt: Date?
 
-    /// Session auto-ends this long after the last activity.
-    let sessionDuration: TimeInterval = 900
+    /// Session auto-ends this long after the last activity (persisted in the App Group).
+    var sessionLength: SessionLength = .fifteen {
+        didSet { UserDefaults(suiteName: HexAppGroup.identifier)?.set(sessionLength.rawValue, forKey: Self.sessionLengthKey) }
+    }
+    @ObservationIgnored private static let sessionLengthKey = "hex.sessionLengthMinutes"
 
     private let recorder = AudioRecorder()
     @ObservationIgnored @Dependency(\.transcription) private var transcription
@@ -67,6 +83,13 @@ final class DictationModel {
     private var captureObserver: DarwinSignalObserver?
     private var sessionTimeoutTask: Task<Void, Never>?
     private var sessionCaptureURL: URL?
+
+    init() {
+        if let raw = UserDefaults(suiteName: HexAppGroup.identifier)?.object(forKey: Self.sessionLengthKey) as? Int,
+           let value = SessionLength(rawValue: raw) {
+            sessionLength = value
+        }
+    }
 
     var canRecord: Bool { modelState == .ready && phase != .transcribing }
 
@@ -231,12 +254,20 @@ final class DictationModel {
 
     /// (Re)set the inactivity timeout and republish the session state.
     private func extendSession() {
-        let expires = Date().addingTimeInterval(sessionDuration)
         sessionActive = true
+        sessionTimeoutTask?.cancel()
+
+        guard let duration = sessionLength.duration else {
+            // "Never": keep the session hot with no auto-timeout.
+            sessionExpiresAt = nil
+            sessionTimeoutTask = nil
+            publishSessionState(active: true, expiresAt: nil)
+            return
+        }
+
+        let expires = Date().addingTimeInterval(duration)
         sessionExpiresAt = expires
         publishSessionState(active: true, expiresAt: expires)
-
-        sessionTimeoutTask?.cancel()
         sessionTimeoutTask = Task { [weak self] in
             let seconds = expires.timeIntervalSinceNow
             if seconds > 0 {
