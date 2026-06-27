@@ -21,6 +21,13 @@ final class KeyboardViewController: UIInputViewController {
     private var observerTask: Task<Void, Never>?
     private var isCapturing = false
 
+    /// Drives the once-per-second `state.clock` tick so the "MM:SS left" pill and
+    /// the session-expiry phase update live without a re-bounce.
+    private var clockTimer: Timer?
+
+    /// Auto-clears the brief "Inserted" confirmation (the .inserting state).
+    private var insertConfirmationTask: Task<Void, Never>?
+
     /// Don't insert a result older than this (avoids surfacing a stale, never-consumed transcript).
     private let resultFreshnessWindow: TimeInterval = 300
 
@@ -30,12 +37,20 @@ final class KeyboardViewController: UIInputViewController {
         state.needsNextKeyboard = needsInputModeSwitchKey
         state.hasFullAccess = hasFullAccess
 
-        let root = KeyboardView(
-            state: state,
+        let actions = KeyboardActions(
             onMic: { [weak self] in self?.handleMicTap() },
             onDelete: { [weak self] in self?.textDocumentProxy.deleteBackward() },
-            onNextKeyboard: { [weak self] in self?.advanceToNextInputMode() }
+            onNextKeyboard: { [weak self] in self?.advanceToNextInputMode() },
+            onSpace: { [weak self] in self?.textDocumentProxy.insertText(" ") },
+            onReturn: { [weak self] in self?.textDocumentProxy.insertText("\n") },
+            onDeleteWord: { [weak self] in self?.deleteWordBackward() },
+            onCaretMove: { [weak self] offset in self?.textDocumentProxy.adjustTextPosition(byCharacterOffset: offset) },
+            onInsert: { [weak self] text in self?.textDocumentProxy.insertText(text) },
+            onUndo: { [weak self] in self?.performUndoAction(redo: false) },
+            onRedo: { [weak self] in self?.performUndoAction(redo: true) }
         )
+
+        let root = KeyboardView(state: state, actions: actions)
 
         let hosting = UIHostingController(rootView: root)
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
@@ -50,7 +65,7 @@ final class KeyboardViewController: UIInputViewController {
         ])
         hosting.didMove(toParent: self)
 
-        let height = view.heightAnchor.constraint(equalToConstant: 240)
+        let height = view.heightAnchor.constraint(equalToConstant: 268)
         height.priority = .defaultHigh
         height.isActive = true
     }
@@ -61,6 +76,7 @@ final class KeyboardViewController: UIInputViewController {
         refreshSessionState()
         insertPendingResult()
         startObservingResults()
+        startClock()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -68,6 +84,21 @@ final class KeyboardViewController: UIInputViewController {
         observerTask?.cancel()
         observerTask = nil
         resultObserver = nil
+        clockTimer?.invalidate()
+        clockTimer = nil
+        insertConfirmationTask?.cancel()
+        insertConfirmationTask = nil
+    }
+
+    /// One cheap timer drives the live countdown + expiry transition. No model,
+    /// no audio — keeps the extension memory-light.
+    private func startClock() {
+        clockTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.state.clock = Date() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        clockTimer = timer
     }
 
     override func viewWillLayoutSubviews() {
@@ -84,10 +115,16 @@ final class KeyboardViewController: UIInputViewController {
             state.statusText = "Enable Full Access (Settings ▸ Keyboards) to dictate."
             return
         }
+        // Any user-initiated tap clears a stale error/confirmation so the UI
+        // reflects the action they just took.
+        state.errorMessage = nil
+        state.justInserted = false
         // Re-read liveness fresh on every tap; a session can have died (app
         // crashed/suspended) since we last refreshed, leaving a stale "active" flag.
-        let usable = currentSession()?.isUsable(at: Date()) == true
+        let session = currentSession()
+        let usable = session?.isUsable(at: Date()) == true
         state.sessionActive = usable
+        state.sessionExpiresAt = usable ? session?.expiresAt : nil
         if usable {
             toggleCapture()
         } else {
@@ -116,11 +153,15 @@ final class KeyboardViewController: UIInputViewController {
         guard let url = URL(string: "hexkb://startSession") else { return }
         state.statusText = "Starting session in Hex…"
         guard let application = firstUIApplicationInResponderChain() else {
+            state.errorMessage = "Couldn't reach Hex. Open the app once, then try again."
             state.statusText = "Couldn't reach the app (no UIApplication in chain)."
             return
         }
         application.open(url, options: [:]) { [weak self] success in
-            if !success { self?.state.statusText = "iOS blocked opening Hex." }
+            if !success {
+                self?.state.errorMessage = "iOS blocked opening Hex."
+                self?.state.statusText = "iOS blocked opening Hex."
+            }
         }
     }
 
@@ -149,8 +190,10 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refreshSessionState() {
-        let active = currentSession()?.isUsable(at: Date()) == true
+        let session = currentSession()
+        let active = session?.isUsable(at: Date()) == true
         state.sessionActive = active
+        state.sessionExpiresAt = active ? session?.expiresAt : nil
         if !active {
             isCapturing = false
             state.isCapturing = false
@@ -169,7 +212,64 @@ final class KeyboardViewController: UIInputViewController {
         ipc.resultMailbox.clear()
         isCapturing = false
         state.isCapturing = false
+        state.errorMessage = nil
         state.statusText = state.sessionActive ? "Inserted — tap to dictate again." : "Inserted."
+        flashInsertedConfirmation()
+    }
+
+    /// Shows the brief ".inserting" confirmation state, then returns to idle.
+    private func flashInsertedConfirmation() {
+        insertConfirmationTask?.cancel()
+        state.justInserted = true
+        insertConfirmationTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.state.justInserted = false }
+        }
+    }
+
+    // MARK: - Editing controls (P2-5)
+
+    /// Deletes back to the previous word boundary using the text *before* the
+    /// caret, mirroring the system "delete word" behavior. Falls back to a single
+    /// `deleteBackward` when the context is unavailable.
+    private func deleteWordBackward() {
+        guard let before = textDocumentProxy.documentContextBeforeInput, !before.isEmpty else {
+            textDocumentProxy.deleteBackward()
+            return
+        }
+        // Count trailing whitespace, then the word characters before it.
+        var deleteCount = 0
+        let reversed = Array(before.reversed())
+        var index = 0
+        while index < reversed.count, reversed[index].isWhitespace {
+            deleteCount += 1
+            index += 1
+        }
+        while index < reversed.count, !reversed[index].isWhitespace {
+            deleteCount += 1
+            index += 1
+        }
+        if deleteCount == 0 { deleteCount = 1 }
+        for _ in 0 ..< deleteCount { textDocumentProxy.deleteBackward() }
+    }
+
+    /// Best-effort undo/redo by walking the responder chain for the host text
+    /// view's `UIUndoManager`. No-ops silently if the host doesn't expose one —
+    /// undo/redo from a keyboard extension isn't guaranteed.
+    private func performUndoAction(redo: Bool) {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let manager = current.undoManager {
+                if redo {
+                    if manager.canRedo { manager.redo() }
+                } else {
+                    if manager.canUndo { manager.undo() }
+                }
+                return
+            }
+            responder = current.next
+        }
     }
 
     // MARK: - Bounce
