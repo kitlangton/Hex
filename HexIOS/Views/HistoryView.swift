@@ -40,7 +40,11 @@ struct HistoryView: View {
                         ForEach(grouped, id: \.day) { group in
                             Section(group.day.formatted(date: .abbreviated, time: .omitted)) {
                                 ForEach(group.entries) { entry in
-                                    row(entry)
+                                    NavigationLink {
+                                        TranscriptDetailView(entry: entry)
+                                    } label: {
+                                        row(entry)
+                                    }
                                 }
                             }
                         }
