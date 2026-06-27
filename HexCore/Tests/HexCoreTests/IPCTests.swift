@@ -54,17 +54,28 @@ import Testing
     }
 
     @Test func active_withoutExpiry_isUsable() {
-        let state = DictationSessionState(isActive: true, expiresAt: nil)
+        let state = DictationSessionState(isActive: true, expiresAt: nil, heartbeat: now)
         #expect(state.isUsable(at: now) == true)
     }
 
     @Test func active_beforeExpiry_isUsable() {
-        let state = DictationSessionState(isActive: true, expiresAt: now.addingTimeInterval(60))
+        let state = DictationSessionState(isActive: true, expiresAt: now.addingTimeInterval(60), heartbeat: now)
         #expect(state.isUsable(at: now) == true)
     }
 
     @Test func active_afterExpiry_isNotUsable() {
-        let state = DictationSessionState(isActive: true, expiresAt: now.addingTimeInterval(-1))
+        let state = DictationSessionState(isActive: true, expiresAt: now.addingTimeInterval(-1), heartbeat: now)
+        #expect(state.isUsable(at: now) == false)
+    }
+
+    @Test func active_freshHeartbeat_isUsable() {
+        let state = DictationSessionState(isActive: true, expiresAt: now.addingTimeInterval(60), heartbeat: now.addingTimeInterval(-1))
+        #expect(state.isUsable(at: now) == true)
+    }
+
+    @Test func active_staleHeartbeat_isNotUsable() {
+        // App died without ending the session: not expired, but heartbeat is old.
+        let state = DictationSessionState(isActive: true, expiresAt: now.addingTimeInterval(60), heartbeat: now.addingTimeInterval(-30))
         #expect(state.isUsable(at: now) == false)
     }
 }

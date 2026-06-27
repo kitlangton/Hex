@@ -87,6 +87,7 @@ final class DictationModel {
     private var captureObserverTask: Task<Void, Never>?
     private var captureObserver: DarwinSignalObserver?
     private var sessionTimeoutTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
     private var sessionCaptureURL: URL?
 
     init() {
@@ -227,6 +228,7 @@ final class DictationModel {
             if !sessionEngine.isRunning { try sessionEngine.start() }
             beginObservingCaptures()
             extendSession()
+            startHeartbeat()
             awaitingSwipeBack = true
         } catch {
             errorMessage = error.localizedDescription
@@ -237,12 +239,27 @@ final class DictationModel {
     func endSession() {
         sessionTimeoutTask?.cancel(); sessionTimeoutTask = nil
         captureObserverTask?.cancel(); captureObserverTask = nil
+        heartbeatTask?.cancel(); heartbeatTask = nil
         captureObserver = nil
         sessionEngine.stop()
         sessionCaptureURL = nil
         sessionActive = false
         sessionExpiresAt = nil
         publishSessionState(active: false, expiresAt: nil)
+    }
+
+    /// Refresh the session heartbeat while the app is genuinely alive, so the
+    /// keyboard can detect a crash/suspension (heartbeat goes stale) and bounce
+    /// instead of posting capture signals into the void.
+    private func startHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.sessionActive else { break }
+                self.publishSessionState(active: true, expiresAt: self.sessionExpiresAt, notify: false)
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
     }
 
     private func beginObservingCaptures() {
@@ -313,9 +330,10 @@ final class DictationModel {
         }
     }
 
-    private func publishSessionState(active: Bool, expiresAt: Date?) {
+    private func publishSessionState(active: Bool, expiresAt: Date?, notify: Bool = true) {
         guard let ipc else { return }
+        // heartbeat defaults to now in the initializer.
         try? ipc.sessionMailbox.write(DictationSessionState(isActive: active, expiresAt: expiresAt))
-        DarwinSignal.post(.sessionChanged)
+        if notify { DarwinSignal.post(.sessionChanged) }
     }
 }
