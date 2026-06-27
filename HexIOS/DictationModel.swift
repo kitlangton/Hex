@@ -40,12 +40,8 @@ final class DictationModel {
     private(set) var entries: [DictationEntry] = []
     var errorMessage: String?
 
-    /// True when this dictation was triggered from the keyboard (via the
-    /// `hexkb://` bounce); the result is handed back through the App Group
-    /// instead of (only) being kept in history.
-    private(set) var keyboardMode = false
-    /// Set after a keyboard-triggered transcription completes, prompting the
-    /// user to swipe back to their app where the keyboard will insert the text.
+    /// Set after a keyboard session starts, prompting the user to swipe back to
+    /// their app where the keyboard will insert dictated text.
     private(set) var awaitingSwipeBack = false
 
     /// Whether a continuous Flow Session is active (mic stays hot; keyboard can
@@ -105,20 +101,6 @@ final class DictationModel {
         }
     }
 
-    /// Entry point for the keyboard bounce (`hexkb://dictate`): start a recording
-    /// immediately and remember to route the result back through the App Group.
-    func beginKeyboardDictation() async {
-        awaitingSwipeBack = false
-        keyboardMode = true
-        // Cold launch via URL can beat the view's prepare(); ensure the model is ready.
-        if modelState != .ready { await prepare() }
-        guard modelState == .ready else {
-            keyboardMode = false
-            return
-        }
-        if phase == .idle { await startRecording() }
-    }
-
     private func startRecording() async {
         guard modelState == .ready else { return }
         guard await recorder.requestPermission() else {
@@ -143,29 +125,11 @@ final class DictationModel {
         do {
             let text = try await transcriber.transcribe(url: url)
             try? FileManager.default.removeItem(at: url)
-            guard !text.isEmpty else {
-                keyboardMode = false
-                return
-            }
+            guard !text.isEmpty else { return }
             entries.insert(DictationEntry(text: text, date: Date()), at: 0)
-            if keyboardMode {
-                handOffToKeyboard(text)
-            }
         } catch {
             errorMessage = error.localizedDescription
-            keyboardMode = false
         }
-    }
-
-    /// Write the transcript to the App Group mailbox and signal the keyboard,
-    /// then prompt the user to swipe back so the keyboard can insert it.
-    private func handOffToKeyboard(_ text: String) {
-        if let ipc {
-            try? ipc.resultMailbox.write(DictationResult(text: text, createdAt: Date()))
-            DarwinSignal.post(.resultReady)
-        }
-        keyboardMode = false
-        awaitingSwipeBack = true
     }
 
     func dismissSwipeBackHint() {
