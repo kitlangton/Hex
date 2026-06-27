@@ -4,6 +4,10 @@ Local issue tracker derived from
 [ios-keyboard-v1-implementation.md](../ios-keyboard-v1-implementation.md) and
 [ios-keyboard-v1-plan.md](../ios-keyboard-v1-plan.md).
 
+> **UI design is LOCKED** — see [ios-ui-design-v1.md](../ios-ui-design-v1.md) (monochrome +
+> single iOS-blue accent, iOS 26 cues, floating tab bar). It governs **P1-3** (host UI),
+> **P2-2** (keyboard UI), and **X-1** (onboarding).
+
 > These are local markdown issues (not GitHub issues). Status legend:
 > `TODO` · `IN-PROGRESS` · `BLOCKED` · `DONE`.
 

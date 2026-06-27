@@ -9,6 +9,10 @@
 ## Goal
 Guide the user through the multi-step setup with as little drop-off as possible.
 
+> **UI design is LOCKED:** follow [ios-ui-design-v1.md](../ios-ui-design-v1.md) screen 6 —
+> accent mic header + a 5-step checklist, each step reflecting real system state, with one
+> primary CTA.
+
 ## Tasks
 - [ ] Step 1: add the keyboard in iOS Settings (deep link + instructions).
 - [ ] Step 2: enable Full Access (explain why: App Group + network).
