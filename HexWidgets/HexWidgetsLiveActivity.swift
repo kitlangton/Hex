@@ -2,79 +2,71 @@
 //  HexWidgetsLiveActivity.swift
 //  HexWidgets
 //
-//  Created by Conglei Shi on 6/26/26.
+//  Flow Session Live Activity (P3-3): a persistent "mic hot · MM:SS left"
+//  indicator on the Lock Screen + Dynamic Island while a dictation session is
+//  active, with an interactive End button. Uses the shared FlowSessionAttributes
+//  from HexCore.
 //
 
 import ActivityKit
-import WidgetKit
+import AppIntents
+import HexCore
 import SwiftUI
-
-struct HexWidgetsAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        // Dynamic stateful properties about your activity go here!
-        var emoji: String
-    }
-
-    // Fixed non-changing properties about your activity go here!
-    var name: String
-}
+import WidgetKit
 
 struct HexWidgetsLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: HexWidgetsAttributes.self) { context in
-            // Lock screen/banner UI goes here
-            VStack {
-                Text("Hello \(context.state.emoji)")
+        ActivityConfiguration(for: FlowSessionAttributes.self) { context in
+            // Lock Screen / banner
+            HStack(spacing: 12) {
+                micGlyph(context).font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hex dictation").font(.headline)
+                    countdown(context).font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
+                endButton.buttonStyle(.bordered).tint(.accentColor)
             }
-            .activityBackgroundTint(Color.cyan)
-            .activitySystemActionForegroundColor(Color.black)
-
+            .padding()
+            .activitySystemActionForegroundColor(.accentColor)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded UI goes here.  Compose the expanded UI through
-                // various regions, like leading/trailing/center/bottom
-                DynamicIslandExpandedRegion(.leading) {
-                    Text("Leading")
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text("Trailing")
+                DynamicIslandExpandedRegion(.leading) { micGlyph(context).font(.title3) }
+                DynamicIslandExpandedRegion(.trailing) { countdown(context).font(.title3) }
+                DynamicIslandExpandedRegion(.center) {
+                    Text("Hex dictation").font(.caption).foregroundStyle(.secondary)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("Bottom \(context.state.emoji)")
-                    // more content
+                    endButton.buttonStyle(.bordered).tint(.accentColor)
                 }
             } compactLeading: {
-                Text("L")
+                Image(systemName: "mic.fill").foregroundStyle(.tint)
             } compactTrailing: {
-                Text("T \(context.state.emoji)")
+                countdown(context).monospacedDigit()
             } minimal: {
-                Text(context.state.emoji)
+                Image(systemName: "mic.fill").foregroundStyle(.tint)
             }
-            .widgetURL(URL(string: "http://www.apple.com"))
-            .keylineTint(Color.red)
+            .keylineTint(.accentColor)
         }
     }
-}
 
-extension HexWidgetsAttributes {
-    fileprivate static var preview: HexWidgetsAttributes {
-        HexWidgetsAttributes(name: "World")
+    private var endButton: some View {
+        Button(intent: EndFlowSessionIntent()) {
+            Label("End", systemImage: "stop.fill")
+        }
     }
-}
 
-extension HexWidgetsAttributes.ContentState {
-    fileprivate static var smiley: HexWidgetsAttributes.ContentState {
-        HexWidgetsAttributes.ContentState(emoji: "😀")
-     }
-     
-     fileprivate static var starEyes: HexWidgetsAttributes.ContentState {
-         HexWidgetsAttributes.ContentState(emoji: "🤩")
-     }
-}
+    private func micGlyph(_ context: ActivityViewContext<FlowSessionAttributes>) -> some View {
+        Image(systemName: context.state.isCapturing ? "waveform" : "mic.fill")
+            .foregroundStyle(.tint)
+    }
 
-#Preview("Notification", as: .content, using: HexWidgetsAttributes.preview) {
-   HexWidgetsLiveActivity()
-} contentStates: {
-    HexWidgetsAttributes.ContentState.smiley
-    HexWidgetsAttributes.ContentState.starEyes
+    @ViewBuilder
+    private func countdown(_ context: ActivityViewContext<FlowSessionAttributes>) -> some View {
+        if let endsAt = context.state.endsAt, endsAt > Date() {
+            Text(timerInterval: Date() ... endsAt, countsDown: true)
+        } else {
+            Text("mic hot")
+        }
+    }
 }
