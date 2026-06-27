@@ -10,6 +10,7 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import HexCore
+import os
 import WhisperKit
 
 private let transcriptionLogger = HexLog.transcription

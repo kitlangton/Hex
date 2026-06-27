@@ -1,5 +1,6 @@
 import Foundation
 import HexCore
+import os
 
 #if canImport(FluidAudio)
 import FluidAudio
@@ -250,8 +251,12 @@ actor ParakeetClient {
     let xdg = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].flatMap { URL(fileURLWithPath: $0, isDirectory: true) }
     let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
     let appCache = try? URL.hexApplicationSupport.appendingPathComponent("cache", isDirectory: true)
-    let userCache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache", isDirectory: true)
-    return [xdg, appCache, appSupport, userCache].compactMap { $0 }
+    var roots = [xdg, appCache, appSupport]
+    #if os(macOS)
+    // Legacy macOS FluidAudio cache (~/.cache); no equivalent on iOS.
+    roots.append(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache", isDirectory: true))
+    #endif
+    return roots.compactMap { $0 }
   }
 }
 
