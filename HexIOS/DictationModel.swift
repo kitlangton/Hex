@@ -37,6 +37,8 @@ final class DictationModel {
 
     private(set) var modelState: ModelState = .loading
     private(set) var phase: Phase = .idle
+    /// When the current in-app note recording started (for the recording modal timer).
+    private(set) var recordingStartedAt: Date?
     private(set) var entries: [DictationEntry] = []
     var errorMessage: String?
 
@@ -109,10 +111,19 @@ final class DictationModel {
         }
         do {
             _ = try recorder.start()
+            recordingStartedAt = Date()
             phase = .recording
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Discard the in-progress note recording without transcribing (swipe-up-to-cancel).
+    func cancelRecording() {
+        guard phase == .recording else { return }
+        if let url = recorder.stop() { try? FileManager.default.removeItem(at: url) }
+        recordingStartedAt = nil
+        phase = .idle
     }
 
     private func stopAndTranscribe() async {
@@ -120,6 +131,7 @@ final class DictationModel {
             phase = .idle
             return
         }
+        recordingStartedAt = nil
         phase = .transcribing
         defer { phase = .idle }
         do {

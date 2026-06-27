@@ -28,6 +28,14 @@ struct HomeView: View {
                 .padding()
             }
             .navigationTitle("Hex")
+            .fullScreenCover(isPresented: Binding(
+                get: { model.phase != .idle },
+                set: { presented in
+                    if !presented && model.phase == .recording { model.cancelRecording() }
+                }
+            )) {
+                RecordingView(model: model)
+            }
         }
     }
 
