@@ -103,3 +103,42 @@ architecture once), then **C/D in parallel**, with **E** continuous throughout.
 - **TCA adoption cost:** rewriting the prototype's MV screens as reducers is real work; doing
   it in M-A (before the UI build) avoids doing the UI twice.
 - **Parakeet on the device floor:** validate memory/latency before making it the default.
+
+## Skills & techniques to apply (installed iOS skill set)
+
+| Skill | Where it helps |
+|-------|----------------|
+| `app-intents` | C — Action Button / Shortcuts session start (P3-2) |
+| `apple-on-device-ai` | A — WhisperKit / Parakeet / CoreML integration; future on-device LLM cleanup |
+| `cloudkit` | D — settings+vocab via KVS, History via CloudKit, opt-in audio assets |
+| `swift-architecture` | A — validate/execute the TCA adoption |
+| `swift-api-design-guidelines` | A — name the public HexCore engine API well during P0-4 |
+| `swift-codable` | D — `DictationResult` / History / settings payloads (sync + IPC) |
+| `swiftui-liquid-glass` | B — floating pill tab bar, glass chrome, iOS 26 cues + flat fallback |
+| `swiftui-navigation` | B — 3-tab root, modal Recording/Onboarding, `hexkb://` deep link |
+| `swiftui-layout-components` | B — grouped inset Settings, searchable History, lists |
+| `swiftui-patterns` | B — local `@Observable` view state, composition, `.task` loading |
+| `swiftui-animation` | B — waveform, mic-state transitions, SF Symbol effects, reduce-motion |
+| `swiftui-gestures` | B — "swipe up to cancel" on the Recording screen |
+| `swiftui-uikit-interop` | Keyboard — `UIHostingController` in `UIInputViewController`; `@Observable` tracking |
+| `swiftui-performance` | E — keyboard memory budget, body-eval cost, scroll perf |
+| `app-store-review` | E — privacy manifest, entitlements, `openURL`/2.5.4 review prep |
+| `app-store-optimization` | post-launch — product page / ASO |
+| `design:accessibility-review` | E — VoiceOver / Dynamic Type / contrast audit |
+| `swift-language` | all — modern Swift idioms |
+
+Not applicable to this app: `accessorysetupkit`, `app-clips`, `core-data` (we'll use
+CloudKit/SwiftData), `core-motion`, `swift-charts`, `swiftui-webkit`, `vision-framework`,
+`tabletopkit`.
+
+## New opportunities the tooling surfaces
+
+1. **Live Activity / Dynamic Island for the Flow Session** (`activitykit`). During a hot-mic
+   session, show a persistent **"🎙 mic hot · MM:SS left"** Live Activity with an **End**
+   control on the Lock Screen + Dynamic Island — visible *while you dictate in other apps*.
+   It turns the unavoidable orange recording dot into a branded, controllable, always-visible
+   affordance and a constant "session is live" reminder. Strong fit; **decide V1 vs V1.x.**
+2. **On-device LLM cleanup via Foundation Models** (`apple-on-device-ai`). The deferred
+   "Clean-up filler" toggle / formatter seam (#199) can be powered by Apple's on-device
+   Foundation Models (iOS 26) — filler removal, punctuation, smart formatting, fully on-device,
+   matching the privacy stance. Keep the seam now; fill it later with no cloud.
