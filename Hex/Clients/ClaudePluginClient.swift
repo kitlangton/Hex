@@ -321,9 +321,10 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
   if not full:
       raise SystemExit(0)
   prompt = (
-      "Condense the assistant message below into one or two sentences (under 40 words) for a "
-      "text-to-speech reader. Plain prose, no markdown or code. Capture the key outcome and any "
-      "question being asked. Output only the summary.\n\n" + full
+      "Condense the assistant message below into a spoken heads-up for a text-to-speech reader. "
+      "Surface only what the user needs to pay attention "
+      "to: the key outcome, anything blocking, risky, or unexpected, and any question being asked. "
+      "Plain prose, no markdown or code. Output only the summary, nothing else.\n\n" + full
   )
   env = {**os.environ, "HEX_AGENT_SUMMARY": "1"}
   try:
