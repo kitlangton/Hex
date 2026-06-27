@@ -15,13 +15,9 @@ struct HexIOSApp: App {
         WindowGroup {
             ContentView(model: model)
                 .onOpenURL { url in
-                    guard url.scheme == "hexkb" else { return }
-                    Task {
-                        switch url.host {
-                        case "startSession": await model.startKeyboardSession()
-                        default: await model.beginKeyboardDictation() // one-shot fallback
-                        }
-                    }
+                    // Keyboard session bounce: hexkb://startSession
+                    guard url.scheme == "hexkb", url.host == "startSession" else { return }
+                    Task { await model.startKeyboardSession() }
                 }
         }
     }
