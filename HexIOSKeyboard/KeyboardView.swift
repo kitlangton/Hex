@@ -2,14 +2,16 @@
 //  KeyboardView.swift
 //  HexIOSKeyboard
 //
-//  Mic-centric keyboard UI. No full QWERTY — the keyboard's job is to launch a
-//  dictation, insert the result, and offer a *letter-free* control surface for
-//  small fixes. Users switch back to the system keyboard (globe) for free typing.
+//  The keyboard's SwiftUI entry point. It clones Apple's standard QWERTY layout
+//  (see `QwertyKeyboardView`) and drops the Hex dictation mic into the bottom-right
+//  corner, where Apple's dictation mic normally lives. There is no prediction/
+//  autocorrect bar — a third-party extension doesn't get Apple's language model.
 //
-//  Two horizontally-swiped panels with a page-dot indicator (design §3 + P2-5):
-//    • Panel 1 — Dictate: accent mic, waveform, "mic hot · MM:SS left" pill,
-//      globe / space / backspace / return.
-//    • Panel 2 — Controls: caret trackpad, delete-word, undo/redo, punctuation.
+//  This file owns the shared state machine the controller drives:
+//    • `KeyboardPhase`   — the six deliberate states (idle / recording / …).
+//    • `KeyboardState`   — observable model derived into `phase`.
+//    • `KeyboardActions` — callbacks back into `KeyboardViewController`'s text/IPC
+//      wiring (insert / delete / space / return / globe / mic / …).
 //
 
 import Observation
@@ -91,21 +93,15 @@ struct KeyboardActions {
     var onRedo: () -> Void
 }
 
+/// The hosted SwiftUI surface. `KeyboardViewController` constructs this with the
+/// shared `state` + `actions`; the entry signature `KeyboardView(state:actions:)`
+/// is part of the controller contract and must stay stable.
 struct KeyboardView: View {
     let state: KeyboardState
     let actions: KeyboardActions
 
-    @State private var selectedPanel = 0
-
     var body: some View {
-        TabView(selection: $selectedPanel) {
-            DictatePanel(state: state, actions: actions)
-                .tag(0)
-
-            ControlsPanel(state: state, actions: actions)
-                .tag(1)
-        }
-        .tabViewStyle(.page(indexDisplayMode: .always))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        QwertyKeyboardView(state: state, actions: actions)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
