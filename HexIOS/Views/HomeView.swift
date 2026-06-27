@@ -123,7 +123,7 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(entries.prefix(3)) { entry in
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: entry.source.systemImage)
+                    Image(systemName: entry.kind.systemImage)
                         .foregroundStyle(.secondary)
                         .font(.footnote)
                         .padding(.top, 2)

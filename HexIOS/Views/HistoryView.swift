@@ -56,8 +56,8 @@ struct HistoryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(entry.text)
             HStack(spacing: 6) {
-                Image(systemName: entry.source.systemImage)
-                Text(entry.source.label)
+                Image(systemName: entry.kind.systemImage)
+                Text(entry.kind.label)
                 Text("·")
                 Text(entry.date, style: .time)
             }
