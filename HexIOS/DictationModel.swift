@@ -12,6 +12,7 @@ import Dependencies
 import Foundation
 import HexCore
 import Observation
+import SwiftData
 import WhisperKit
 
 enum DictationSource: String, Codable, Equatable {
@@ -31,13 +32,6 @@ enum DictationSource: String, Codable, Equatable {
         case .keyboard: "keyboard"
         }
     }
-}
-
-struct DictationEntry: Identifiable, Equatable {
-    let id = UUID()
-    let text: String
-    let date: Date
-    let source: DictationSource
 }
 
 /// How long a Flow Session stays hot after the last activity (product spec: 5/15/60/never).
@@ -78,9 +72,25 @@ final class DictationModel {
     private(set) var phase: Phase = .idle
     /// Rolling mic input levels (0…1) for the recording waveform.
     private(set) var levels: [CGFloat] = []
+
+    /// SwiftData context for persisting transcripts (history survives relaunch
+    /// and syncs via CloudKit). The UI reads transcripts via @Query.
+    private let modelContext: ModelContext
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+        if let raw = UserDefaults(suiteName: HexAppGroup.identifier)?.object(forKey: Self.sessionLengthKey) as? Int,
+           let value = SessionLength(rawValue: raw) {
+            sessionLength = value
+        }
+    }
+
+    private func save(text: String, source: DictationSource) {
+        modelContext.insert(TranscriptEntry(text: text, date: Date(), source: source))
+        try? modelContext.save()
+    }
     /// When the current in-app note recording started (for the recording modal timer).
     private(set) var recordingStartedAt: Date?
-    private(set) var entries: [DictationEntry] = []
     var errorMessage: String?
 
     /// Set after a keyboard session starts, prompting the user to swipe back to
@@ -111,13 +121,6 @@ final class DictationModel {
     private var heartbeatTask: Task<Void, Never>?
     private var activity: Activity<FlowSessionAttributes>?
     private var sessionCaptureURL: URL?
-
-    init() {
-        if let raw = UserDefaults(suiteName: HexAppGroup.identifier)?.object(forKey: Self.sessionLengthKey) as? Int,
-           let value = SessionLength(rawValue: raw) {
-            sessionLength = value
-        }
-    }
 
     var canRecord: Bool { modelState == .ready && phase != .transcribing }
 
@@ -222,7 +225,7 @@ final class DictationModel {
             let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
             try? FileManager.default.removeItem(at: url)
             guard !text.isEmpty else { return }
-            entries.insert(DictationEntry(text: text, date: Date(), source: .note), at: 0)
+            save(text: text, source: .note)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -346,7 +349,7 @@ final class DictationModel {
             let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
             try? FileManager.default.removeItem(at: url)
             guard !text.isEmpty else { return }
-            entries.insert(DictationEntry(text: text, date: Date(), source: .keyboard), at: 0)
+            save(text: text, source: .keyboard)
             if let ipc {
                 try? ipc.resultMailbox.write(DictationResult(text: text, createdAt: Date()))
                 DarwinSignal.post(.resultReady)

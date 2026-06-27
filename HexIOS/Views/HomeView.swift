@@ -7,10 +7,12 @@
 //  preview. Monochrome surfaces; the single accent is on the mic + live signals.
 //
 
+import SwiftData
 import SwiftUI
 
 struct HomeView: View {
     let model: DictationModel
+    @Query(sort: \TranscriptEntry.date, order: .reverse) private var entries: [TranscriptEntry]
 
     var body: some View {
         NavigationStack {
@@ -23,7 +25,7 @@ struct HomeView: View {
 
                     newNoteCard
 
-                    if !model.entries.isEmpty { recentSection }
+                    if !entries.isEmpty { recentSection }
                 }
                 .padding()
             }
@@ -119,7 +121,7 @@ struct HomeView: View {
             Text("Recent")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            ForEach(model.entries.prefix(3)) { entry in
+            ForEach(entries.prefix(3)) { entry in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: entry.source.systemImage)
                         .foregroundStyle(.secondary)
