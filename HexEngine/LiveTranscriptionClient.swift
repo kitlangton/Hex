@@ -8,6 +8,7 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import HexCore
+import os
 
 #if canImport(FluidAudio)
 import FluidAudio

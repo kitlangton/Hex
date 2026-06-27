@@ -126,6 +126,11 @@
 			path = HexTests;
 			sourceTree = "<group>";
 		};
+		4EAA000000000000000000E1 /* HexEngine */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HexEngine;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -197,6 +202,7 @@
 				4F0D6A032F1A000100000001 /* HexTests */,
 				4EF356162FEF3C2100DCA9C2 /* HexIOS */,
 				4EF356E22FEF431A00DCA9C2 /* HexIOSKeyboard */,
+				4EAA000000000000000000E1 /* HexEngine */,
 				4735444F2D445936001FBCB5 /* Frameworks */,
 				47E05DEF2D444EC600D26DA6 /* Products */,
 			);
@@ -255,6 +261,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				47E05DF02D444EC600D26DA6 /* Hex */,
+				4EAA000000000000000000E1 /* HexEngine */,
 			);
 			name = Hex;
 			packageProductDependencies = (
@@ -291,6 +298,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				4EF356162FEF3C2100DCA9C2 /* HexIOS */,
+				4EAA000000000000000000E1 /* HexEngine */,
 			);
 			name = HexIOS;
 			packageProductDependencies = (
