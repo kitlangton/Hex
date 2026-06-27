@@ -13,9 +13,13 @@ import SwiftUI
 @MainActor
 @Observable
 final class KeyboardState {
-    var statusText: String = "Tap to dictate"
+    var statusText: String = "Tap to start a dictation session"
     var needsNextKeyboard: Bool = false
     var hasFullAccess: Bool = true
+    /// A continuous Flow Session is active (dictate in place, no bounce).
+    var sessionActive: Bool = false
+    /// Currently capturing an utterance (mic is hot in the host app).
+    var isCapturing: Bool = false
 }
 
 struct KeyboardView: View {
@@ -23,6 +27,11 @@ struct KeyboardView: View {
     let onMic: () -> Void
     let onDelete: () -> Void
     let onNextKeyboard: () -> Void
+
+    private var micBackground: Color {
+        if !state.hasFullAccess { return .gray }
+        return state.isCapturing ? .red : .accentColor
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -35,17 +44,23 @@ struct KeyboardView: View {
             }
 
             Button(action: onMic) {
-                Image(systemName: "mic.fill")
+                Image(systemName: state.isCapturing ? "stop.fill" : "mic.fill")
                     .font(.system(size: 34, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 84, height: 84)
-                    .background(state.hasFullAccess ? Color.accentColor : Color.gray, in: .circle)
+                    .background(micBackground, in: .circle)
             }
             .disabled(!state.hasFullAccess)
 
             Text(state.statusText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            if state.sessionActive {
+                Label("Session active", systemImage: "dot.radiowaves.left.and.right")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            }
 
             Spacer(minLength: 0)
 

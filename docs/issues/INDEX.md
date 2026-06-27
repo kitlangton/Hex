@@ -14,7 +14,7 @@ independently shippable). Phases 2 + 3 are tightly coupled. Phase 4 last.
 
 | ID | Title | Phase | Depends on | Size | Status |
 |----|-------|-------|-----------|------|--------|
-| [SPIKE-1](SPIKE-1-background-audio-survival.md) | Background-audio session survival probe | risk spike | — | S | TODO |
+| [SPIKE-1](SPIKE-1-background-audio-survival.md) | Background-audio session survival probe | risk spike | — | S | VALIDATING (live via P3-1 on device) |
 | [P0-1](P0-1-package-multiplatform.md) | Make HexCore `Package.swift` multiplatform | 0 | — | S | DONE |
 | [P0-2](P0-2-decouple-settings-input-types.md) | Decouple settings/input models from Sauce + Cocoa | 0 | P0-1 | M | DONE |
 | [P0-3](P0-3-ios-permission-sleep-clients.md) | iOS `PermissionClient` + `SleepManagementClient` | 0 | P0-1 | M | DONE |
@@ -26,7 +26,7 @@ independently shippable). Phases 2 + 3 are tightly coupled. Phase 4 last.
 | [P2-2](P2-2-keyboard-ui.md) | Mic-centric keyboard UI + insertion | 2 | P2-1 | M | DONE |
 | [P2-3](P2-3-ipc-layer.md) | IPC layer (App Group + Darwin notifications) | 2 | P2-1 | M | DONE |
 | [P2-4](P2-4-bounce-and-swipe-back.md) | Keyboard→app bounce + swipe-back screen | 2 | P2-3 | M | DONE (bounce-per-dictation; continuous session = P3-1) |
-| [P3-1](P3-1-session-controller.md) | Continuous session controller + timeout | 3 | SPIKE-1, P2-4 | L | TODO |
+| [P3-1](P3-1-session-controller.md) | Continuous session controller + timeout | 3 | SPIKE-1, P2-4 | IMPLEMENTED (device test pending) |
 | [P3-2](P3-2-app-intent-shortcuts.md) | App Intent (Shortcuts / Action Button) | 3 | P3-1 | S | TODO |
 | [P4-1](P4-1-settings-vocab-sync.md) | iCloud sync: settings + vocab | 4 | P1-3 | M | TODO |
 | [P4-2](P4-2-history-sync-cloudkit.md) | iCloud sync: history (CloudKit) | 4 | P1-3 | L | TODO |

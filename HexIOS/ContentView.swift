@@ -13,6 +13,10 @@ struct ContentView: View {
             VStack(spacing: 16) {
                 modelStatusBanner
 
+                if model.sessionActive {
+                    sessionBanner
+                }
+
                 if model.awaitingSwipeBack {
                     swipeBackBanner
                 }
@@ -68,7 +72,9 @@ struct ContentView: View {
 
     private var swipeBackBanner: some View {
         Label {
-            Text("Transcript ready — **swipe back to your app** to insert it.")
+            Text(model.sessionActive
+                 ? "Session started — **swipe back to your app** and dictate from the Hex keyboard."
+                 : "Transcript ready — **swipe back to your app** to insert it.")
         } icon: {
             Image(systemName: "arrow.uturn.backward")
         }
@@ -77,6 +83,20 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.accentColor.opacity(0.15), in: .rect(cornerRadius: 12))
         .onTapGesture { model.dismissSwipeBackHint() }
+    }
+
+    private var sessionBanner: some View {
+        HStack {
+            Label("Flow session active", systemImage: "dot.radiowaves.left.and.right")
+                .font(.footnote)
+                .foregroundStyle(.green)
+            Spacer()
+            Button("End", role: .destructive) { model.endSession() }
+                .font(.footnote)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.green.opacity(0.12), in: .rect(cornerRadius: 10))
     }
 
     private var emptyState: some View {

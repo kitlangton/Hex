@@ -48,10 +48,24 @@ final class DictationModel {
     /// user to swipe back to their app where the keyboard will insert the text.
     private(set) var awaitingSwipeBack = false
 
+    /// Whether a continuous Flow Session is active (mic stays hot; keyboard can
+    /// dictate without re-bouncing).
+    private(set) var sessionActive = false
+    private(set) var sessionExpiresAt: Date?
+
+    /// Session auto-ends this long after the last activity.
+    let sessionDuration: TimeInterval = 900
+
     private let recorder = AudioRecorder()
     private let transcriber = WhisperTranscriber()
     private let ipc = KeyboardIPC(appGroupIdentifier: HexAppGroup.identifier)
     private var prepareTask: Task<Void, Never>?
+
+    private let sessionEngine = SessionAudioEngine()
+    private var captureObserverTask: Task<Void, Never>?
+    private var captureObserver: DarwinSignalObserver?
+    private var sessionTimeoutTask: Task<Void, Never>?
+    private var sessionCaptureURL: URL?
 
     var canRecord: Bool { modelState == .ready && phase != .transcribing }
 
@@ -156,5 +170,107 @@ final class DictationModel {
 
     func dismissSwipeBackHint() {
         awaitingSwipeBack = false
+    }
+
+    // MARK: - Continuous Flow Session
+
+    /// Entry point for the keyboard's session bounce (`hexkb://startSession`):
+    /// start the continuous engine in the foreground, publish session state, and
+    /// listen for capture signals from the keyboard. The user then swipes back and
+    /// dictates in place — no further bounces until the session ends.
+    func startKeyboardSession() async {
+        awaitingSwipeBack = false
+        if modelState != .ready { await prepare() }
+        guard modelState == .ready else { return }
+        guard await recorder.requestPermission() else {
+            errorMessage = AudioRecorder.RecorderError.permissionDenied.localizedDescription
+            return
+        }
+        do {
+            if !sessionEngine.isRunning { try sessionEngine.start() }
+            beginObservingCaptures()
+            extendSession()
+            awaitingSwipeBack = true
+        } catch {
+            errorMessage = error.localizedDescription
+            endSession()
+        }
+    }
+
+    func endSession() {
+        sessionTimeoutTask?.cancel(); sessionTimeoutTask = nil
+        captureObserverTask?.cancel(); captureObserverTask = nil
+        captureObserver = nil
+        sessionEngine.stop()
+        sessionCaptureURL = nil
+        sessionActive = false
+        sessionExpiresAt = nil
+        publishSessionState(active: false, expiresAt: nil)
+    }
+
+    private func beginObservingCaptures() {
+        guard captureObserverTask == nil else { return }
+        let observer = DarwinSignalObserver([.captureStart, .captureStop])
+        captureObserver = observer
+        captureObserverTask = Task { [weak self] in
+            for await signal in observer.stream() {
+                await self?.handleCapture(signal)
+            }
+        }
+    }
+
+    private func handleCapture(_ signal: IPCSignal) async {
+        switch signal {
+        case .captureStart:
+            guard sessionEngine.isRunning, sessionCaptureURL == nil else { return }
+            sessionCaptureURL = try? sessionEngine.beginCapture()
+            extendSession()
+        case .captureStop:
+            guard sessionCaptureURL != nil else { return }
+            let url = sessionEngine.endCapture()
+            sessionCaptureURL = nil
+            if let url { await transcribeSessionSnippet(url) }
+        default:
+            break
+        }
+    }
+
+    private func transcribeSessionSnippet(_ url: URL) async {
+        do {
+            let text = try await transcriber.transcribe(url: url)
+            try? FileManager.default.removeItem(at: url)
+            guard !text.isEmpty else { return }
+            entries.insert(DictationEntry(text: text, date: Date()), at: 0)
+            if let ipc {
+                try? ipc.resultMailbox.write(DictationResult(text: text, createdAt: Date()))
+                DarwinSignal.post(.resultReady)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// (Re)set the inactivity timeout and republish the session state.
+    private func extendSession() {
+        let expires = Date().addingTimeInterval(sessionDuration)
+        sessionActive = true
+        sessionExpiresAt = expires
+        publishSessionState(active: true, expiresAt: expires)
+
+        sessionTimeoutTask?.cancel()
+        sessionTimeoutTask = Task { [weak self] in
+            let seconds = expires.timeIntervalSinceNow
+            if seconds > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            }
+            guard !Task.isCancelled else { return }
+            self?.endSession()
+        }
+    }
+
+    private func publishSessionState(active: Bool, expiresAt: Date?) {
+        guard let ipc else { return }
+        try? ipc.sessionMailbox.write(DictationSessionState(isActive: active, expiresAt: expiresAt))
+        DarwinSignal.post(.sessionChanged)
     }
 }

@@ -19,6 +19,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastInsertedID: UUID?
     private var resultObserver: DarwinSignalObserver?
     private var observerTask: Task<Void, Never>?
+    private var isCapturing = false
 
     /// Don't insert a result older than this (avoids surfacing a stale, never-consumed transcript).
     private let resultFreshnessWindow: TimeInterval = 300
@@ -31,7 +32,7 @@ final class KeyboardViewController: UIInputViewController {
 
         let root = KeyboardView(
             state: state,
-            onMic: { [weak self] in self?.startDictation() },
+            onMic: { [weak self] in self?.handleMicTap() },
             onDelete: { [weak self] in self?.textDocumentProxy.deleteBackward() },
             onNextKeyboard: { [weak self] in self?.advanceToNextInputMode() }
         )
@@ -57,6 +58,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         state.hasFullAccess = hasFullAccess
+        refreshSessionState()
         insertPendingResult()
         startObservingResults()
     }
@@ -75,13 +77,36 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Actions
 
-    private func startDictation() {
+    /// If a Flow Session is active, toggle capture in place (no bounce). Otherwise
+    /// bounce once to the host app to start a session.
+    private func handleMicTap() {
         guard hasFullAccess else {
             state.statusText = "Enable Full Access (Settings ▸ Keyboards) to dictate."
             return
         }
-        guard let url = URL(string: "hexkb://dictate") else { return }
-        state.statusText = "Opening Hex…"
+        if currentSession()?.isUsable(at: Date()) == true {
+            toggleCapture()
+        } else {
+            startSessionBounce()
+        }
+    }
+
+    private func toggleCapture() {
+        if isCapturing {
+            DarwinSignal.post(.captureStop)
+            isCapturing = false
+            state.statusText = "Transcribing…"
+        } else {
+            DarwinSignal.post(.captureStart)
+            isCapturing = true
+            state.statusText = "Listening… tap to stop"
+        }
+        state.isCapturing = isCapturing
+    }
+
+    private func startSessionBounce() {
+        guard let url = URL(string: "hexkb://startSession") else { return }
+        state.statusText = "Starting session in Hex…"
         guard let application = firstUIApplicationInResponderChain() else {
             state.statusText = "Couldn't reach the app (no UIApplication in chain)."
             return
@@ -91,16 +116,36 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    // MARK: - Result delivery
+    private func currentSession() -> DictationSessionState? {
+        guard let ipc else { return nil }
+        return try? ipc.sessionMailbox.read()
+    }
+
+    // MARK: - Result + session signals
 
     private func startObservingResults() {
         guard observerTask == nil else { return }
-        let observer = DarwinSignalObserver([.resultReady])
+        let observer = DarwinSignalObserver([.resultReady, .sessionChanged])
         resultObserver = observer
         observerTask = Task { [weak self] in
-            for await _ in observer.stream() {
-                await MainActor.run { self?.insertPendingResult() }
+            for await signal in observer.stream() {
+                await MainActor.run {
+                    switch signal {
+                    case .resultReady: self?.insertPendingResult()
+                    case .sessionChanged: self?.refreshSessionState()
+                    default: break
+                    }
+                }
             }
+        }
+    }
+
+    private func refreshSessionState() {
+        let active = currentSession()?.isUsable(at: Date()) == true
+        state.sessionActive = active
+        if !active {
+            isCapturing = false
+            state.isCapturing = false
         }
     }
 
@@ -114,7 +159,9 @@ final class KeyboardViewController: UIInputViewController {
         textDocumentProxy.insertText(result.text)
         lastInsertedID = result.id
         ipc.resultMailbox.clear()
-        state.statusText = "Inserted."
+        isCapturing = false
+        state.isCapturing = false
+        state.statusText = state.sessionActive ? "Inserted — tap to dictate again." : "Inserted."
     }
 
     // MARK: - Bounce
