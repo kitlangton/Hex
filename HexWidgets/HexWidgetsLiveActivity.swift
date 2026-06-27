@@ -70,3 +70,10 @@ struct HexWidgetsLiveActivity: Widget {
         }
     }
 }
+
+#Preview("Flow Session", as: .content, using: FlowSessionAttributes()) {
+    HexWidgetsLiveActivity()
+} contentStates: {
+    FlowSessionAttributes.ContentState(endsAt: Date().addingTimeInterval(600), isCapturing: false)
+    FlowSessionAttributes.ContentState(endsAt: Date().addingTimeInterval(600), isCapturing: true)
+}

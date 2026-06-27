@@ -121,7 +121,7 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(model.entries.prefix(3)) { entry in
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "note.text")
+                    Image(systemName: entry.source.systemImage)
                         .foregroundStyle(.secondary)
                         .font(.footnote)
                         .padding(.top, 2)

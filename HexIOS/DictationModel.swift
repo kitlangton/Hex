@@ -14,10 +14,30 @@ import HexCore
 import Observation
 import WhisperKit
 
+enum DictationSource: String, Codable, Equatable {
+    case note      // recorded in-app from Home
+    case keyboard  // dictated via the keyboard session
+
+    var label: String {
+        switch self {
+        case .note: "Note"
+        case .keyboard: "Keyboard"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .note: "note.text"
+        case .keyboard: "keyboard"
+        }
+    }
+}
+
 struct DictationEntry: Identifiable, Equatable {
     let id = UUID()
     let text: String
     let date: Date
+    let source: DictationSource
 }
 
 /// How long a Flow Session stays hot after the last activity (product spec: 5/15/60/never).
@@ -202,7 +222,7 @@ final class DictationModel {
             let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
             try? FileManager.default.removeItem(at: url)
             guard !text.isEmpty else { return }
-            entries.insert(DictationEntry(text: text, date: Date()), at: 0)
+            entries.insert(DictationEntry(text: text, date: Date(), source: .note), at: 0)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -326,7 +346,7 @@ final class DictationModel {
             let text = try await transcription.transcribe(url, modelName, DecodingOptions()) { _ in }
             try? FileManager.default.removeItem(at: url)
             guard !text.isEmpty else { return }
-            entries.insert(DictationEntry(text: text, date: Date()), at: 0)
+            entries.insert(DictationEntry(text: text, date: Date(), source: .keyboard), at: 0)
             if let ipc {
                 try? ipc.resultMailbox.write(DictationResult(text: text, createdAt: Date()))
                 DarwinSignal.post(.resultReady)
