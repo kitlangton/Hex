@@ -28,5 +28,18 @@ is invalid and we must fall back to per-dictation bounce.
       the swipe-back, for how long, and under what conditions it dies.
 - [ ] Go/no-go recommendation for the P3 session model vs per-dictation fallback.
 
+## Result — PASSED ✅ (2026-06-27, on device)
+
+Validated live via the P3-1 implementation rather than a throwaway probe. With the
+host app holding a continuous `AVAudioEngine` (UIBackgroundModes: audio) started in
+the foreground, the app **survives the swipe-back and keeps recording in the
+background**: the keyboard signals capture start/stop over Darwin notifications and
+inserts results **with no re-bounce**. Confirmed working end-to-end on the user's
+iPhone (paid team, Full Access enabled).
+
+**Conclusion:** the continuous-session architecture is viable. Bounce once per session
+to start; in-place dictation thereafter. Proceed with P3 on this design.
+
 ## Notes
-This is throwaway code; do not gold-plate. The deliverable is *knowledge*, captured here.
+This was validated through real usage, not a throwaway probe. The deliverable was
+*knowledge*: the session model holds on device.
