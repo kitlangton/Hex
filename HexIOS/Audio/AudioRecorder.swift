@@ -56,11 +56,21 @@ final class AudioRecorder {
         ]
 
         let recorder = try AVAudioRecorder(url: url, settings: settings)
+        recorder.isMeteringEnabled = true
         guard recorder.record() else { throw RecorderError.couldNotStart }
 
         self.recorder = recorder
         self.currentURL = url
         return url
+    }
+
+    /// Current mic input level, normalized 0…1 from average power (dB).
+    func level() -> CGFloat {
+        guard let recorder else { return 0 }
+        recorder.updateMeters()
+        let floorDb: Float = -50
+        let power = max(floorDb, min(0, recorder.averagePower(forChannel: 0)))
+        return CGFloat((power - floorDb) / -floorDb)
     }
 
     /// Stops recording and returns the file URL (nil if nothing was recording).

@@ -64,22 +64,15 @@ struct RecordingView: View {
     }
 
     private var waveform: some View {
-        TimelineView(.animation) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 4) {
-                ForEach(0 ..< 24, id: \.self) { i in
-                    Capsule()
-                        .fill(Color.accentColor)
-                        .frame(width: 4, height: barHeight(i, t))
-                }
+        HStack(spacing: 4) {
+            ForEach(Array(model.levels.enumerated()), id: \.offset) { _, level in
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: 4, height: 6 + level * 50)
             }
-            .frame(height: 56)
         }
-    }
-
-    private func barHeight(_ i: Int, _ t: Double) -> CGFloat {
-        let v = (sin(t * 6 + Double(i) * 0.5) + 1) / 2 // 0…1
-        return 8 + v * 44
+        .frame(height: 56)
+        .animation(.linear(duration: 0.05), value: model.levels)
     }
 
     private var stopButton: some View {

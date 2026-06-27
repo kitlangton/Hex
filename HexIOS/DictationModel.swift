@@ -55,6 +55,8 @@ final class DictationModel {
     /// 0…1 progress of the first-run model download/load (Parakeet is large).
     private(set) var modelProgress: Double = 0
     private(set) var phase: Phase = .idle
+    /// Rolling mic input levels (0…1) for the recording waveform.
+    private(set) var levels: [CGFloat] = []
     /// When the current in-app note recording started (for the recording modal timer).
     private(set) var recordingStartedAt: Date?
     private(set) var entries: [DictationEntry] = []
@@ -79,6 +81,7 @@ final class DictationModel {
     @ObservationIgnored @Dependency(\.transcription) private var transcription
     private let ipc = KeyboardIPC(appGroupIdentifier: HexAppGroup.identifier)
     private var prepareTask: Task<Void, Never>?
+    private var meterTask: Task<Void, Never>?
 
     private let sessionEngine = SessionAudioEngine()
     private var captureObserverTask: Task<Void, Never>?
@@ -144,6 +147,7 @@ final class DictationModel {
             _ = try recorder.start()
             recordingStartedAt = Date()
             phase = .recording
+            startMetering()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -152,12 +156,38 @@ final class DictationModel {
     /// Discard the in-progress note recording without transcribing (swipe-up-to-cancel).
     func cancelRecording() {
         guard phase == .recording else { return }
+        stopMetering()
         if let url = recorder.stop() { try? FileManager.default.removeItem(at: url) }
         recordingStartedAt = nil
         phase = .idle
     }
 
+    // MARK: - Waveform metering
+
+    private func startMetering() {
+        let barCount = 32
+        levels = Array(repeating: 0, count: barCount)
+        meterTask?.cancel()
+        meterTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.phase == .recording else { break }
+                var next = self.levels
+                next.removeFirst()
+                next.append(self.recorder.level())
+                self.levels = next
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    private func stopMetering() {
+        meterTask?.cancel()
+        meterTask = nil
+        levels = []
+    }
+
     private func stopAndTranscribe() async {
+        stopMetering()
         guard let url = recorder.stop() else {
             phase = .idle
             return
