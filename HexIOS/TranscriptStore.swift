@@ -8,7 +8,26 @@
 //
 
 import Foundation
+import HexCore
 import SwiftData
+
+/// User-controllable sync preferences, persisted in the App Group.
+enum SyncPreferences {
+    private static var defaults: UserDefaults? { UserDefaults(suiteName: HexAppGroup.identifier) }
+
+    /// Whether history should sync via iCloud. Read once at launch to pick the
+    /// store configuration (changing it takes effect on next launch).
+    static var iCloudEnabled: Bool {
+        get { defaults?.object(forKey: "hex.iCloudEnabled") as? Bool ?? true }
+        set { defaults?.set(newValue, forKey: "hex.iCloudEnabled") }
+    }
+
+    /// Forward-looking: sync audio recordings too (audio isn't persisted yet).
+    static var syncAudio: Bool {
+        get { defaults?.bool(forKey: "hex.syncAudio") ?? false }
+        set { defaults?.set(newValue, forKey: "hex.syncAudio") }
+    }
+}
 
 @Model
 final class TranscriptEntry {
@@ -31,10 +50,11 @@ enum TranscriptStore {
     /// to a local-only store if CloudKit is unavailable (e.g. no iCloud account).
     @MainActor
     static func makeContainer() -> ModelContainer {
-        if let cloud = try? ModelContainer(
-            for: TranscriptEntry.self,
-            configurations: ModelConfiguration(cloudKitDatabase: .automatic)
-        ) {
+        if SyncPreferences.iCloudEnabled,
+           let cloud = try? ModelContainer(
+               for: TranscriptEntry.self,
+               configurations: ModelConfiguration(cloudKitDatabase: .automatic)
+           ) {
             return cloud
         }
         if let local = try? ModelContainer(
