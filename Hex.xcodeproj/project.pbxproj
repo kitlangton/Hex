@@ -23,6 +23,10 @@
 		4EF356E82FEF431A00DCA9C2 /* HexIOSKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4EF356F02FEF434B00DCA9C2 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356EF2FEF434B00DCA9C2 /* HexCore */; };
 		4EF356F62FEF5ABF00DCA9C2 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 4EF356F52FEF5ABF00DCA9C2 /* ComposableArchitecture */; };
+		4EFA06ED2FEF86F500A6BFA0 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EFA06EC2FEF86F500A6BFA0 /* WidgetKit.framework */; };
+		4EFA06EF2FEF86F500A6BFA0 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4EFA06EE2FEF86F500A6BFA0 /* SwiftUI.framework */; };
+		4EFA07002FEF86F600A6BFA0 /* HexWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4EFA06EB2FEF86F500A6BFA0 /* HexWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4EFA07062FEF882200A6BFA0 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4EFA07052FEF882200A6BFA0 /* HexCore */; };
 		4F0D6A012F1A000100000001 /* HexCore in Frameworks */ = {isa = PBXBuildFile; productRef = 476316262E5FB31400913CDE /* HexCore */; };
 		4F0D6A022F1A000100000001 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 47E05E012D444EE900D26DA6 /* ComposableArchitecture */; };
 		7BA7464C2FBD689B00814C43 /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = 7BA7464B2FBD689B00814C43 /* MLXAudioSTT */; };
@@ -45,6 +49,13 @@
 			remoteGlobalIDString = 4EF356E02FEF431A00DCA9C2;
 			remoteInfo = HexIOSKeyboard;
 		};
+		4EFA06FE2FEF86F600A6BFA0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 47E05DE62D444EC600D26DA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4EFA06EA2FEF86F500A6BFA0;
+			remoteInfo = HexWidgetsExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -54,6 +65,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				4EFA07002FEF86F600A6BFA0 /* HexWidgetsExtension.appex in Embed Foundation Extensions */,
 				4EF356E82FEF431A00DCA9C2 /* HexIOSKeyboard.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
@@ -68,6 +80,9 @@
 		47E05DEE2D444EC600D26DA6 /* Hex Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Hex Debug.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4EF356152FEF3C2100DCA9C2 /* HexIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HexIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HexIOSKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4EFA06EB2FEF86F500A6BFA0 /* HexWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HexWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4EFA06EC2FEF86F500A6BFA0 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		4EFA06EE2FEF86F500A6BFA0 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		B53355FF2D7B8D4900E5F542 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B5A1C7E22E6A1C5B00AB1234 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; name = AppIcon.icon; path = Hex/AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -93,6 +108,13 @@
 				Info.plist,
 			);
 			target = 4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */;
+		};
+		4EFA07042FEF86F600A6BFA0 /* Exceptions for "HexWidgets" folder in "HexWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4EFA06EA2FEF86F500A6BFA0 /* HexWidgetsExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -124,6 +146,14 @@
 				4EF356EC2FEF431A00DCA9C2 /* Exceptions for "HexIOSKeyboard" folder in "HexIOSKeyboard" target */,
 			);
 			path = HexIOSKeyboard;
+			sourceTree = "<group>";
+		};
+		4EFA06F02FEF86F500A6BFA0 /* HexWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4EFA07042FEF86F600A6BFA0 /* Exceptions for "HexWidgets" folder in "HexWidgetsExtension" target */,
+			);
+			path = HexWidgets;
 			sourceTree = "<group>";
 		};
 		4F0D6A032F1A000100000001 /* HexTests */ = {
@@ -181,6 +211,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4EFA06E82FEF86F500A6BFA0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4EFA07062FEF882200A6BFA0 /* HexCore in Frameworks */,
+				4EFA06EF2FEF86F500A6BFA0 /* SwiftUI.framework in Frameworks */,
+				4EFA06ED2FEF86F500A6BFA0 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -189,6 +229,8 @@
 			children = (
 				473544542D445959001FBCB5 /* Testing.framework */,
 				473544502D445936001FBCB5 /* XCTest.framework */,
+				4EFA06EC2FEF86F500A6BFA0 /* WidgetKit.framework */,
+				4EFA06EE2FEF86F500A6BFA0 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -203,6 +245,7 @@
 				4EF356162FEF3C2100DCA9C2 /* HexIOS */,
 				4EF356E22FEF431A00DCA9C2 /* HexIOSKeyboard */,
 				4EAA000000000000000000E1 /* HexEngine */,
+				4EFA06F02FEF86F500A6BFA0 /* HexWidgets */,
 				4735444F2D445936001FBCB5 /* Frameworks */,
 				47E05DEF2D444EC600D26DA6 /* Products */,
 			);
@@ -215,6 +258,7 @@
 				478637A52D48725900319BFA /* HexTests.xctest */,
 				4EF356152FEF3C2100DCA9C2 /* HexIOS.app */,
 				4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */,
+				4EFA06EB2FEF86F500A6BFA0 /* HexWidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -295,6 +339,7 @@
 			);
 			dependencies = (
 				4EF356E72FEF431A00DCA9C2 /* PBXTargetDependency */,
+				4EFA06FF2FEF86F600A6BFA0 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				4EAA000000000000000000E1 /* HexEngine */,
@@ -334,6 +379,29 @@
 			productReference = 4EF356E12FEF431A00DCA9C2 /* HexIOSKeyboard.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		4EFA06EA2FEF86F500A6BFA0 /* HexWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4EFA07032FEF86F600A6BFA0 /* Build configuration list for PBXNativeTarget "HexWidgetsExtension" */;
+			buildPhases = (
+				4EFA06E72FEF86F500A6BFA0 /* Sources */,
+				4EFA06E82FEF86F500A6BFA0 /* Frameworks */,
+				4EFA06E92FEF86F500A6BFA0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4EFA06F02FEF86F500A6BFA0 /* HexWidgets */,
+			);
+			name = HexWidgetsExtension;
+			packageProductDependencies = (
+				4EFA07052FEF882200A6BFA0 /* HexCore */,
+			);
+			productName = HexWidgetsExtension;
+			productReference = 4EFA06EB2FEF86F500A6BFA0 /* HexWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -355,6 +423,9 @@
 						CreatedOnToolsVersion = 26.5;
 					};
 					4EF356E02FEF431A00DCA9C2 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					4EFA06EA2FEF86F500A6BFA0 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -390,6 +461,7 @@
 				478637A42D48725900319BFA /* HexTests */,
 				4EF356142FEF3C2100DCA9C2 /* HexIOS */,
 				4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */,
+				4EFA06EA2FEF86F500A6BFA0 /* HexWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -418,6 +490,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		4EF356DF2FEF431A00DCA9C2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4EFA06E92FEF86F500A6BFA0 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -455,6 +534,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4EFA06E72FEF86F500A6BFA0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -467,6 +553,11 @@
 			isa = PBXTargetDependency;
 			target = 4EF356E02FEF431A00DCA9C2 /* HexIOSKeyboard */;
 			targetProxy = 4EF356E62FEF431A00DCA9C2 /* PBXContainerItemProxy */;
+		};
+		4EFA06FF2FEF86F600A6BFA0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4EFA06EA2FEF86F500A6BFA0 /* HexWidgetsExtension */;
+			targetProxy = 4EFA06FE2FEF86F600A6BFA0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -872,6 +963,71 @@
 			};
 			name = Release;
 		};
+		4EFA07012FEF86F600A6BFA0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29YXKXD53B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HexWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = stonefrontier.HexIOS.HexWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4EFA07022FEF86F600A6BFA0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29YXKXD53B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HexWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HexWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = stonefrontier.HexIOS.HexWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -916,6 +1072,15 @@
 			buildConfigurations = (
 				4EF356EA2FEF431A00DCA9C2 /* Debug */,
 				4EF356EB2FEF431A00DCA9C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4EFA07032FEF86F600A6BFA0 /* Build configuration list for PBXNativeTarget "HexWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4EFA07012FEF86F600A6BFA0 /* Debug */,
+				4EFA07022FEF86F600A6BFA0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -1086,6 +1251,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 47E05E002D444EE900D26DA6 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
 			productName = ComposableArchitecture;
+		};
+		4EFA07052FEF882200A6BFA0 /* HexCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 476316252E5FB31400913CDE /* XCLocalSwiftPackageReference "HexCore" */;
+			productName = HexCore;
 		};
 		7BA7464B2FBD689B00814C43 /* MLXAudioSTT */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -77,6 +77,8 @@ public enum IPCSignal: String, Sendable, CaseIterable {
     case resultReady = "co.stonefrontier.hex.ipc.resultReady"
     /// host -> keyboard: session state changed (started / ended / expired).
     case sessionChanged = "co.stonefrontier.hex.ipc.sessionChanged"
+    /// Live Activity / any surface -> host: end the current session.
+    case endSession = "co.stonefrontier.hex.ipc.endSession"
 }
 
 /// Standard filenames inside the App Group container.

@@ -7,6 +7,7 @@
 //  (TranscriptionClient) so iOS gets Whisper + Parakeet, matching macOS.
 //
 
+import ActivityKit
 import Dependencies
 import Foundation
 import HexCore
@@ -88,6 +89,7 @@ final class DictationModel {
     private var captureObserver: DarwinSignalObserver?
     private var sessionTimeoutTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    private var activity: Activity<FlowSessionAttributes>?
     private var sessionCaptureURL: URL?
 
     init() {
@@ -229,6 +231,7 @@ final class DictationModel {
             beginObservingCaptures()
             extendSession()
             startHeartbeat()
+            startActivity()
             awaitingSwipeBack = true
         } catch {
             errorMessage = error.localizedDescription
@@ -246,6 +249,7 @@ final class DictationModel {
         sessionActive = false
         sessionExpiresAt = nil
         publishSessionState(active: false, expiresAt: nil)
+        endActivity()
     }
 
     /// Refresh the session heartbeat while the app is genuinely alive, so the
@@ -264,7 +268,7 @@ final class DictationModel {
 
     private func beginObservingCaptures() {
         guard captureObserverTask == nil else { return }
-        let observer = DarwinSignalObserver([.captureStart, .captureStop])
+        let observer = DarwinSignalObserver([.captureStart, .captureStop, .endSession])
         captureObserver = observer
         captureObserverTask = Task { [weak self] in
             for await signal in observer.stream() {
@@ -279,14 +283,42 @@ final class DictationModel {
             guard sessionEngine.isRunning, sessionCaptureURL == nil else { return }
             sessionCaptureURL = try? sessionEngine.beginCapture()
             extendSession()
+            updateActivity(capturing: true)
         case .captureStop:
             guard sessionCaptureURL != nil else { return }
             let url = sessionEngine.endCapture()
             sessionCaptureURL = nil
+            updateActivity(capturing: false)
             if let url { await transcribeSessionSnippet(url) }
+        case .endSession:
+            endSession()
         default:
             break
         }
+    }
+
+    // MARK: - Live Activity
+
+    private func startActivity() {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled, activity == nil else { return }
+        let state = FlowSessionAttributes.ContentState(endsAt: sessionExpiresAt, isCapturing: false)
+        activity = try? Activity.request(
+            attributes: FlowSessionAttributes(),
+            content: ActivityContent(state: state, staleDate: nil)
+        )
+    }
+
+    private func updateActivity(capturing: Bool) {
+        guard let activity else { return }
+        let state = FlowSessionAttributes.ContentState(endsAt: sessionExpiresAt, isCapturing: capturing)
+        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+    }
+
+    private func endActivity() {
+        guard let activity else { return }
+        let state = FlowSessionAttributes.ContentState(endsAt: nil, isCapturing: false)
+        Task { await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate) }
+        self.activity = nil
     }
 
     private func transcribeSessionSnippet(_ url: URL) async {
