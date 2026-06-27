@@ -12,6 +12,8 @@ import UIKit
 
 struct SettingsView: View {
     @Bindable var model: DictationModel
+    /// Re-presents the first-run onboarding flow (owned by ContentView).
+    @Binding var showOnboarding: Bool
     @Environment(\.openURL) private var openURL
 
     @State private var account = CloudAccountStatus()
@@ -62,6 +64,16 @@ struct SettingsView: View {
                         Text("Check in Settings")
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section {
+                    Button {
+                        showOnboarding = true
+                    } label: {
+                        Label("Set up Hex", systemImage: "checklist")
+                    }
+                } footer: {
+                    Text("Re-run the setup checklist for the keyboard, permissions, and model.")
                 }
             }
             .navigationTitle("Settings")
