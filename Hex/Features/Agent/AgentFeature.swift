@@ -138,13 +138,6 @@ struct AgentFeature {
     var prompt: AgentPrompt { current?.prompt ?? .message("", condensed: nil) }
     var draftReply: String { current?.draftReply ?? "" }
 
-    /// True when the visible card's message carries a condensed summary — i.e. when offering
-    /// the condensed/full read-aloud toggle is meaningful.
-    var hasCondensed: Bool {
-      if case let .message(_, condensed) = prompt { return !(condensed ?? "").isEmpty }
-      return false
-    }
-
     /// Whether the visible card is set to read its condensed summary aloud.
     var useCondensed: Bool { current?.useCondensed ?? false }
     var selectedOptions: Set<String> { current?.selectedOptions ?? [] }
@@ -331,8 +324,11 @@ struct AgentFeature {
         state.requests[id: id]?.useCondensed = nowCondensed
         // Remember the choice so later prompts/cards default to it (and it survives launches).
         state.$hexSettings.withLock { $0.agentSpeakCondensed = nowCondensed }
+        // Re-sync the summary sentinel: condensed off stops the hook spending a model call on a
+        // summary; condensed on starts it again on the next turn.
+        let resync: Effect<Action> = .run { _ in _ = await agentIntegrations.prepareAll() }
         // Re-read the visible card in the newly chosen mode (no-op when read-aloud is off).
-        return speakIfEnabled(state)
+        return .merge(resync, speakIfEnabled(state))
 
       case let .draftChanged(text):
         guard let id = state.currentID, let current = state.requests[id: id] else { return .none }
