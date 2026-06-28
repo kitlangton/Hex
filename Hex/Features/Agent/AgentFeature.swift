@@ -234,6 +234,9 @@ struct AgentFeature {
         // Assign (or recall) this session's voice so each project sounds consistent across
         // turns and concurrent projects are distinguishable by ear.
         request.voice = sessionVoice(&state, for: request.sessionID)
+        // New cards inherit the remembered condensed-read-aloud choice so it sticks across
+        // prompts (the per-card value can still be flipped on the card itself).
+        request.useCondensed = state.hexSettings.agentSpeakCondensed
 
         if let existing = state.requests[id: id] {
           // Same session re-presenting: release its now-stale hook before replacing it.
@@ -324,7 +327,10 @@ struct AgentFeature {
 
       case .toggleSpeakCondensed:
         guard let id = state.currentID else { return .none }
-        state.requests[id: id]?.useCondensed.toggle()
+        let nowCondensed = !(state.requests[id: id]?.useCondensed ?? false)
+        state.requests[id: id]?.useCondensed = nowCondensed
+        // Remember the choice so later prompts/cards default to it (and it survives launches).
+        state.$hexSettings.withLock { $0.agentSpeakCondensed = nowCondensed }
         // Re-read the visible card in the newly chosen mode (no-op when read-aloud is off).
         return speakIfEnabled(state)
 

@@ -60,6 +60,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	/// across turns. The first/primary session keeps the chosen default voice; additional
 	/// sessions get distinct voices. When false, every session uses the default voice.
 	public var agentDistinctSessionVoices: Bool
+	/// Remembered default for condensed read-aloud: new agent cards inherit it, and toggling a
+	/// card's condensed button updates it, so the choice sticks across prompts and launches.
+	public var agentSpeakCondensed: Bool
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -96,7 +99,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		agentAutoSubmit: Bool = true,
 		agentSpeakOutput: Bool = false,
 		agentVoiceIdentifier: String? = nil,
-		agentDistinctSessionVoices: Bool = true
+		agentDistinctSessionVoices: Bool = true,
+		agentSpeakCondensed: Bool = false
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -127,6 +131,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.agentSpeakOutput = agentSpeakOutput
 		self.agentVoiceIdentifier = agentVoiceIdentifier
 		self.agentDistinctSessionVoices = agentDistinctSessionVoices
+		self.agentSpeakCondensed = agentSpeakCondensed
 		normalizeDoubleTapSettings()
 	}
 
@@ -180,6 +185,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case agentSpeakOutput
 	case agentVoiceIdentifier
 	case agentDistinctSessionVoices
+	case agentSpeakCondensed
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -324,6 +330,7 @@ private enum HexSettingsSchema {
 				try container.encodeIfPresent(value, forKey: key)
 			}
 		).eraseToAny(),
-		SettingsField(.agentDistinctSessionVoices, keyPath: \.agentDistinctSessionVoices, default: defaults.agentDistinctSessionVoices).eraseToAny()
+		SettingsField(.agentDistinctSessionVoices, keyPath: \.agentDistinctSessionVoices, default: defaults.agentDistinctSessionVoices).eraseToAny(),
+		SettingsField(.agentSpeakCondensed, keyPath: \.agentSpeakCondensed, default: defaults.agentSpeakCondensed).eraseToAny()
 	]
 }
