@@ -110,8 +110,8 @@ struct ClaudePluginClientLive: AgentIntegrationProvider {
   /// toggle), including when the voice window's read-aloud toggle flips.
   private func syncEnabledFlag() {
     setFlag(enabledFlagURL, on: hexSettings.agentPluginsEnabled)
-    // Only spend a model call on a spoken summary while we're reading aloud AND condensed mode
-    // is on — turning condensed off reads the full reply for free.
+    // Only spend a model call on a spoken summary while we're reading aloud AND the global
+    // condensed setting is on — with it off, every reply is read in full for free.
     setFlag(readAloudFlagURL, on: hexSettings.agentPluginsEnabled && hexSettings.agentSpeakOutput && hexSettings.agentSpeakCondensed)
   }
 

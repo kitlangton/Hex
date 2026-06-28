@@ -309,8 +309,9 @@ struct AgentView: View {
 
       HStack(spacing: 10) {
         speakToggle
-        // Condensed on/off — only meaningful (and only costs tokens) while reading aloud.
-        if store.hexSettings.agentSpeakOutput {
+        // Live condensed/full switch — only while reading aloud and the global condensed
+        // setting is on, so a summary actually exists to switch to.
+        if store.hexSettings.agentSpeakOutput, store.hexSettings.agentSpeakCondensed {
           condensedToggle
         }
 
@@ -408,8 +409,8 @@ struct AgentView: View {
     }
     .buttonStyle(.plain)
     .help(condensed
-      ? "Reading a condensed summary (uses an extra model call) — tap to read the full reply instead"
-      : "Reading the full reply — tap to read a condensed summary (uses an extra model call)")
+      ? "Reading the condensed summary — tap to read the full reply"
+      : "Reading the full reply — tap to read the condensed summary")
   }
 
   private func hint(_ title: String, key: String, action: @escaping () -> Void) -> some View {

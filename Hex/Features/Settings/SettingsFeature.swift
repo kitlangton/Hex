@@ -117,6 +117,7 @@ struct SettingsFeature {
     case setAgentAutoSubmit(Bool)
     case setAgentVoice(String?)
     case setAgentDistinctSessionVoices(Bool)
+    case setAgentSpeakCondensed(Bool)
     case previewAgentVoice
     case voicePreviewFinished
     case prepareKokoro
@@ -607,6 +608,12 @@ struct SettingsFeature {
       case let .setAgentVoice(identifier):
         state.$hexSettings.withLock { $0.agentVoiceIdentifier = identifier }
         return .send(.previewAgentVoice)
+
+      case let .setAgentSpeakCondensed(enabled):
+        state.$hexSettings.withLock { $0.agentSpeakCondensed = enabled }
+        // Re-sync the summary sentinel so the hook starts (or stops) generating a condensed
+        // summary on its next turn.
+        return .run { _ in _ = await agentIntegrations.prepareAll() }
 
       case let .setAgentDistinctSessionVoices(enabled):
         state.$hexSettings.withLock { $0.agentDistinctSessionVoices = enabled }

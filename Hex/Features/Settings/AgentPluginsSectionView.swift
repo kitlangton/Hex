@@ -84,6 +84,19 @@ struct AgentPluginsSectionView: View {
 
 			Label {
 				Toggle(
+					"Condensed Read-Aloud",
+					isOn: Binding(
+						get: { store.hexSettings.agentSpeakCondensed },
+						set: { store.send(.setAgentSpeakCondensed($0)) }
+					)
+				)
+				Text("Read a short summary aloud instead of the full reply. This asks the agent for a one-paragraph condensation each turn, which costs a little extra. Off reads the full reply for free. You can still flip a single card between summary and full text from the voice window.")
+			} icon: {
+				Image(systemName: "rectangle.compress.vertical")
+			}
+
+			Label {
+				Toggle(
 					"Distinct Voice per Project",
 					isOn: Binding(
 						get: { store.hexSettings.agentDistinctSessionVoices },

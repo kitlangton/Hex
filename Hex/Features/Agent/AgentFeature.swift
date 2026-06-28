@@ -227,8 +227,8 @@ struct AgentFeature {
         // Assign (or recall) this session's voice so each project sounds consistent across
         // turns and concurrent projects are distinguishable by ear.
         request.voice = sessionVoice(&state, for: request.sessionID)
-        // New cards inherit the remembered condensed-read-aloud choice so it sticks across
-        // prompts (the per-card value can still be flipped on the card itself).
+        // Default each card to the global condensed setting; the per-card toggle can still flip
+        // it to the full reply for a single card.
         request.useCondensed = state.hexSettings.agentSpeakCondensed
 
         if let existing = state.requests[id: id] {
@@ -320,15 +320,11 @@ struct AgentFeature {
 
       case .toggleSpeakCondensed:
         guard let id = state.currentID else { return .none }
-        let nowCondensed = !(state.requests[id: id]?.useCondensed ?? false)
-        state.requests[id: id]?.useCondensed = nowCondensed
-        // Remember the choice so later prompts/cards default to it (and it survives launches).
-        state.$hexSettings.withLock { $0.agentSpeakCondensed = nowCondensed }
-        // Re-sync the summary sentinel: condensed off stops the hook spending a model call on a
-        // summary; condensed on starts it again on the next turn.
-        let resync: Effect<Action> = .run { _ in _ = await agentIntegrations.prepareAll() }
+        // A live, per-card switch between the already-generated summary and the full reply.
+        // Whether summaries are generated at all is the global setting's job, so this is free.
+        state.requests[id: id]?.useCondensed.toggle()
         // Re-read the visible card in the newly chosen mode (no-op when read-aloud is off).
-        return .merge(resync, speakIfEnabled(state))
+        return speakIfEnabled(state)
 
       case let .draftChanged(text):
         guard let id = state.currentID, let current = state.requests[id: id] else { return .none }
