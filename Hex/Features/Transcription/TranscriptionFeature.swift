@@ -373,7 +373,23 @@ private extension TranscriptionFeature {
           }
         }
         do {
-          let capturedURL = await recording.stopRecording()
+          let stopResult = await recording.stopRecording()
+          let capturedURL: URL
+          switch stopResult {
+          case let .captured(url):
+            capturedURL = url
+          case .ignored(.staleSession):
+            transcriptionFeatureLogger.notice("Ignoring transcription stop superseded by a newer recording session")
+            return
+          case .ignored(.noActiveRecording):
+            transcriptionFeatureLogger.error("Recording stopped without captured audio")
+            await send(.transcriptionError(RecordingFailure.noCapturedAudio, nil))
+            return
+          case let .failed(error):
+            transcriptionFeatureLogger.error("Recording stop failed: \(error.localizedDescription)")
+            await send(.transcriptionError(error, nil))
+            return
+          }
           audioURL = capturedURL
           guard !Task.isCancelled else { return }
           soundEffect.play(.stopRecording)
@@ -569,9 +585,11 @@ private extension TranscriptionFeature {
           return
         }
         // Stop the recording to release microphone access
-        let url = await recording.stopRecording()
+        let result = await recording.stopRecording()
         guard !Task.isCancelled else { return }
-        FileManager.default.removeItemIfExists(at: url)
+        if case let .captured(url) = result {
+          FileManager.default.removeItemIfExists(at: url)
+        }
         soundEffect.play(.cancel)
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
@@ -588,9 +606,11 @@ private extension TranscriptionFeature {
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
-        let url = await recording.stopRecording()
+        let result = await recording.stopRecording()
         guard !Task.isCancelled else { return }
-        FileManager.default.removeItemIfExists(at: url)
+        if case let .captured(url) = result {
+          FileManager.default.removeItemIfExists(at: url)
+        }
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
     )

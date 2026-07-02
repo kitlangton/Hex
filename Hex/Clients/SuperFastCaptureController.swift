@@ -83,6 +83,12 @@ enum CaptureRecordingMode: String {
 }
 
 final class SuperFastCaptureController {
+  enum FinishRecordingResult {
+    case captured(URL)
+    case failed(RecordingFailure)
+    case idle
+  }
+
   struct StopTimingEstimate {
     let gracePeriod: TimeInterval
     let callbackInterval: TimeInterval
@@ -114,6 +120,8 @@ final class SuperFastCaptureController {
   private var converter: AVAudioConverter?
   private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
+  private var captureGeneration = 0
+  private var recordingFailure: RecordingFailure?
   private var keepWarmBuffer = false
   private var lastProcessedBufferAt: Date?
   private var recentCallbackIntervals: [TimeInterval] = []
@@ -163,13 +171,11 @@ final class SuperFastCaptureController {
   }
 
   func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
-    let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
-    self.keepWarmBuffer = keepWarmBuffer
-    if didDisableWarmBuffer {
-      processingQueue.sync {
-        if activeRecording == nil {
-          ringBuffer.clear()
-        }
+    processingQueue.sync {
+      let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
+      self.keepWarmBuffer = keepWarmBuffer
+      if didDisableWarmBuffer, activeRecording == nil {
+        ringBuffer.clear()
       }
     }
 
@@ -194,11 +200,16 @@ final class SuperFastCaptureController {
       converter.channelMap = [NSNumber(value: 0)]
     }
 
-    self.converter = converter
+    let generation = processingQueue.sync {
+      captureGeneration += 1
+      self.converter = converter
+      recordingFailure = nil
+      return captureGeneration
+    }
 
     inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: inputFormat) {
       [weak self] buffer, _ in
-      self?.enqueue(buffer)
+      self?.enqueue(buffer, generation: generation)
     }
 
     engine.prepare()
@@ -206,7 +217,10 @@ final class SuperFastCaptureController {
       try engine.start()
     } catch {
       inputNode.removeTap(onBus: 0)
-      self.converter = nil
+      processingQueue.sync {
+        captureGeneration += 1
+        self.converter = nil
+      }
       throw error
     }
     self.engine = engine
@@ -215,7 +229,7 @@ final class SuperFastCaptureController {
       object: engine,
       queue: .main
     ) { [weak self] _ in
-      self?.handleConfigurationChange()
+      self?.handleConfigurationChange(generation: generation)
     }
     logger.notice(
       "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
@@ -233,22 +247,30 @@ final class SuperFastCaptureController {
       NotificationCenter.default.removeObserver(configurationChangeObserver)
       self.configurationChangeObserver = nil
     }
-    engine?.stop()
-    engine = nil
-    converter = nil
-
     processingQueue.sync {
+      captureGeneration += 1
       activeRecording = nil
+      recordingFailure = nil
+      converter = nil
       ringBuffer.clear()
       lastProcessedBufferAt = nil
       recentCallbackIntervals.removeAll(keepingCapacity: false)
       recentBufferDurations.removeAll(keepingCapacity: false)
     }
+    engine?.stop()
+    engine = nil
   }
 
-  private func handleConfigurationChange() {
+  private func handleConfigurationChange(generation: Int) {
+    guard processingQueue.sync(execute: { Self.shouldProcessCallback(callbackGeneration: generation, currentGeneration: captureGeneration) }) else {
+      return
+    }
     logger.notice("Capture engine configuration changed")
     onEngineConfigurationChange()
+  }
+
+  static func shouldProcessCallback(callbackGeneration: Int, currentGeneration: Int) -> Bool {
+    callbackGeneration == currentGeneration
   }
 
   func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {
@@ -257,6 +279,7 @@ final class SuperFastCaptureController {
     var startError: Error?
     processingQueue.sync {
       do {
+        recordingFailure = nil
         let file = try AVAudioFile(
           forWriting: url,
           settings: [
@@ -300,14 +323,22 @@ final class SuperFastCaptureController {
     }
   }
 
-  func finishRecording(clearBuffer: Bool = true) -> URL? {
+  func finishRecording(clearBuffer: Bool = true) -> FinishRecordingResult {
     processingQueue.sync {
-      let url = activeRecording?.url
+      let result: FinishRecordingResult
+      if let recordingFailure {
+        result = .failed(recordingFailure)
+      } else if let url = activeRecording?.url {
+        result = .captured(url)
+      } else {
+        result = .idle
+      }
       activeRecording = nil
+      recordingFailure = nil
       if clearBuffer {
         ringBuffer.clear()
       }
-      return url
+      return result
     }
   }
 
@@ -318,14 +349,17 @@ final class SuperFastCaptureController {
     }
   }
 
-  private func enqueue(_ buffer: AVAudioPCMBuffer) {
+  private func enqueue(_ buffer: AVAudioPCMBuffer, generation: Int) {
     guard let copy = clone(buffer) else { return }
     processingQueue.async { [weak self] in
-      self?.process(copy)
+      self?.process(copy, generation: generation)
     }
   }
 
-  private func process(_ buffer: AVAudioPCMBuffer) {
+  private func process(_ buffer: AVAudioPCMBuffer, generation: Int) {
+    guard Self.shouldProcessCallback(callbackGeneration: generation, currentGeneration: captureGeneration) else {
+      return
+    }
     let now = Date()
     if let lastProcessedBufferAt {
       appendRecentMetric(now.timeIntervalSince(lastProcessedBufferAt), to: &recentCallbackIntervals)
@@ -364,6 +398,8 @@ final class SuperFastCaptureController {
     } catch {
       logger.error("Failed to write capture engine audio: \(error.localizedDescription)")
       activeRecording = nil
+      recordingFailure = .captureWriteFailed(error.localizedDescription)
+      FileManager.default.removeItemIfExists(at: recording.url)
     }
   }
 

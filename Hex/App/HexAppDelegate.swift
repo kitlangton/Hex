@@ -42,6 +42,12 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 			name: .updateAppMode,
 			object: nil
 		)
+		NotificationCenter.default.addObserver(
+			self,
+			selector: #selector(handlePresentSettingsWindow),
+			name: .presentSettingsWindow,
+			object: nil
+		)
 
 		// Start long-running app effects (global hotkeys, permissions, etc.)
 		startLifecycleTasksIfNeeded()
@@ -135,6 +141,10 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 		Task {
 			await updateAppMode()
 		}
+	}
+
+	@objc private func handlePresentSettingsWindow() {
+		presentSettingsView()
 	}
 
 	@MainActor

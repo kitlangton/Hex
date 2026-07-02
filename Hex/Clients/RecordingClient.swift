@@ -28,7 +28,7 @@ struct AudioInputDevice: Identifiable, Equatable {
 @DependencyClient
 struct RecordingClient {
   var startRecording: @Sendable () async -> Void = {}
-  var stopRecording: @Sendable () async -> URL = { URL(fileURLWithPath: "") }
+  var stopRecording: @Sendable () async -> RecordingStopResult = { .ignored(.noActiveRecording) }
   var requestMicrophoneAccess: @Sendable () async -> Bool = { false }
   var observeAudioLevel: @Sendable () async -> AsyncStream<Meter> = { AsyncStream { _ in } }
   var getAvailableInputDevices: @Sendable () async -> [AudioInputDevice] = { [] }
@@ -60,6 +60,36 @@ extension RecordingClient: DependencyKey {
 struct Meter: Equatable {
   let averagePower: Double
   let peakPower: Double
+}
+
+enum IgnoredRecordingStopReason: Equatable {
+  case staleSession
+  case noActiveRecording
+}
+
+enum RecordingFailure: Error, Equatable {
+  case captureWriteFailed(String)
+  case fallbackExportFailed(String)
+  case noCapturedAudio
+}
+
+extension RecordingFailure: LocalizedError {
+  var errorDescription: String? {
+    switch self {
+    case let .captureWriteFailed(message):
+      "Failed to write captured audio: \(message)"
+    case let .fallbackExportFailed(message):
+      "Failed to export recorded audio: \(message)"
+    case .noCapturedAudio:
+      "Recording stopped without captured audio."
+    }
+  }
+}
+
+enum RecordingStopResult: Equatable {
+  case captured(URL)
+  case ignored(IgnoredRecordingStopReason)
+  case failed(RecordingFailure)
 }
 
 // Define function pointer types for the MediaRemote functions.
@@ -838,10 +868,6 @@ actor RecordingClientLive {
     FileManager.default.temporaryDirectory.appendingPathComponent("hex-capture-\(UUID().uuidString).wav")
   }
 
-  private func makeIgnoredStopURL() -> URL {
-    FileManager.default.temporaryDirectory.appendingPathComponent("hex-ignored-stop-\(UUID().uuidString).wav")
-  }
-
   nonisolated static func shouldIgnoreStopRequest(
     snapshotSessionID: UUID?,
     currentSessionID: UUID?
@@ -1139,7 +1165,7 @@ actor RecordingClientLive {
     }
   }
 
-  func stopRecording() async -> URL {
+  func stopRecording() async -> RecordingStopResult {
     let stopSessionID = recordingSessionID
     let activeSession = activeRecordingSession
 
@@ -1155,11 +1181,12 @@ actor RecordingClientLive {
         currentSessionID: recordingSessionID
       ) {
         recordingLogger.notice("Ignoring stale stop request after a newer recording session started")
-        return makeIgnoredStopURL()
+        return .ignored(.staleSession)
       }
     }
 
-    if let captureURL = captureController.finishRecording(clearBuffer: currentCaptureMode() == .superFast) {
+    switch captureController.finishRecording(clearBuffer: currentCaptureMode() == .superFast) {
+    case let .captured(captureURL):
       let stoppedAt = Date()
       let session = activeSession ?? ActiveRecordingSession(
         startedAt: stoppedAt,
@@ -1182,7 +1209,24 @@ actor RecordingClientLive {
 
       await flushDeferredCaptureRestartIfNeeded()
       await resumeMediaIfNeeded()
-      return captureURL
+      return .captured(captureURL)
+
+    case let .failed(error):
+      let stoppedAt = Date()
+      stopMeterTask()
+      endRecordingSession()
+      clearActiveRecordingMetadata()
+      lastRecordingEndedAt = stoppedAt
+      if !hexSettings.superFastModeEnabled {
+        stopCaptureController(reason: "mode-disabled-after-stop-failed")
+        releaseRecorder(reason: "capture-engine-stop-failed")
+      }
+      await flushDeferredCaptureRestartIfNeeded()
+      await resumeMediaIfNeeded()
+      return .failed(error)
+
+    case .idle:
+      break
     }
 
     let stoppedAt = Date()
@@ -1201,7 +1245,7 @@ actor RecordingClientLive {
       lastRecordingEndedAt = stoppedAt
       await flushDeferredCaptureRestartIfNeeded()
       await resumeMediaIfNeeded()
-      return makeIgnoredStopURL()
+      return .ignored(.noActiveRecording)
     }
     recorder?.stop()
     stopMeterTask()
@@ -1210,12 +1254,17 @@ actor RecordingClientLive {
     lastRecordingEndedAt = stoppedAt
     recordingLogger.notice("Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(recordingDuration))")
 
-    var exportedURL = recordingURL
+    let exportedURL: URL
     do {
       exportedURL = try duplicateCurrentRecording()
     } catch {
       isRecorderPrimedForNextSession = false
       recordingLogger.error("Failed to copy recording: \(error.localizedDescription)")
+      releaseRecorder(reason: "fallback-export-failed")
+      FileManager.default.removeItemIfExists(at: recordingURL)
+      await flushDeferredCaptureRestartIfNeeded()
+      await resumeMediaIfNeeded()
+      return .failed(.fallbackExportFailed(error.localizedDescription))
     }
     releaseRecorder(reason: "fallback-stop")
 
@@ -1226,7 +1275,7 @@ actor RecordingClientLive {
     await flushDeferredCaptureRestartIfNeeded()
     await resumeMediaIfNeeded()
 
-    return exportedURL
+    return .captured(exportedURL)
   }
 
   private func resumeMediaIfNeeded() async {

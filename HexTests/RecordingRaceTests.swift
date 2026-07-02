@@ -91,6 +91,52 @@ struct RecordingRaceTests {
   }
 
   @Test
+  func captureControllerIgnoresCallbacksFromOlderGeneration() {
+    #expect(
+      SuperFastCaptureController.shouldProcessCallback(
+        callbackGeneration: 2,
+        currentGeneration: 2
+      )
+    )
+    #expect(
+      !SuperFastCaptureController.shouldProcessCallback(
+        callbackGeneration: 1,
+        currentGeneration: 2
+      )
+    )
+  }
+
+  @Test
+  func failedRecordingStopEndsTranscription() async {
+    let now = Date(timeIntervalSince1970: 1_234)
+    var state = Self.makeState()
+    state.isRecording = true
+    state.recordingStartTime = now
+    state.$hexSettings.withLock { settings in
+      settings.hotkey = HotKey(key: .a, modifiers: [.command])
+    }
+    let store = TestStore(initialState: state) {
+      TranscriptionFeature()
+    } withDependencies: {
+      $0.date.now = now
+      $0.recording.stopRecording = { .failed(.fallbackExportFailed("copy failed")) }
+      $0.sleepManagement.allowSleep = {}
+    }
+
+    await store.send(.stopRecording) {
+      $0.isRecording = false
+      $0.isTranscribing = true
+      $0.error = nil
+      $0.isPrewarming = true
+    }
+    await store.receive(\.transcriptionError) {
+      $0.isTranscribing = false
+      $0.isPrewarming = false
+      $0.error = "Failed to export recorded audio: copy failed"
+    }
+  }
+
+  @Test
   func shortRecordingReleasesSleepAssertion() async throws {
     let now = Date(timeIntervalSince1970: 1_234)
     let stopURL = FileManager.default.temporaryDirectory
@@ -108,7 +154,7 @@ struct RecordingRaceTests {
     } withDependencies: {
       $0.date.now = now
       $0.recording.startRecording = {}
-      $0.recording.stopRecording = { stopURL }
+      $0.recording.stopRecording = { .captured(stopURL) }
       $0.sleepManagement.preventSleep = { _ in
         await probe.recordPreventSleep()
       }
@@ -244,7 +290,7 @@ private actor RecordingProbe {
   private let stopURL: URL
   private var startCalls = 0
   private var stopCalls = 0
-  private var stopContinuation: CheckedContinuation<URL, Never>?
+  private var stopContinuation: CheckedContinuation<RecordingStopResult, Never>?
 
   init(stopURL: URL) {
     self.stopURL = stopURL
@@ -254,16 +300,16 @@ private actor RecordingProbe {
     startCalls += 1
   }
 
-  func beginStop() async -> URL {
+  func beginStop() async -> RecordingStopResult {
     stopCalls += 1
     return await withCheckedContinuation { continuation in
       stopContinuation = continuation
     }
   }
 
-  func beginImmediateStop() -> URL {
+  func beginImmediateStop() -> RecordingStopResult {
     stopCalls += 1
-    return stopURL
+    return .captured(stopURL)
   }
 
   func waitForPendingStop() async {
@@ -273,7 +319,7 @@ private actor RecordingProbe {
   }
 
   func resumePendingStop() {
-    stopContinuation?.resume(returning: stopURL)
+    stopContinuation?.resume(returning: .captured(stopURL))
     stopContinuation = nil
   }
 

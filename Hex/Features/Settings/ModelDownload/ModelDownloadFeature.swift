@@ -155,6 +155,7 @@ public struct ModelDownloadFeature {
 		case selectModel(String)
 		case toggleModelDisplay
 		case downloadSelectedModel
+		case downloadModel(String)
 		// Effects
 		case modelsLoaded(recommended: String, available: [ModelInfo])
 		case downloadProgress(Double)
@@ -196,7 +197,16 @@ public struct ModelDownloadFeature {
 
 	private func updateBootstrapState(_ state: inout State) {
 		let model = state.hexSettings.selectedModel
-		guard !model.isEmpty else { return }
+		guard !model.isEmpty else {
+			state.$modelBootstrapState.withLock { bootstrap in
+				bootstrap.modelIdentifier = ""
+				bootstrap.modelDisplayName = ""
+				bootstrap.isModelReady = false
+				bootstrap.progress = 0
+				bootstrap.lastError = nil
+			}
+			return
+		}
 		let displayName = curatedDisplayName(for: model, curated: state.curatedModels)
 		state.$modelBootstrapState.withLock { bootstrap in
 			bootstrap.modelIdentifier = model
@@ -292,6 +302,14 @@ public struct ModelDownloadFeature {
 				}
 			}
 			state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
+			if !state.selectedModelIsDownloaded,
+			   let installedModel = state.curatedModels.first(where: \.isDownloaded)
+			{
+				let fallback = resolvePattern(installedModel.internalName, from: Array(state.availableModels)) ?? installedModel.internalName
+				state.$hexSettings.withLock { $0.selectedModel = fallback }
+			} else if !state.anyModelDownloaded, state.hexSettings.hasCompletedModelBootstrap {
+				state.$hexSettings.withLock { $0.selectedModel = "" }
+			}
 			updateBootstrapState(&state)
 			if !state.anyModelDownloaded && !state.hexSettings.hasCompletedModelBootstrap {
 				let preferred = state.recommendedModel.isEmpty ? state.hexSettings.selectedModel : state.recommendedModel
@@ -305,28 +323,32 @@ public struct ModelDownloadFeature {
 		// MARK: – Download
 
 		case .downloadSelectedModel:
-			guard !state.hexSettings.selectedModel.isEmpty else { return .none }
+			return .send(.downloadModel(state.hexSettings.selectedModel))
+
+		case let .downloadModel(model):
+			guard !model.isEmpty, !state.isDownloading else { return .none }
 			state.downloadError = nil
 			state.isDownloading = true
-			let selected = state.hexSettings.selectedModel
-			state.downloadingModelName = selected
+			state.downloadingModelName = model
 			state.activeDownloadID = UUID()
 			let downloadID = state.activeDownloadID!
-			let displayName = curatedDisplayName(for: selected, curated: state.curatedModels)
-			state.$modelBootstrapState.withLock {
-				$0.modelIdentifier = selected
-				$0.modelDisplayName = displayName
-				$0.isModelReady = false
-				$0.progress = 0
-				$0.lastError = nil
+			if !state.anyModelDownloaded {
+				let displayName = curatedDisplayName(for: model, curated: state.curatedModels)
+				state.$modelBootstrapState.withLock {
+					$0.modelIdentifier = model
+					$0.modelDisplayName = displayName
+					$0.isModelReady = false
+					$0.progress = 0
+					$0.lastError = nil
+				}
 			}
-			return .run { [state] send in
+			return .run { send in
 				do {
 					// Assume downloadModel returns AsyncThrowingStream<Double, Error>
-					try await transcription.downloadModel(state.selectedModel) { progress in
+					try await transcription.downloadModel(model) { progress in
 						Task { await send(.downloadProgress(progress.fractionCompleted)) }
 					}
-					await send(.downloadCompleted(.success(state.selectedModel)))
+					await send(.downloadCompleted(.success(model)))
 				} catch {
 					await send(.downloadCompleted(.failure(error)))
 				}
@@ -335,7 +357,7 @@ public struct ModelDownloadFeature {
 
 		case let .downloadProgress(progress):
 			state.downloadProgress = progress
-			if state.downloadingModelName == state.hexSettings.selectedModel {
+			if !state.modelBootstrapState.isModelReady {
 				state.$modelBootstrapState.withLock { $0.progress = progress }
 			}
 			return .none
@@ -352,6 +374,7 @@ public struct ModelDownloadFeature {
 					state.curatedModels[idx].isDownloaded = true
 				}
 				state.$hexSettings.withLock { settings in
+					settings.selectedModel = name
 					settings.hasCompletedModelBootstrap = true
 				}
 				state.downloadError = nil
@@ -389,11 +412,8 @@ public struct ModelDownloadFeature {
 			state.isDownloading = false
 			state.downloadingModelName = nil
 			state.activeDownloadID = nil
-			state.$modelBootstrapState.withLock {
-				$0.progress = 0
-				$0.isModelReady = false
-				$0.lastError = "Download cancelled"
-			}
+			state.$modelBootstrapState.withLock { $0.progress = 0 }
+			updateBootstrapState(&state)
 			return .cancel(id: id)
 
 		case .deleteSelectedModel:

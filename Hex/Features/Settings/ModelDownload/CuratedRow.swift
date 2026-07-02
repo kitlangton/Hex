@@ -1,5 +1,5 @@
 import ComposableArchitecture
-import Darwin
+import HexCore
 import Inject
 import SwiftUI
 
@@ -10,14 +10,8 @@ struct CuratedRow: View {
 
 	var isSelected: Bool {
 		let selected = store.hexSettings.selectedModel
-		if model.internalName.contains("*") || model.internalName.contains("?") {
-			return fnmatch(model.internalName, selected, 0) == 0
-		}
-		// Also consider the inverse: selected may be a concrete name while the curated item is a prefix-like value
-		if selected.contains("*") || selected.contains("?") {
-			return fnmatch(selected, model.internalName, 0) == 0
-		}
-		return model.internalName == selected
+		return ModelPatternMatcher.matches(model.internalName, selected)
+			|| ModelPatternMatcher.matches(selected, model.internalName)
 	}
 
 	var body: some View {
@@ -32,7 +26,7 @@ struct CuratedRow: View {
 					HStack(spacing: 6) {
 						Text(model.displayName)
 							.font(.headline)
-						if let badge = model.badge {
+						if !model.isDownloaded, let badge = model.badge {
 							Text(badge)
 								.font(.caption2)
 								.fontWeight(.semibold)
@@ -80,8 +74,7 @@ struct CuratedRow: View {
 								.help("Downloaded")
 						} else {
 							Button {
-								store.send(.selectModel(model.internalName))
-								store.send(.downloadSelectedModel)
+								store.send(.downloadModel(model.internalName))
 							} label: {
 								Image(systemName: "arrow.down.circle")
 							}
