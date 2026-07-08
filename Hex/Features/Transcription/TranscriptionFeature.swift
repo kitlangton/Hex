@@ -453,7 +453,15 @@ private extension TranscriptionFeature {
       if remappedResult != output {
         transcriptionFeatureLogger.info("Applied \(remappings.count) word remapping(s)")
       }
-      modifiedResult = remappedResult
+      let formattedResult = TranscriptFormattingApplier.apply(
+        remappedResult,
+        lowercase: state.hexSettings.lowercaseTranscripts,
+        removePunctuation: state.hexSettings.removePunctuation
+      )
+      if formattedResult != remappedResult {
+        transcriptionFeatureLogger.info("Applied paste formatting")
+      }
+      modifiedResult = formattedResult
     }
 
     guard !modifiedResult.isEmpty else {
