@@ -79,43 +79,75 @@ struct WordRemappingsView: View {
 	}
 
 	private var removalsSection: some View {
-		GroupBox {
-			VStack(alignment: .leading, spacing: 10) {
-				Toggle(
-					"Enable Word Removals",
-					isOn: Binding(
-						get: { store.hexSettings.wordRemovalsEnabled },
-						set: { store.send(.setWordRemovalsEnabled($0)) }
+		VStack(alignment: .leading, spacing: 16) {
+			GroupBox {
+				VStack(alignment: .leading, spacing: 10) {
+					Toggle(
+						"Enable Word Removals",
+						isOn: Binding(
+							get: { store.hexSettings.wordRemovalsEnabled },
+							set: { store.send(.setWordRemovalsEnabled($0)) }
+						)
 					)
-				)
-					.toggleStyle(.checkbox)
+						.toggleStyle(.checkbox)
 
-				removalsColumnHeaders
+					removalsColumnHeaders
 
-				LazyVStack(alignment: .leading, spacing: 6) {
-					ForEach(store.hexSettings.wordRemovals) { removal in
-						RemovalRow(removal: removalBinding(for: removal)) {
-							store.send(.removeWordRemoval(removal.id))
+					LazyVStack(alignment: .leading, spacing: 6) {
+						ForEach(store.hexSettings.wordRemovals) { removal in
+							RemovalRow(removal: removalBinding(for: removal)) {
+								store.send(.removeWordRemoval(removal.id))
+							}
 						}
 					}
-				}
 
-				HStack {
-					Button {
-						store.send(.addWordRemoval)
-					} label: {
-						Label("Add Removal", systemImage: "plus")
+					HStack {
+						Button {
+							store.send(.addWordRemoval)
+						} label: {
+							Label("Add Removal", systemImage: "plus")
+						}
+						Spacer()
 					}
-					Spacer()
+				}
+				.padding(.vertical, 4)
+			} label: {
+				VStack(alignment: .leading, spacing: 4) {
+					Text("Word Removals")
+						.font(.headline)
+					Text("Remove filler words using case-insensitive regex patterns.")
+						.settingsCaption()
 				}
 			}
-			.padding(.vertical, 4)
-		} label: {
-			VStack(alignment: .leading, spacing: 4) {
-				Text("Word Removals")
-					.font(.headline)
-				Text("Remove filler words using case-insensitive regex patterns.")
-					.settingsCaption()
+
+			GroupBox {
+				VStack(alignment: .leading, spacing: 10) {
+					Toggle(
+						"Lowercase Everything",
+						isOn: Binding(
+							get: { store.hexSettings.lowercaseTranscripts },
+							set: { store.send(.setLowercaseTranscripts($0)) }
+						)
+					)
+					.toggleStyle(.checkbox)
+
+					Toggle(
+						"Remove All Punctuation",
+						isOn: Binding(
+							get: { store.hexSettings.removePunctuation },
+							set: { store.send(.setRemovePunctuation($0)) }
+						)
+					)
+					.toggleStyle(.checkbox)
+				}
+				.padding(.vertical, 4)
+			} label: {
+				VStack(alignment: .leading, spacing: 4) {
+					Text("Paste Formatting")
+						.font(.headline)
+					Text("Change capitalization and punctuation before each transcript is pasted.")
+						.settingsCaption()
+				}
 			}
 		}
 	}
@@ -209,6 +241,11 @@ struct WordRemappingsView: View {
 			output = WordRemovalApplier.apply(output, removals: store.hexSettings.wordRemovals)
 		}
 		output = WordRemappingApplier.apply(output, remappings: store.hexSettings.wordRemappings)
+		output = TranscriptFormattingApplier.apply(
+			output,
+			lowercase: store.hexSettings.lowercaseTranscripts,
+			removePunctuation: store.hexSettings.removePunctuation
+		)
 		return output
 	}
 }
