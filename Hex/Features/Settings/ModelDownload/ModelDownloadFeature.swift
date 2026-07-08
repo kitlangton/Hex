@@ -121,7 +121,7 @@ public struct ModelDownloadFeature {
 
 		// Remote data
 		public var availableModels: IdentifiedArrayOf<ModelInfo> = []
-		public var curatedModels: IdentifiedArrayOf<CuratedModelInfo> = []
+		public var curatedModels = IdentifiedArrayOf(uniqueElements: CuratedModelLoader.load())
 		public var recommendedModel: String = ""
 
 		// UI state
@@ -136,6 +136,25 @@ public struct ModelDownloadFeature {
 
 		// Convenience computed vars
 		var selectedModel: String { hexSettings.selectedModel }
+		var selectedModelNameForDisplay: String? {
+			guard !selectedModel.isEmpty else { return nil }
+			if let downloaded = availableModels.first(where: {
+				$0.isDownloaded
+					&& (ModelPatternMatcher.matches($0.name, selectedModel)
+						|| ModelPatternMatcher.matches(selectedModel, $0.name))
+			}) {
+				return downloaded.name
+			}
+			if modelBootstrapState.isModelReady,
+			   let identifier = modelBootstrapState.modelIdentifier,
+			   ModelPatternMatcher.matches(identifier, selectedModel)
+				|| ModelPatternMatcher.matches(selectedModel, identifier)
+			{
+				return selectedModel
+			}
+			return hexSettings.hasCompletedModelBootstrap ? selectedModel : nil
+		}
+
 		var selectedModelIsDownloaded: Bool {
 			availableModels[id: selectedModel]?.isDownloaded ?? false
 		}

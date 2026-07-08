@@ -73,17 +73,14 @@ public struct ModelDownloadView: View {
 	}
 
 	private var selectedModel: CuratedModelInfo? {
-		store.curatedModels.first { model in
-			model.isDownloaded && modelNamesMatch(model.internalName, store.hexSettings.selectedModel)
+		guard let selectedModelName else { return nil }
+		return store.curatedModels.first { model in
+			modelNamesMatch(model.internalName, selectedModelName)
 		}
 	}
 
 	private var selectedModelName: String? {
-		let selected = store.hexSettings.selectedModel
-		guard !selected.isEmpty else { return nil }
-		return store.availableModels.first {
-			$0.isDownloaded && modelNamesMatch($0.name, selected)
-		}?.name
+		store.selectedModelNameForDisplay
 	}
 
 	private var downloadingModel: CuratedModelInfo? {

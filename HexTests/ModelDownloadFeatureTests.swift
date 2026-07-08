@@ -6,6 +6,13 @@ import XCTest
 
 @MainActor
 final class ModelDownloadFeatureTests: XCTestCase {
+  func testPersistedModelDisplaysWhileAvailabilityLoads() {
+    let state = makeState(selectedModel: ParakeetModel.englishV2.identifier)
+
+    XCTAssertTrue(state.availableModels.isEmpty)
+    XCTAssertEqual(state.selectedModelNameForDisplay, ParakeetModel.englishV2.identifier)
+  }
+
   func testSuggestedParakeetFollowsOutputLanguage() {
     var state = makeState(selectedModel: "")
     XCTAssertEqual(state.preferredParakeetIdentifier, ParakeetModel.englishV2.identifier)

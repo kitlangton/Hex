@@ -218,6 +218,12 @@
         }
       }
     },
+    "Delete removal" : {
+
+    },
+    "Delete replacement" : {
+
+    },
     "Delete Selected Model" : {
       "comment" : "Delete the selected model in settings.",
       "extractionState" : "stale",
@@ -229,12 +235,6 @@
           }
         }
       }
-    },
-    "Delete removal" : {
-
-    },
-    "Delete replacement" : {
-
     },
     "Delete transcript" : {
       "comment" : "Delete individual transcript button. Help text.",
@@ -297,6 +297,9 @@
           }
         }
       }
+    },
+    "Enable %@" : {
+
     },
     "Enable double-tap lock" : {
 
@@ -511,6 +514,9 @@
     "Output" : {
 
     },
+    "Output formatting" : {
+
+    },
     "Output Language" : {
       "comment" : "transcription model setting for which language to use for text output.",
       "localizations" : {
@@ -523,9 +529,6 @@
       }
     },
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
-
-    },
-    "Output formatting" : {
 
     },
     "Paste Last Transcript" : {
@@ -600,16 +603,10 @@
     "Remove punctuation" : {
 
     },
-    "Remove words" : {
-
-    },
     "Replace" : {
 
     },
     "Replace matching words in every transcript." : {
-
-    },
-    "Replace words" : {
 
     },
     "Request Permission" : {
@@ -749,9 +746,6 @@
     "Support the developer" : {
 
     },
-    "Type or speak a sample…" : {
-
-    },
     "Transcription history is currently disabled." : {
 
     },
@@ -767,6 +761,9 @@
       }
     },
     "Transforms" : {
+
+    },
+    "Type or speak a sample…" : {
 
     },
     "Unavailable Device" : {
