@@ -126,11 +126,11 @@ final class SuperFastCaptureController {
   private var lastProcessedBufferAt: Date?
   private var recentCallbackIntervals: [TimeInterval] = []
   private var recentBufferDurations: [TimeInterval] = []
-  private let onEngineConfigurationChange: @Sendable () -> Void
+  private let onEngineConfigurationChange: @Sendable (Int) -> Void
 
   init(
     meterContinuation: AsyncStream<Meter>.Continuation,
-    onEngineConfigurationChange: @escaping @Sendable () -> Void
+    onEngineConfigurationChange: @escaping @Sendable (Int) -> Void
   ) {
     self.meterContinuation = meterContinuation
     self.onEngineConfigurationChange = onEngineConfigurationChange
@@ -266,11 +266,15 @@ final class SuperFastCaptureController {
       return
     }
     logger.notice("Capture engine configuration changed")
-    onEngineConfigurationChange()
+    onEngineConfigurationChange(generation)
   }
 
   static func shouldProcessCallback(callbackGeneration: Int, currentGeneration: Int) -> Bool {
     callbackGeneration == currentGeneration
+  }
+
+  func isCurrentGeneration(_ generation: Int) -> Bool {
+    processingQueue.sync { generation == captureGeneration }
   }
 
   func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {

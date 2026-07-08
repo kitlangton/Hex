@@ -32,25 +32,30 @@ public struct ModelDownloadView: View {
 					style: .error
 				)
 			}
-			if selectedModel == nil, downloadingModel == nil {
+			if selectedModelName == nil, downloadingModel == nil {
 				NoModelChooser(
 					models: parakeetModels,
 					suggestedModel: suggestedParakeetIdentifier,
+					isLoading: store.isLoadingModels,
 					isFlashing: shouldFlash,
 					onDownload: { store.send(.downloadModel($0.internalName)) },
-					onBrowse: { isModelLibraryPresented = true }
+					onBrowse: { isModelLibraryPresented = true },
+					onRetry: { store.send(.fetchModels) }
 				)
 			} else {
 				CurrentModelSummary(
 					model: selectedModel,
+					selectedModelName: selectedModelName,
 					downloadingModel: downloadingModel,
 					downloadProgress: store.downloadProgress,
 					onBrowse: { isModelLibraryPresented = true },
 					onCancelDownload: { store.send(.cancelDownload) }
 				)
 			}
-			if let err = store.downloadError {
-				Text("Download Error: \(err)")
+			if let err = store.downloadError,
+			   err != store.modelBootstrapState.lastError
+			{
+				Text("Model Error: \(err)")
 					.foregroundColor(.red)
 					.font(.caption)
 			}
@@ -71,6 +76,14 @@ public struct ModelDownloadView: View {
 		store.curatedModels.first { model in
 			model.isDownloaded && modelNamesMatch(model.internalName, store.hexSettings.selectedModel)
 		}
+	}
+
+	private var selectedModelName: String? {
+		let selected = store.hexSettings.selectedModel
+		guard !selected.isEmpty else { return nil }
+		return store.availableModels.first {
+			$0.isDownloaded && modelNamesMatch($0.name, selected)
+		}?.name
 	}
 
 	private var downloadingModel: CuratedModelInfo? {
@@ -94,9 +107,11 @@ public struct ModelDownloadView: View {
 private struct NoModelChooser: View {
 	let models: [CuratedModelInfo]
 	let suggestedModel: String
+	let isLoading: Bool
 	let isFlashing: Bool
 	let onDownload: (CuratedModelInfo) -> Void
 	let onBrowse: () -> Void
+	let onRetry: () -> Void
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
@@ -118,9 +133,19 @@ private struct NoModelChooser: View {
 			}
 
 			if models.isEmpty {
-				Text("Loading model choices…")
-					.font(.caption)
-					.foregroundStyle(.secondary)
+				if isLoading {
+					Text("Loading model choices…")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				} else {
+					HStack {
+						Text("Model choices couldn’t be loaded.")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+						Button("Retry", action: onRetry)
+							.controlSize(.small)
+					}
+				}
 			} else {
 				HStack(spacing: 10) {
 					ForEach(models) { model in
@@ -208,6 +233,7 @@ private struct NoModelCard: View {
 
 private struct CurrentModelSummary: View {
 	let model: CuratedModelInfo?
+	let selectedModelName: String?
 	let downloadingModel: CuratedModelInfo?
 	let downloadProgress: Double
 	let onBrowse: () -> Void
@@ -258,23 +284,30 @@ private struct CurrentModelSummary: View {
 
 	private var title: String {
 		if let model { return model.displayName }
+		if let selectedModelName {
+			return selectedModelName
+				.replacingOccurrences(of: "-", with: " ")
+				.replacingOccurrences(of: "_", with: " ")
+				.capitalized
+		}
 		if let downloadingModel { return "Downloading \(downloadingModel.displayName)…" }
 		return "Choose a transcription model"
 	}
 
 	private var subtitle: String {
 		if let model { return "\(model.size) · \(model.storageSize)" }
+		if selectedModelName != nil { return "Installed local model" }
 		if let downloadingModel { return "\(downloadingModel.storageSize) will be stored locally on this Mac." }
 		return "Download a local model to start transcribing."
 	}
 
 	private var activeDownloadStatus: String? {
-		guard model != nil, let downloadingModel else { return nil }
+		guard selectedModelName != nil, let downloadingModel else { return nil }
 		return "Downloading \(downloadingModel.displayName)…"
 	}
 
 	private var iconName: String {
-		if model == nil { return "arrow.down.circle.fill" }
+		if selectedModelName == nil { return "arrow.down.circle.fill" }
 		return "waveform"
 	}
 
@@ -370,14 +403,8 @@ private struct ModelLibrarySheet: View {
 						showsBadge: showsBadges && !model.isDownloaded,
 						onSelect: { select(model) },
 						onCancelDownload: { store.send(.cancelDownload) },
-						onShowInFinder: {
-							store.send(.selectModel(model.internalName))
-							store.send(.openModelLocation)
-						},
-						onDelete: {
-							store.send(.selectModel(model.internalName))
-							store.send(.deleteSelectedModel)
-						}
+						onShowInFinder: { store.send(.openModelLocation(model.internalName)) },
+						onDelete: { store.send(.deleteModel(model.internalName)) }
 					)
 					if model.id != models.last?.id {
 						Divider().padding(.leading, 54)
@@ -424,66 +451,72 @@ private struct ModelLibraryRow: View {
 	let onDelete: () -> Void
 
 	var body: some View {
-		Button(action: onSelect) {
-			HStack(spacing: 12) {
-				Image(systemName: leadingIcon)
-					.foregroundStyle(leadingColor)
-					.font(.body)
-					.frame(width: 24)
+		HStack(spacing: 0) {
+			Button(action: onSelect) {
+				HStack(spacing: 12) {
+					Image(systemName: leadingIcon)
+						.foregroundStyle(leadingColor)
+						.font(.body)
+						.frame(width: 24)
 
-				VStack(alignment: .leading, spacing: 4) {
-					HStack(spacing: 7) {
-						Text(model.displayName)
-							.font(.body.weight(.medium))
-						if showsBadge, let badge = model.badge {
-							Text(badge)
-								.font(.caption2.weight(.medium))
-								.foregroundStyle(Color.accentColor)
-								.padding(.horizontal, 6)
-								.padding(.vertical, 2)
-								.background(Color.accentColor.opacity(0.12), in: Capsule())
-						}
-					}
-					HStack(spacing: 12) {
-						Text(model.size)
-							.font(.caption)
-							.foregroundStyle(.secondary)
-						HStack(spacing: 5) {
-							Text("Accuracy").font(.caption2).foregroundStyle(.secondary)
-							StarRatingView(model.accuracyStars)
-						}
-						HStack(spacing: 5) {
-							Text("Speed").font(.caption2).foregroundStyle(.secondary)
-							StarRatingView(model.speedStars)
-						}
-						if isDownloading {
-							HStack(spacing: 5) {
-								ProgressView(value: downloadProgress)
-									.progressViewStyle(.circular)
-									.controlSize(.small)
-								Text("\(Int(downloadProgress * 100))%")
-								Button("Cancel", role: .destructive, action: onCancelDownload)
-									.buttonStyle(.plain)
+					VStack(alignment: .leading, spacing: 4) {
+						HStack(spacing: 7) {
+							Text(model.displayName)
+								.font(.body.weight(.medium))
+							if showsBadge, let badge = model.badge {
+								Text(badge)
+									.font(.caption2.weight(.medium))
+									.foregroundStyle(Color.accentColor)
+									.padding(.horizontal, 6)
+									.padding(.vertical, 2)
+									.background(Color.accentColor.opacity(0.12), in: Capsule())
 							}
-							.font(.caption)
-							.foregroundStyle(.secondary)
+						}
+						HStack(spacing: 12) {
+							Text(model.size)
+								.font(.caption)
+								.foregroundStyle(.secondary)
+							HStack(spacing: 5) {
+								Text("Accuracy").font(.caption2).foregroundStyle(.secondary)
+								StarRatingView(model.accuracyStars)
+							}
+							HStack(spacing: 5) {
+								Text("Speed").font(.caption2).foregroundStyle(.secondary)
+								StarRatingView(model.speedStars)
+							}
+							if isDownloading {
+								HStack(spacing: 5) {
+									ProgressView(value: downloadProgress)
+										.progressViewStyle(.circular)
+										.controlSize(.small)
+									Text("\(Int(downloadProgress * 100))%")
+								}
+								.font(.caption)
+								.foregroundStyle(.secondary)
+							}
 						}
 					}
+
+					Spacer()
+
+					Text(model.storageSize)
+						.font(.caption)
+						.foregroundStyle(.secondary)
+						.frame(width: 56, alignment: .trailing)
+
 				}
-
-				Spacer()
-
-				Text(model.storageSize)
-					.font(.caption)
-					.foregroundStyle(.secondary)
-					.frame(width: 56, alignment: .trailing)
-
+				.padding(.horizontal, 12)
+				.padding(.vertical, 10)
+				.contentShape(.rect)
 			}
-			.padding(.horizontal, 12)
-			.padding(.vertical, 10)
-			.contentShape(.rect)
+			.buttonStyle(.plain)
+
+			if isDownloading {
+				Button("Cancel", role: .destructive, action: onCancelDownload)
+					.controlSize(.small)
+					.padding(.trailing, 12)
+			}
 		}
-		.buttonStyle(.plain)
 		.disabled(isDisabled)
 		.opacity(isDisabled ? 0.55 : 1)
 		.background(isSelected ? Color.accentColor.opacity(0.06) : Color.clear)

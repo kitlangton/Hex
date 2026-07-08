@@ -1,14 +1,12 @@
 import ComposableArchitecture
 import Foundation
-import Testing
+import XCTest
 
 @testable import Hex
 
-@Suite(.serialized)
 @MainActor
-struct HistoryPlaybackTests {
-  @Test
-  func stoppingPlaybackCompletesWaitersExactlyOnce() async {
+final class HistoryPlaybackTests: XCTestCase {
+  func testStoppingPlaybackCompletesWaitersExactlyOnce() async {
     let controller = AudioPlayerController()
     let waiter = Task {
       await controller.waitForPlaybackToFinish()
@@ -22,13 +20,12 @@ struct HistoryPlaybackTests {
     await controller.waitForPlaybackToFinish()
   }
 
-  @Test
-  func stalePlaybackFinishedDoesNotStopCurrentPlayback() async {
+  func testStalePlaybackFinishedDoesNotStopCurrentPlayback() async {
     let transcriptID = UUID()
     let playbackID = UUID()
     let store = TestStore(
       initialState: HistoryFeature.State(
-        transcriptionHistory: Shared(.init()),
+        transcriptionHistory: Shared(value: .init()),
         playingTranscriptID: transcriptID,
         playbackID: playbackID
       )
@@ -38,7 +35,7 @@ struct HistoryPlaybackTests {
 
     await store.send(.playbackFinished(UUID()))
 
-    #expect(store.state.playingTranscriptID == transcriptID)
-    #expect(store.state.playbackID == playbackID)
+    XCTAssertEqual(store.state.playingTranscriptID, transcriptID)
+    XCTAssertEqual(store.state.playbackID, playbackID)
   }
 }

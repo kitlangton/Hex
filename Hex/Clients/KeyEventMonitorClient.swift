@@ -52,7 +52,9 @@ public extension KeyEvent {
 
 @DependencyClient
 struct KeyEventMonitorClient {
-  var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
+  var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = {
+    AsyncThrowingStream { _ in }
+  }
   var handleKeyEvent: @Sendable (@Sendable @escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
   var handleInputEvent: @Sendable (@Sendable @escaping (InputEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
   var startMonitoring: @Sendable () async -> Void = {}

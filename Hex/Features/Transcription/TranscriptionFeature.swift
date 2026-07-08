@@ -18,7 +18,7 @@ private let transcriptionFeatureLogger = HexLog.transcription
 @Reducer
 struct TranscriptionFeature {
   @ObservableState
-  struct State {
+  struct State: Equatable {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
@@ -190,15 +190,10 @@ private extension TranscriptionFeature {
             return false
           }
 
-          // Process the key event
-          switch hotKeyProcessor.process(keyEvent: keyEvent) {
-          case .startRecording:
-            // If double-tap lock is triggered, we start recording immediately
-            if hotKeyProcessor.state == .doubleTapLock {
-              Task { await send(.startRecording) }
-            } else {
-              Task { await send(.hotKeyPressed) }
-            }
+		  // Process the key event
+		  switch hotKeyProcessor.process(keyEvent: keyEvent) {
+		  case .startRecording:
+			Task { await send(.hotKeyPressed) }
             // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
             // But if useDoubleTapOnly is true, always intercept the key
             return useDoubleTapOnly || keyEvent.key != nil
@@ -585,12 +580,12 @@ private extension TranscriptionFeature {
           return
         }
         // Stop the recording to release microphone access
-        let result = await recording.stopRecording()
-        guard !Task.isCancelled else { return }
-        if case let .captured(url) = result {
-          FileManager.default.removeItemIfExists(at: url)
-        }
-        soundEffect.play(.cancel)
+		let result = await recording.stopRecording()
+		if case let .captured(url) = result {
+		  FileManager.default.removeItemIfExists(at: url)
+		}
+		guard !Task.isCancelled else { return }
+		soundEffect.play(.cancel)
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
     )
@@ -606,11 +601,11 @@ private extension TranscriptionFeature {
       .run { [sleepManagement] _ in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
-        let result = await recording.stopRecording()
-        guard !Task.isCancelled else { return }
-        if case let .captured(url) = result {
-          FileManager.default.removeItemIfExists(at: url)
-        }
+		let result = await recording.stopRecording()
+		if case let .captured(url) = result {
+		  FileManager.default.removeItemIfExists(at: url)
+		}
+		guard !Task.isCancelled else { return }
       }
       .cancellable(id: CancelID.recordingCleanup, cancelInFlight: true)
     )

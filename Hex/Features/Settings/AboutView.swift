@@ -20,6 +20,7 @@ struct AboutView: View {
                         viewModel.checkForUpdates()
                     }
                     .buttonStyle(.bordered)
+                    .disabled(!viewModel.canCheckForUpdates)
                 }
                 HStack {
                     Label("Changelog", systemImage: "doc.text")

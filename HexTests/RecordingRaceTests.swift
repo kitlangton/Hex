@@ -1,15 +1,14 @@
 import AppKit
 import ComposableArchitecture
 import Foundation
-import Testing
+import HexCore
+import XCTest
 
 @testable import Hex
 
-@Suite(.serialized)
 @MainActor
-struct RecordingRaceTests {
-  @Test
-  func newRecordingCancelsPendingDiscardCleanup() async throws {
+final class RecordingRaceTests: XCTestCase {
+  func testNewRecordingCancelsPendingDiscardCleanup() async throws {
     let now = Date(timeIntervalSince1970: 1_234)
     let activeApp = NSWorkspace.shared.frontmostApplication
     let stopURL = FileManager.default.temporaryDirectory
@@ -18,7 +17,7 @@ struct RecordingRaceTests {
       atPath: stopURL.path,
       contents: Data("test".utf8)
     )
-    #expect(created)
+    XCTAssertTrue(created)
     defer { try? FileManager.default.removeItem(at: stopURL) }
 
     let probe = RecordingProbe(stopURL: stopURL)
@@ -61,28 +60,27 @@ struct RecordingRaceTests {
     await store.finish()
 
     let counts = await probe.counts()
-    #expect(counts.startCalls == 2)
-    #expect(counts.stopCalls == 1)
-    #expect(FileManager.default.fileExists(atPath: stopURL.path))
+    XCTAssertEqual(counts.startCalls, 2)
+    XCTAssertEqual(counts.stopCalls, 1)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: stopURL.path))
   }
 
-  @Test
-  func stopGuardIgnoresOnlyStaleSessions() {
+  func testStopGuardIgnoresOnlyStaleSessions() {
     let currentSessionID = UUID()
 
-    #expect(
+    XCTAssertFalse(
       RecordingClientLive.shouldIgnoreStopRequest(
         snapshotSessionID: currentSessionID,
         currentSessionID: currentSessionID
-      ) == false
+      )
     )
-    #expect(
+    XCTAssertFalse(
       RecordingClientLive.shouldIgnoreStopRequest(
         snapshotSessionID: nil,
         currentSessionID: currentSessionID
-      ) == false
+      )
     )
-    #expect(
+    XCTAssertTrue(
       RecordingClientLive.shouldIgnoreStopRequest(
         snapshotSessionID: currentSessionID,
         currentSessionID: UUID()
@@ -90,24 +88,22 @@ struct RecordingRaceTests {
     )
   }
 
-  @Test
-  func captureControllerIgnoresCallbacksFromOlderGeneration() {
-    #expect(
+  func testCaptureControllerIgnoresCallbacksFromOlderGeneration() {
+    XCTAssertTrue(
       SuperFastCaptureController.shouldProcessCallback(
         callbackGeneration: 2,
         currentGeneration: 2
       )
     )
-    #expect(
-      !SuperFastCaptureController.shouldProcessCallback(
+    XCTAssertFalse(
+      SuperFastCaptureController.shouldProcessCallback(
         callbackGeneration: 1,
         currentGeneration: 2
       )
     )
   }
 
-  @Test
-  func failedRecordingStopEndsTranscription() async {
+  func testFailedRecordingStopEndsTranscription() async {
     let now = Date(timeIntervalSince1970: 1_234)
     var state = Self.makeState()
     state.isRecording = true
@@ -136,8 +132,7 @@ struct RecordingRaceTests {
     }
   }
 
-  @Test
-  func shortRecordingReleasesSleepAssertion() async throws {
+  func testShortRecordingReleasesSleepAssertion() async throws {
     let now = Date(timeIntervalSince1970: 1_234)
     let stopURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("short-recording-\(UUID().uuidString).wav")
@@ -145,7 +140,7 @@ struct RecordingRaceTests {
       atPath: stopURL.path,
       contents: Data("test".utf8)
     )
-    #expect(created)
+    XCTAssertTrue(created)
     defer { try? FileManager.default.removeItem(at: stopURL) }
 
     let probe = SleepProbe()
@@ -176,13 +171,12 @@ struct RecordingRaceTests {
     await store.finish()
 
     let counts = await probe.counts()
-    #expect(counts.preventSleepCalls == 1)
-    #expect(counts.allowSleepCalls == 1)
-    #expect(!FileManager.default.fileExists(atPath: stopURL.path))
+    XCTAssertEqual(counts.preventSleepCalls, 1)
+    XCTAssertEqual(counts.allowSleepCalls, 1)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: stopURL.path))
   }
 
-  @Test
-  func discardCancelsPendingRecordingStart() async {
+  func testDiscardCancelsPendingRecordingStart() async {
     let now = Date(timeIntervalSince1970: 1_234)
     let stopURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("pending-start-discard-\(UUID().uuidString).wav")
@@ -220,19 +214,18 @@ struct RecordingRaceTests {
     await store.finish()
 
     let counts = await recordingProbe.counts()
-    #expect(counts.startCalls == 0)
-    #expect(counts.stopCalls == 1)
+    XCTAssertEqual(counts.startCalls, 0)
+    XCTAssertEqual(counts.stopCalls, 1)
   }
 
-  @Test
-  func emptyTranscriptionDeletesCapturedAudio() async throws {
+  func testEmptyTranscriptionDeletesCapturedAudio() async throws {
     let audioURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("empty-transcription-\(UUID().uuidString).wav")
     let created = FileManager.default.createFile(
       atPath: audioURL.path,
       contents: Data("test".utf8)
     )
-    #expect(created)
+    XCTAssertTrue(created)
     defer { try? FileManager.default.removeItem(at: audioURL) }
 
     let store = TestStore(initialState: Self.makeState()) {
@@ -242,46 +235,52 @@ struct RecordingRaceTests {
     await store.send(.transcriptionResult("", audioURL, 1.25))
     await store.finish()
 
-    #expect(!FileManager.default.fileExists(atPath: audioURL.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
   }
 
-  @Test
-  func historyUsesRecordingDurationCapturedAtStop() async {
+  func testHistoryUsesRecordingDurationCapturedAtStop() async {
     let duration = 1.25
     let audioURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("history-duration-\(UUID().uuidString).wav")
+    let transcript = Transcript(
+      timestamp: Date(timeIntervalSince1970: 1_234),
+      text: "hello",
+      audioPath: audioURL,
+      duration: duration,
+      sourceAppBundleID: nil,
+      sourceAppName: nil
+    )
     let probe = TranscriptPersistenceProbe()
     let store = TestStore(initialState: Self.makeState()) {
       TranscriptionFeature()
     } withDependencies: {
       $0.transcriptPersistence.save = { text, audioURL, duration, sourceAppBundleID, sourceAppName in
         await probe.record(duration: duration)
-        return Transcript(
-          timestamp: Date(timeIntervalSince1970: 1_234),
-          text: text,
-          audioPath: audioURL,
-          duration: duration,
-          sourceAppBundleID: sourceAppBundleID,
-          sourceAppName: sourceAppName
-        )
+        return transcript
       }
       $0.pasteboard.paste = { _ in }
       $0.soundEffects.play = { _ in }
     }
 
     await store.send(.transcriptionResult("hello", audioURL, duration))
+    while await probe.duration == nil {
+      await Task.yield()
+    }
+    store.assert {
+      $0.$transcriptionHistory.withLock { $0.history = [transcript] }
+    }
     await store.finish()
 
     let storedDuration = await probe.duration
-    #expect(storedDuration == duration)
+    XCTAssertEqual(storedDuration, duration)
   }
 
   private static func makeState() -> TranscriptionFeature.State {
     TranscriptionFeature.State(
-      hexSettings: Shared(.init()),
-      isRemappingScratchpadFocused: Shared(false),
-      modelBootstrapState: Shared(.init(isModelReady: true)),
-      transcriptionHistory: Shared(.init())
+      hexSettings: Shared(value: .init()),
+      isRemappingScratchpadFocused: false,
+      modelBootstrapState: Shared(value: .init(isModelReady: true)),
+      transcriptionHistory: Shared(value: .init())
     )
   }
 }

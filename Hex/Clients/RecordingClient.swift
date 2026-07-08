@@ -381,9 +381,12 @@ actor RecordingClientLive {
   private var meterTask: Task<Void, Never>?
   private lazy var captureController = SuperFastCaptureController(
     meterContinuation: meterContinuation,
-    onEngineConfigurationChange: { [weak self] in
+    onEngineConfigurationChange: { [weak self] generation in
       Task {
-        await self?.enqueueCaptureEnvironmentChange(reason: "capture-engine-configuration-changed")
+        await self?.enqueueCaptureEnvironmentChange(
+          reason: "capture-engine-configuration-changed",
+          captureGeneration: generation
+        )
       }
     }
   )
@@ -531,11 +534,19 @@ actor RecordingClientLive {
     }
   }
 
-  private func enqueueCaptureEnvironmentChange(reason: String) {
+  private func enqueueCaptureEnvironmentChange(
+    reason: String,
+    captureGeneration: Int? = nil
+  ) {
     environmentChangeDebounceTask?.cancel()
     environmentChangeDebounceTask = Task { [self] in
       try? await Task.sleep(for: .milliseconds(250))
       guard !Task.isCancelled else { return }
+      if let captureGeneration,
+         !captureController.isCurrentGeneration(captureGeneration)
+      {
+        return
+      }
       await handleCaptureEnvironmentChange(reason: reason)
     }
   }
