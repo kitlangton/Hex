@@ -488,7 +488,7 @@ extension ModelDownloadFeature.State {
 
 	private var prefersEnglishParakeet: Bool {
 		guard let language = hexSettings.outputLanguage?.lowercased(), !language.isEmpty else {
-			return false
+			return true
 		}
 		return language.hasPrefix("en")
 	}
