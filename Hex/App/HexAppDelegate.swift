@@ -163,17 +163,24 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationWillTerminate(_: Notification) {
-		// Tear down audio synchronously (bounded). A fire-and-forget Task here raced process
-		// exit, crashing inside AVAudioEngine teardown while tap callbacks were still in
-		// flight (#245). Task.detached because this thread blocks on the semaphore.
+		// Wait for audio teardown before the process exits: a fire-and-forget Task here
+		// raced process exit, crashing inside AVAudioEngine teardown while tap callbacks
+		// were still in flight (#245). Pump the main run loop while waiting instead of
+		// blocking outright - cleanup() hops to the main actor/main queue (media-key
+		// resume, Core Audio listener removal), which a blocked main thread would deadlock.
 		let recording = recording
 		let semaphore = DispatchSemaphore(value: 0)
 		Task.detached {
 			await recording.cleanup()
 			semaphore.signal()
 		}
-		if semaphore.wait(timeout: .now() + 3) == .timedOut {
-			appLogger.error("Recording cleanup timed out during app termination")
+		let deadline = Date().addingTimeInterval(3)
+		while semaphore.wait(timeout: .now()) == .timedOut {
+			guard Date() < deadline else {
+				appLogger.error("Recording cleanup timed out during app termination")
+				return
+			}
+			RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
 		}
 	}
 }

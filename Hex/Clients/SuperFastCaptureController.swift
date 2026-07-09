@@ -253,20 +253,14 @@ final class SuperFastCaptureController {
     if engine != nil {
       logger.notice("Capture engine stopped reason=\(reason)")
     }
-    detachEngine()
-    processingQueue.sync {
-      activeRecording = nil
-      recordingFailure = nil
-      ringBuffer.clear()
-      lastProcessedBufferAt = nil
-      recentCallbackIntervals.removeAll(keepingCapacity: false)
-      recentBufferDurations.removeAll(keepingCapacity: false)
-    }
+    detachEngine(clearingRecordingState: true)
   }
 
-  /// Removes the tap, observer, converter, and engine without touching recording state.
-  /// Bumps the capture generation so in-flight tap callbacks from the old engine are ignored.
-  private func detachEngine() {
+  /// Removes the tap, observer, converter, and engine. Bumps the capture generation so
+  /// in-flight tap callbacks from the old engine are ignored. Recording state (active file,
+  /// ring buffer, timing metrics) is preserved unless `clearingRecordingState` is set, which
+  /// is what lets restartPreservingRecording resume capture onto the same file.
+  private func detachEngine(clearingRecordingState: Bool = false) {
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
     }
@@ -277,6 +271,14 @@ final class SuperFastCaptureController {
     processingQueue.sync {
       captureGeneration += 1
       converter = nil
+      if clearingRecordingState {
+        activeRecording = nil
+        recordingFailure = nil
+        ringBuffer.clear()
+        lastProcessedBufferAt = nil
+        recentCallbackIntervals.removeAll(keepingCapacity: false)
+        recentBufferDurations.removeAll(keepingCapacity: false)
+      }
     }
     engine?.stop()
     engine = nil
