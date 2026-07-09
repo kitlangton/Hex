@@ -23,6 +23,7 @@ actor ParakeetClient {
     if currentVariant == variant, asr != nil { return true }
 
     let directory = AsrModels.defaultCacheDirectory(for: variant.asrVersion)
+    migrateLegacyCacheIfNeeded(variant, to: directory)
     let available = AsrModels.modelsExist(
       at: directory,
       version: variant.asrVersion
@@ -48,6 +49,10 @@ actor ParakeetClient {
       asr = nil
       models = nil
     }
+    migrateLegacyCacheIfNeeded(
+      variant,
+      to: AsrModels.defaultCacheDirectory(for: variant.asrVersion)
+    )
     let t0 = Date()
     logger.notice("Starting Parakeet load variant=\(variant.identifier)")
     let p = Progress(totalUnitCount: 100)
@@ -93,6 +98,26 @@ actor ParakeetClient {
       }
     }
     return total
+  }
+
+  private func migrateLegacyCacheIfNeeded(_ variant: ParakeetModel, to directory: URL) {
+    let legacyDirectory = directory
+      .deletingLastPathComponent()
+      .appendingPathComponent(variant.identifier, isDirectory: true)
+
+    do {
+      if try LegacyModelCacheMigrator.migrate(
+        from: legacyDirectory,
+        to: directory,
+        isValid: {
+          AsrModels.modelsExist(at: $0, version: variant.asrVersion)
+        }
+      ) {
+        logger.notice("Migrated legacy Parakeet cache from \(legacyDirectory.path) to \(directory.path)")
+      }
+    } catch {
+      logger.error("Failed to migrate legacy Parakeet cache: \(error.localizedDescription)")
+    }
   }
 
   func transcribe(_ url: URL) async throws -> String {
