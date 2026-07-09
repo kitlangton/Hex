@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- 276da69: Add lowercase and punctuation-removal paste transforms (#253)
+
+### Patch Changes
+
+- 10e75b9: Simplify output transforms with clearer word rules, preview, and formatting controls.
+- 8e6e041: Improve update and changelog controls in Settings.
+- 71878b7: Defer Fast Mode capture rebuilds until audio route changes settle
+- db31b0a: Move transcription model selection into a focused model library with automatic downloads on selection.
+- c00a91d: Refresh microphones reliably, harden recording cleanup, and polish the settings overlay behavior.
+- db31b0a: Handle interrupted recording stops explicitly and ignore stale Fast Mode callbacks.
+- 2b5fb15: Recognize downloaded Parakeet models immediately after restarting Hex.
+- 8e6e041: Preserve literal dollar signs in word-remapping replacements.
+
 ## 0.7.6
 
 ### Patch Changes
