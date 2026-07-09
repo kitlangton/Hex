@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2
+
+### Patch Changes
+
+- eae358b: Never silently clear the selected model when a scan misfires, and route hotkey presses to model setup instead of transcribing with no model
+- eae358b: Redesign the model library: visible Download buttons, one-click model switching, and a menu to remove downloaded models or show them in Finder
+
 ## 0.8.1
 
 ### Patch Changes
