@@ -136,19 +136,24 @@ public struct ModelDownloadFeature {
 
 		// Convenience computed vars
 		var selectedModel: String { hexSettings.selectedModel }
+
+		/// The downloaded model matching the current selection, pattern-aware so
+		/// legacy or glob-style selections (e.g. "distil*large-v3") still resolve.
+		private var downloadedModelMatchingSelection: ModelInfo? {
+			guard !selectedModel.isEmpty else { return nil }
+			return availableModels.first { model in
+				model.isDownloaded && ModelPatternMatcher.namesMatch(model.name, selectedModel)
+			}
+		}
+
 		var selectedModelNameForDisplay: String? {
 			guard !selectedModel.isEmpty else { return nil }
-			if let downloaded = availableModels.first(where: {
-				$0.isDownloaded
-					&& (ModelPatternMatcher.matches($0.name, selectedModel)
-						|| ModelPatternMatcher.matches(selectedModel, $0.name))
-			}) {
+			if let downloaded = downloadedModelMatchingSelection {
 				return downloaded.name
 			}
 			if modelBootstrapState.isModelReady,
 			   let identifier = modelBootstrapState.modelIdentifier,
-			   ModelPatternMatcher.matches(identifier, selectedModel)
-				|| ModelPatternMatcher.matches(selectedModel, identifier)
+			   ModelPatternMatcher.namesMatch(identifier, selectedModel)
 			{
 				return selectedModel
 			}
@@ -156,7 +161,7 @@ public struct ModelDownloadFeature {
 		}
 
 		var selectedModelIsDownloaded: Bool {
-			availableModels[id: selectedModel]?.isDownloaded ?? false
+			downloadedModelMatchingSelection != nil
 		}
 
 		var anyModelDownloaded: Bool {
@@ -227,11 +232,12 @@ public struct ModelDownloadFeature {
 			return
 		}
 		let displayName = curatedDisplayName(for: model, curated: state.curatedModels)
+		let isDownloaded = state.selectedModelIsDownloaded
 		state.$modelBootstrapState.withLock { bootstrap in
 			bootstrap.modelIdentifier = model
 			bootstrap.modelDisplayName = displayName
-			bootstrap.isModelReady = state.selectedModelIsDownloaded
-			if state.selectedModelIsDownloaded {
+			bootstrap.isModelReady = isDownloaded
+			if isDownloaded {
 				bootstrap.lastError = nil
 				bootstrap.progress = 1
 			}
@@ -321,13 +327,18 @@ public struct ModelDownloadFeature {
 				}
 			}
 			state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
+			// If the selection isn't installed but another model is, switch to the
+			// installed one so transcription keeps working. Never clear the user's
+			// selection outright: availability scans can produce false negatives
+			// (e.g. after a dependency changes its cache layout), and wiping the
+			// setting turns a transient glitch into a permanent silent failure.
 			if !state.selectedModelIsDownloaded,
 			   let installedModel = state.curatedModels.first(where: \.isDownloaded)
 			{
 				let fallback = resolvePattern(installedModel.internalName, from: Array(state.availableModels)) ?? installedModel.internalName
-				state.$hexSettings.withLock { $0.selectedModel = fallback }
-			} else if !state.anyModelDownloaded, state.hexSettings.hasCompletedModelBootstrap {
-				state.$hexSettings.withLock { $0.selectedModel = "" }
+				if fallback != state.selectedModel {
+					state.$hexSettings.withLock { $0.selectedModel = fallback }
+				}
 			}
 			updateBootstrapState(&state)
 			if !state.anyModelDownloaded && !state.hexSettings.hasCompletedModelBootstrap {
@@ -341,8 +352,12 @@ public struct ModelDownloadFeature {
 
 		// MARK: – Download
 
-		case let .downloadModel(model):
-			guard !model.isEmpty, !state.isDownloading else { return .none }
+		case let .downloadModel(requestedModel):
+			guard !requestedModel.isEmpty, !state.isDownloading else { return .none }
+			// Resolve glob/legacy selections to a concrete model name up front so
+			// the completion handler updates the matching rows and writes a
+			// concrete name back into settings.
+			let model = resolvePattern(requestedModel, from: Array(state.availableModels)) ?? requestedModel
 			state.downloadError = nil
 			state.isDownloading = true
 			state.downloadProgress = 0
@@ -444,9 +459,7 @@ public struct ModelDownloadFeature {
 		case let .deleteModel(model):
 			guard !model.isEmpty else { return .none }
 			let resolved = resolvePattern(model, from: Array(state.availableModels)) ?? model
-			if ModelPatternMatcher.matches(model, state.selectedModel)
-				|| ModelPatternMatcher.matches(state.selectedModel, model)
-			{
+			if ModelPatternMatcher.namesMatch(model, state.selectedModel) {
 				state.$modelBootstrapState.withLock { $0.isModelReady = false }
 			}
 			return .run { send in
@@ -464,9 +477,7 @@ public struct ModelDownloadFeature {
 			where ModelPatternMatcher.matches(state.curatedModels[index].internalName, model) {
 				state.curatedModels[index].isDownloaded = false
 			}
-			if ModelPatternMatcher.matches(state.selectedModel, model)
-				|| ModelPatternMatcher.matches(model, state.selectedModel)
-			{
+			if ModelPatternMatcher.namesMatch(state.selectedModel, model) {
 				let fallback = state.availableModels.first { $0.isDownloaded }?.name ?? ""
 				state.$hexSettings.withLock { $0.selectedModel = fallback }
 				updateBootstrapState(&state)

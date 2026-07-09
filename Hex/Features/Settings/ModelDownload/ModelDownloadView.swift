@@ -4,7 +4,7 @@ import Inject
 import SwiftUI
 
 private func modelNamesMatch(_ lhs: String, _ rhs: String) -> Bool {
-	ModelPatternMatcher.matches(lhs, rhs) || ModelPatternMatcher.matches(rhs, lhs)
+	ModelPatternMatcher.namesMatch(lhs, rhs)
 }
 
 public struct ModelDownloadView: View {
@@ -46,9 +46,16 @@ public struct ModelDownloadView: View {
 				CurrentModelSummary(
 					model: selectedModel,
 					selectedModelName: selectedModelName,
+					isInstalled: store.selectedModelIsDownloaded,
+					isDownloadingAnything: store.isDownloading,
 					downloadingModel: downloadingModel,
 					downloadProgress: store.downloadProgress,
 					onBrowse: { isModelLibraryPresented = true },
+					onDownload: {
+						if let name = selectedModelName {
+							store.send(.downloadModel(name))
+						}
+					},
 					onCancelDownload: { store.send(.cancelDownload) }
 				)
 			}
@@ -231,16 +238,19 @@ private struct NoModelCard: View {
 private struct CurrentModelSummary: View {
 	let model: CuratedModelInfo?
 	let selectedModelName: String?
+	let isInstalled: Bool
+	let isDownloadingAnything: Bool
 	let downloadingModel: CuratedModelInfo?
 	let downloadProgress: Double
 	let onBrowse: () -> Void
+	let onDownload: () -> Void
 	let onCancelDownload: () -> Void
 
 	var body: some View {
 		HStack(spacing: 12) {
 			Image(systemName: iconName)
 				.font(.title3)
-				.foregroundStyle(Color.accentColor)
+				.foregroundStyle(needsDownload ? Color.orange : Color.accentColor)
 				.frame(width: 28)
 
 			VStack(alignment: .leading, spacing: 5) {
@@ -248,13 +258,13 @@ private struct CurrentModelSummary: View {
 					.font(.body.weight(.medium))
 				Text(subtitle)
 					.font(.caption)
-					.foregroundStyle(.secondary)
+					.foregroundStyle(needsDownload ? Color.orange : Color.secondary)
 				if let activeDownloadStatus {
 					Text(activeDownloadStatus)
 						.font(.caption)
 						.foregroundStyle(.secondary)
 				}
-				if downloadingModel != nil {
+				if isDownloadingAnything {
 					ProgressView(value: downloadProgress)
 						.progressViewStyle(.linear)
 				}
@@ -262,21 +272,36 @@ private struct CurrentModelSummary: View {
 
 			Spacer()
 
-			if downloadingModel != nil {
+			if isDownloadingAnything {
 				VStack(alignment: .trailing, spacing: 4) {
 					Text("\(Int(downloadProgress * 100))%")
 						.font(.caption)
 						.foregroundStyle(.secondary)
+						.monospacedDigit()
 					Button("Cancel", role: .destructive, action: onCancelDownload)
 						.controlSize(.small)
 				}
 			} else {
-				Button("Browse Models…", action: onBrowse)
-					.controlSize(.small)
+				HStack(spacing: 8) {
+					if needsDownload {
+						Button("Download", action: onDownload)
+							.buttonStyle(.borderedProminent)
+							.controlSize(.small)
+					}
+					Button("Browse Models…", action: onBrowse)
+						.controlSize(.small)
+				}
 			}
 		}
 		.padding(10)
 		.background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+	}
+
+	/// The selection references a model that isn't on disk (e.g. the scan came
+	/// back empty after an update). Offer a direct download instead of
+	/// pretending it's installed.
+	private var needsDownload: Bool {
+		selectedModelName != nil && !isInstalled && !isDownloadingAnything
 	}
 
 	private var title: String {
@@ -292,6 +317,7 @@ private struct CurrentModelSummary: View {
 	}
 
 	private var subtitle: String {
+		if needsDownload { return "Not downloaded — transcription won't work until you download it." }
 		if let model { return "\(model.size) · \(model.storageSize)" }
 		if selectedModelName != nil { return "Installed local model" }
 		if let downloadingModel { return "\(downloadingModel.storageSize) will be stored locally on this Mac." }
@@ -304,6 +330,7 @@ private struct CurrentModelSummary: View {
 	}
 
 	private var iconName: String {
+		if needsDownload { return "exclamationmark.triangle.fill" }
 		if selectedModelName == nil { return "arrow.down.circle.fill" }
 		return "waveform"
 	}
@@ -313,7 +340,7 @@ private struct CurrentModelSummary: View {
 private struct ModelLibrarySheet: View {
 	@Bindable var store: StoreOf<ModelDownloadFeature>
 	@Environment(\.dismiss) private var dismiss
-	@State private var pendingDownload: CuratedModelInfo?
+	@State private var pendingDelete: CuratedModelInfo?
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 14) {
@@ -348,38 +375,30 @@ private struct ModelLibrarySheet: View {
 		.padding(18)
 		.frame(minWidth: 680, minHeight: 420)
 		.confirmationDialog(
-			"Download \(pendingDownload?.displayName ?? "model")?",
+			"Remove \(pendingDelete?.displayName ?? "model")?",
 			isPresented: Binding(
-				get: { pendingDownload != nil },
-				set: { if !$0 { pendingDownload = nil } }
+				get: { pendingDelete != nil },
+				set: { if !$0 { pendingDelete = nil } }
 			),
 			titleVisibility: .visible
 		) {
-			if let pendingDownload {
-				Button("Download and Use") {
-					download(pendingDownload)
-					self.pendingDownload = nil
+			if let pendingDelete {
+				Button("Remove Download", role: .destructive) {
+					store.send(.deleteModel(pendingDelete.internalName))
+					self.pendingDelete = nil
 				}
 			}
-			Button("Cancel", role: .cancel) { pendingDownload = nil }
+			Button("Cancel", role: .cancel) { pendingDelete = nil }
 		} message: {
-			if let pendingDownload {
-				Text("\(pendingDownload.storageSize) will be stored locally on this Mac.")
+			if let pendingDelete {
+				Text("This frees \(pendingDelete.storageSize) on this Mac. You can download it again anytime.")
 			}
 		}
 	}
 
 	private func select(_ model: CuratedModelInfo) {
-		guard !store.isDownloading || isDownloading(model) else { return }
-		guard model.isDownloaded else {
-			if !isDownloading(model) { pendingDownload = model }
-			return
-		}
+		guard model.isDownloaded, !store.isDownloading else { return }
 		store.send(.selectModel(model.internalName))
-	}
-
-	private func download(_ model: CuratedModelInfo) {
-		store.send(.downloadModel(model.internalName))
 	}
 
 	@ViewBuilder
@@ -395,13 +414,16 @@ private struct ModelLibrarySheet: View {
 						model: model,
 						isSelected: model.isDownloaded && isSelected(model),
 						isDownloading: isDownloading(model),
-						downloadProgress: store.downloadProgress,
+						// Only the active row receives live progress so the other
+						// rows don't re-render on every tick.
+						downloadProgress: isDownloading(model) ? store.downloadProgress : 0,
 						isDisabled: store.isDownloading && !isDownloading(model),
 						showsBadge: showsBadges && !model.isDownloaded,
 						onSelect: { select(model) },
+						onDownload: { store.send(.downloadModel(model.internalName)) },
 						onCancelDownload: { store.send(.cancelDownload) },
 						onShowInFinder: { store.send(.openModelLocation(model.internalName)) },
-						onDelete: { store.send(.deleteModel(model.internalName)) }
+						onDelete: { pendingDelete = model }
 					)
 					if model.id != models.last?.id {
 						Divider().padding(.leading, 54)
@@ -443,6 +465,7 @@ private struct ModelLibraryRow: View {
 	let isDisabled: Bool
 	let showsBadge: Bool
 	let onSelect: () -> Void
+	let onDownload: () -> Void
 	let onCancelDownload: () -> Void
 	let onShowInFinder: () -> Void
 	let onDelete: () -> Void
@@ -481,26 +504,21 @@ private struct ModelLibraryRow: View {
 								Text("Speed").font(.caption2).foregroundStyle(.secondary)
 								StarRatingView(model.speedStars)
 							}
-							if isDownloading {
-								HStack(spacing: 5) {
-									ProgressView(value: downloadProgress)
-										.progressViewStyle(.circular)
-										.controlSize(.small)
-									Text("\(Int(downloadProgress * 100))%")
-								}
-								.font(.caption)
-								.foregroundStyle(.secondary)
-							}
 						}
 					}
 
 					Spacer()
 
-					Text(model.storageSize)
-						.font(.caption)
-						.foregroundStyle(.secondary)
-						.frame(width: 56, alignment: .trailing)
-
+					VStack(alignment: .trailing, spacing: 3) {
+						Text(model.storageSize)
+							.font(.caption)
+							.foregroundStyle(.secondary)
+						if let statusText {
+							Text(statusText)
+								.font(.caption2)
+								.foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+						}
+					}
 				}
 				.padding(.horizontal, 12)
 				.padding(.vertical, 10)
@@ -508,11 +526,8 @@ private struct ModelLibraryRow: View {
 			}
 			.buttonStyle(.plain)
 
-			if isDownloading {
-				Button("Cancel", role: .destructive, action: onCancelDownload)
-					.controlSize(.small)
-					.padding(.trailing, 12)
-			}
+			trailingControls
+				.padding(.trailing, 12)
 		}
 		.disabled(isDisabled)
 		.opacity(isDisabled ? 0.55 : 1)
@@ -520,15 +535,60 @@ private struct ModelLibraryRow: View {
 		.contextMenu {
 			if isDownloading {
 				Button("Cancel Download", role: .destructive, action: onCancelDownload)
-			}
-			if model.isDownloaded || isDownloading {
 				Button("Show in Finder", action: onShowInFinder)
 			}
 			if model.isDownloaded {
-				Divider()
-				Button("Delete", role: .destructive, action: onDelete)
+				managementMenuItems
 			}
 		}
+	}
+
+	/// Shared by the trailing ⋯ menu and the right-click context menu.
+	@ViewBuilder
+	private var managementMenuItems: some View {
+		Button("Show in Finder", action: onShowInFinder)
+		Divider()
+		Button("Remove Download…", role: .destructive, action: onDelete)
+	}
+
+	@ViewBuilder
+	private var trailingControls: some View {
+		if isDownloading {
+			HStack(spacing: 8) {
+				ProgressView(value: downloadProgress)
+					.progressViewStyle(.circular)
+					.controlSize(.small)
+				Text("\(Int(downloadProgress * 100))%")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+					.monospacedDigit()
+				Button("Cancel", role: .destructive, action: onCancelDownload)
+					.controlSize(.small)
+			}
+		} else if model.isDownloaded {
+			Menu {
+				managementMenuItems
+			} label: {
+				Image(systemName: "ellipsis.circle")
+					.font(.body)
+					.foregroundStyle(.secondary)
+			}
+			.menuStyle(.borderlessButton)
+			.menuIndicator(.hidden)
+			.fixedSize()
+			.help("Show in Finder or remove this download")
+		} else {
+			Button("Download", action: onDownload)
+				.controlSize(.small)
+				.help("Download \(model.storageSize) and switch to this model")
+		}
+	}
+
+	private var statusText: String? {
+		if isDownloading { return "Downloading…" }
+		if isSelected { return "In Use" }
+		if model.isDownloaded { return "Installed" }
+		return nil
 	}
 
 	private var leadingIcon: String {

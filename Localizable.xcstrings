@@ -17,9 +17,6 @@
         }
       }
     },
-    "%@ will be stored locally on this Mac." : {
-
-    },
     "%lld%%" : {
 
     },
@@ -193,9 +190,6 @@
     "Copy transcription text to clipboard in addition to pasting it" : {
 
     },
-    "Delete" : {
-
-    },
     "Delete All" : {
       "comment" : "Delete all transcriptions from history.",
       "localizations" : {
@@ -253,13 +247,13 @@
     "Done" : {
 
     },
-    "Download %@?" : {
+    "Download" : {
+
+    },
+    "Download %@ and switch to this model" : {
 
     },
     "Download a local model to start transcribing." : {
-
-    },
-    "Download and Use" : {
 
     },
     "Download Error: %@" : {
@@ -597,6 +591,15 @@
     "Regex Pattern" : {
 
     },
+    "Remove %@?" : {
+
+    },
+    "Remove Download" : {
+
+    },
+    "Remove Download…" : {
+
+    },
     "Remove matching words from every transcript." : {
 
     },
@@ -701,6 +704,9 @@
     "Show in Finder" : {
 
     },
+    "Show in Finder or remove this download" : {
+
+    },
     "Sound" : {
       "comment" : "sound section in general settings.",
       "localizations" : {
@@ -744,6 +750,9 @@
 
     },
     "Support the developer" : {
+
+    },
+    "This frees %@ on this Mac. You can download it again anytime." : {
 
     },
     "Transcription history is currently disabled." : {

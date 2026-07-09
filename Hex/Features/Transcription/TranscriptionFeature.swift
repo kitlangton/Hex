@@ -347,10 +347,23 @@ private extension TranscriptionFeature {
       return handleDiscard(&state)
     }
 
+    let model = state.hexSettings.selectedModel
+    guard !model.isEmpty else {
+      // Defense-in-depth: handleStartRecording already blocks recording when the
+      // bootstrap state says no model is ready, but settings can change while a
+      // recording is in flight (or the in-memory bootstrap default can race a
+      // cold launch). Never hand an empty model name to the transcriber: it
+      // silently produces nothing (or junk like "[BLANK_AUDIO]").
+      transcriptionFeatureLogger.error("Recording stopped with no transcription model selected; discarding audio")
+      return .merge(
+        handleDiscard(&state),
+        .send(.modelMissing)
+      )
+    }
+
     // Otherwise, proceed to transcription
     state.isTranscribing = true
     state.error = nil
-    let model = state.hexSettings.selectedModel
     let language = state.hexSettings.outputLanguage
 
     state.isPrewarming = true

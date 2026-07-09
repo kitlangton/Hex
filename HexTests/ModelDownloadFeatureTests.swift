@@ -66,6 +66,40 @@ final class ModelDownloadFeatureTests: XCTestCase {
     XCTAssertEqual(store.state.hexSettings.selectedModel, "installed-model")
   }
 
+  func testModelsLoadedNeverClearsSelectionWhenNothingDetected() async {
+    // Regression: 0.8.0 cleared selectedModel to "" when an availability scan
+    // came back empty (e.g. after FluidAudio moved its cache directory),
+    // permanently breaking transcription with no visible error.
+    var state = makeState(selectedModel: ParakeetModel.englishV2.identifier)
+    state.availableModels = []
+
+    let store = TestStore(initialState: state) {
+      ModelDownloadFeature()
+    }
+    store.exhaustivity = .off
+
+    await store.send(.modelsLoaded(recommended: "", available: []))
+
+    XCTAssertEqual(store.state.hexSettings.selectedModel, ParakeetModel.englishV2.identifier)
+  }
+
+  func testSelectedModelIsDownloadedMatchesPatterns() {
+    var state = makeState(selectedModel: "distil*large-v3")
+    state.availableModels = [
+      ModelInfo(name: "distil-whisper_distil-large-v3", isDownloaded: true)
+    ]
+    XCTAssertTrue(state.selectedModelIsDownloaded)
+
+    state.availableModels = [
+      ModelInfo(name: "distil-whisper_distil-large-v3", isDownloaded: false)
+    ]
+    XCTAssertFalse(state.selectedModelIsDownloaded)
+
+    var emptyState = makeState(selectedModel: "")
+    emptyState.availableModels = [ModelInfo(name: "some-model", isDownloaded: true)]
+    XCTAssertFalse(emptyState.selectedModelIsDownloaded)
+  }
+
   func testDeletingAnotherModelDoesNotChangeSelection() async {
     var state = makeState(selectedModel: "selected-model")
     state.availableModels = [
