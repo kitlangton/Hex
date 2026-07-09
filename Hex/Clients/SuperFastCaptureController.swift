@@ -185,7 +185,20 @@ final class SuperFastCaptureController {
     }
 
     stop(reason: "restart-before-arm")
+    try armEngine(reason: reason)
+  }
 
+  /// Tears down and recreates the engine while keeping the active recording file open, so
+  /// capture resumes onto the same file after a device/route change mid-recording
+  /// (#251, #252, #218, #226). The ring buffer, timing metrics, and active recording survive;
+  /// only the engine, tap, and converter are rebuilt.
+  func restartPreservingRecording(reason: String) throws {
+    logger.notice("Restarting capture engine preserving active recording reason=\(reason)")
+    detachEngine()
+    try armEngine(reason: reason)
+  }
+
+  private func armEngine(reason: String) throws {
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
     let inputFormat = inputNode.inputFormat(forBus: 0)
@@ -240,6 +253,20 @@ final class SuperFastCaptureController {
     if engine != nil {
       logger.notice("Capture engine stopped reason=\(reason)")
     }
+    detachEngine()
+    processingQueue.sync {
+      activeRecording = nil
+      recordingFailure = nil
+      ringBuffer.clear()
+      lastProcessedBufferAt = nil
+      recentCallbackIntervals.removeAll(keepingCapacity: false)
+      recentBufferDurations.removeAll(keepingCapacity: false)
+    }
+  }
+
+  /// Removes the tap, observer, converter, and engine without touching recording state.
+  /// Bumps the capture generation so in-flight tap callbacks from the old engine are ignored.
+  private func detachEngine() {
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
     }
@@ -249,13 +276,7 @@ final class SuperFastCaptureController {
     }
     processingQueue.sync {
       captureGeneration += 1
-      activeRecording = nil
-      recordingFailure = nil
       converter = nil
-      ringBuffer.clear()
-      lastProcessedBufferAt = nil
-      recentCallbackIntervals.removeAll(keepingCapacity: false)
-      recentBufferDurations.removeAll(keepingCapacity: false)
     }
     engine?.stop()
     engine = nil
@@ -343,13 +364,6 @@ final class SuperFastCaptureController {
         ringBuffer.clear()
       }
       return result
-    }
-  }
-
-  func clearWarmBuffer() {
-    processingQueue.sync {
-      guard activeRecording == nil else { return }
-      ringBuffer.clear()
     }
   }
 

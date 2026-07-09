@@ -77,6 +77,10 @@ actor SoundEffectsClientLive {
   private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
   private var isEngineRunning = false
+  private var idleShutdownTask: Task<Void, Never>?
+  /// Comfortably longer than any sound effect, short enough that an idle Hex doesn't keep
+  /// an output IOProc (and coreaudiod) running around the clock (#209).
+  private static let idleShutdownDelay: Duration = .seconds(10)
 
   func play(_ soundEffect: SoundEffect) {
     guard hexSettings.soundEffectsEnabled else { return }
@@ -90,6 +94,19 @@ actor SoundEffectsClientLive {
     player.stop()
     player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
     player.play()
+    scheduleIdleShutdown()
+  }
+
+  /// Stops the output engine shortly after playback so it doesn't run while idle.
+  /// Restarting it on the next play costs only a few milliseconds.
+  private func scheduleIdleShutdown() {
+    idleShutdownTask?.cancel()
+    idleShutdownTask = Task {
+      try? await Task.sleep(for: Self.idleShutdownDelay)
+      guard !Task.isCancelled else { return }
+      stopEngineIfNeeded()
+      logger.debug("Sound effects engine stopped after idle period")
+    }
   }
 
   func stop(_ soundEffect: SoundEffect) {
@@ -115,8 +132,10 @@ actor SoundEffectsClientLive {
 
     if hexSettings.soundEffectsEnabled {
       prepareEngineIfNeeded()
+      scheduleIdleShutdown()
     } else {
       stopAll()
+      idleShutdownTask?.cancel()
       stopEngineIfNeeded()
     }
   }

@@ -163,8 +163,17 @@ class HexAppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationWillTerminate(_: Notification) {
-		Task {
+		// Tear down audio synchronously (bounded). A fire-and-forget Task here raced process
+		// exit, crashing inside AVAudioEngine teardown while tap callbacks were still in
+		// flight (#245). Task.detached because this thread blocks on the semaphore.
+		let recording = recording
+		let semaphore = DispatchSemaphore(value: 0)
+		Task.detached {
 			await recording.cleanup()
+			semaphore.signal()
+		}
+		if semaphore.wait(timeout: .now() + 3) == .timedOut {
+			appLogger.error("Recording cleanup timed out during app termination")
 		}
 	}
 }

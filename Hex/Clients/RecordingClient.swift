@@ -393,8 +393,13 @@ actor RecordingClientLive {
   private var captureControllerDeviceID: AudioDeviceID?
   private var captureControllerNeedsRestartReason: String?
   private var notificationObservers: [NSObjectProtocol] = []
+  private var distributedNotificationObservers: [NSObjectProtocol] = []
   private var audioHardwareObservers: [AudioHardwareObserver] = []
   private var isObservingSystemChanges = false
+  /// True while the screen is locked or the system/displays are asleep. The warm capture
+  /// engine is suspended in this state (nobody is dictating at a locked screen) and rearmed
+  /// on wake/unlock, which also avoids a whole class of stale-engine-across-sleep bugs.
+  private var isCaptureSuspendedForSystemState = false
 
   @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -460,7 +465,7 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "system-wake") }
+        Task { await self.resumeWarmCapture(reason: "system-wake") }
       }
     )
     notificationObservers.append(
@@ -469,7 +474,45 @@ actor RecordingClientLive {
         object: nil,
         queue: .main
       ) { _ in
-        Task { await self.enqueueCaptureEnvironmentChange(reason: "display-wake") }
+        Task { await self.resumeWarmCapture(reason: "display-wake") }
+      }
+    )
+    notificationObservers.append(
+      workspaceCenter.addObserver(
+        forName: NSWorkspace.willSleepNotification,
+        object: nil,
+        queue: .main
+      ) { _ in
+        Task { await self.suspendWarmCapture(reason: "system-sleep") }
+      }
+    )
+    notificationObservers.append(
+      workspaceCenter.addObserver(
+        forName: NSWorkspace.screensDidSleepNotification,
+        object: nil,
+        queue: .main
+      ) { _ in
+        Task { await self.suspendWarmCapture(reason: "display-sleep") }
+      }
+    )
+
+    let distributedCenter = DistributedNotificationCenter.default()
+    distributedNotificationObservers.append(
+      distributedCenter.addObserver(
+        forName: Notification.Name("com.apple.screenIsLocked"),
+        object: nil,
+        queue: .main
+      ) { _ in
+        Task { await self.suspendWarmCapture(reason: "screen-locked") }
+      }
+    )
+    distributedNotificationObservers.append(
+      distributedCenter.addObserver(
+        forName: Notification.Name("com.apple.screenIsUnlocked"),
+        object: nil,
+        queue: .main
+      ) { _ in
+        Task { await self.resumeWarmCapture(reason: "screen-unlocked") }
       }
     )
 
@@ -563,6 +606,11 @@ actor RecordingClientLive {
     }
     notificationObservers.removeAll()
 
+    for observer in distributedNotificationObservers {
+      DistributedNotificationCenter.default().removeObserver(observer)
+    }
+    distributedNotificationObservers.removeAll()
+
     for observer in audioHardwareObservers {
       var address = audioPropertyAddress(observer.selector)
       let status = AudioObjectRemovePropertyListenerBlock(
@@ -590,18 +638,65 @@ actor RecordingClientLive {
     )
 
     if isRecordingActive {
-      deferredCaptureRestartReason = reason
       invalidatePrimedState()
+      if isEngineRecording {
+        // Rebuild the engine in place so capture continues onto the same file. Leaving the
+        // stale engine "running" against the old route silently captured nothing for the
+        // rest of the recording (#251, #252, #218, #226).
+        let activeInputDevice = applyPreferredInputDevice()
+        do {
+          try captureController.restartPreservingRecording(reason: reason)
+          captureControllerDeviceID = activeInputDevice
+          captureControllerNeedsRestartReason = nil
+          deferredCaptureRestartReason = nil
+          recordingLogger.notice(
+            "Rebuilt capture engine mid-recording reason=\(reason) input=\(self.describeDevice(activeInputDevice))"
+          )
+          return
+        } catch {
+          recordingLogger.error(
+            "Mid-recording capture engine rebuild failed reason=\(reason): \(error.localizedDescription); deferring restart"
+          )
+        }
+      }
+      deferredCaptureRestartReason = reason
       recordingLogger.notice("Deferring capture restart until current recording stops reason=\(reason)")
       return
     }
 
     deferredCaptureRestartReason = nil
+
+    if isCaptureSuspendedForSystemState {
+      releaseRecorder(reason: "environment-change-\(reason)")
+      stopCaptureController(reason: "suspended-\(reason)")
+      captureControllerNeedsRestartReason = reason
+      recordingLogger.notice("Capture suspended (screen locked/asleep); deferring engine rebuild reason=\(reason)")
+      return
+    }
+
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "environment-change-\(reason)")
-      captureControllerNeedsRestartReason = reason
-      captureController.clearWarmBuffer()
-      recordingLogger.notice("Deferring capture engine rebuild until next recording reason=\(reason)")
+      let activeInputDevice = applyPreferredInputDevice()
+      do {
+        // Rebuild immediately instead of deferring to the next recording: a stale engine
+        // left running against the old route kept coreaudiod churning while idle (#209)
+        // and made the first post-change recording unreliable (#251, #252).
+        try ensureCaptureControllerReady(
+          for: activeInputDevice,
+          reason: "environment-change-\(reason)",
+          forceRestart: true
+        )
+        captureControllerNeedsRestartReason = nil
+        recordingLogger.notice(
+          "Rebuilt capture engine after environment change reason=\(reason) input=\(self.describeDevice(activeInputDevice))"
+        )
+      } catch {
+        stopCaptureController(reason: "environment-rebuild-failed-\(reason)")
+        captureControllerNeedsRestartReason = reason
+        recordingLogger.error(
+          "Capture engine rebuild failed reason=\(reason): \(error.localizedDescription); will retry on next recording"
+        )
+      }
       return
     }
 
@@ -609,6 +704,30 @@ actor RecordingClientLive {
     stopCaptureController(reason: reason)
     releaseRecorder(reason: "environment-change-\(reason)")
     recordingLogger.debug("Standard mode uses on-demand capture startup after reason=\(reason)")
+  }
+
+  /// Stops the warm capture engine while the screen is locked or the system is asleep.
+  /// Never interrupts an active recording.
+  private func suspendWarmCapture(reason: String) {
+    guard !isCaptureSuspendedForSystemState else { return }
+    guard recorder?.isRecording != true, !captureController.isRecording else {
+      recordingLogger.notice("Screen lock/sleep during active recording; leaving capture running reason=\(reason)")
+      return
+    }
+    isCaptureSuspendedForSystemState = true
+    guard captureController.isRunning || recorder != nil else { return }
+    stopCaptureController(reason: "suspend-\(reason)")
+    releaseRecorder(reason: "suspend-\(reason)")
+    captureControllerNeedsRestartReason = reason
+    recordingLogger.notice("Suspended warm capture reason=\(reason)")
+  }
+
+  private func resumeWarmCapture(reason: String) {
+    if isCaptureSuspendedForSystemState {
+      isCaptureSuspendedForSystemState = false
+      recordingLogger.notice("Resuming warm capture reason=\(reason)")
+    }
+    enqueueCaptureEnvironmentChange(reason: reason)
   }
 
   private func flushDeferredCaptureRestartIfNeeded() async {
@@ -1070,6 +1189,9 @@ actor RecordingClientLive {
   func startRecording() async {
     let sessionID = UUID()
     recordingSessionID = sessionID
+    // An explicit recording request overrides any lock/sleep suspension; the engine is
+    // (re)armed below via ensureCaptureControllerReadyAfterDeferredRestart.
+    isCaptureSuspendedForSystemState = false
     mediaControlTask?.cancel()
     mediaControlTask = nil
 
@@ -1484,6 +1606,10 @@ actor RecordingClientLive {
   func warmUpRecorder() async {
     guard activeRecordingSession == nil, recorder?.isRecording != true, !captureController.isRecording else {
       recordingLogger.notice("Skipping recorder warm-up while recording is active")
+      return
+    }
+    guard !isCaptureSuspendedForSystemState else {
+      recordingLogger.notice("Skipping recorder warm-up while capture is suspended (screen locked/asleep)")
       return
     }
     let activeInputDevice = applyPreferredInputDevice()
