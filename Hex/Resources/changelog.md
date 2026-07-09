@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+
+### Patch Changes
+
+- 224822d: Fix hotkeys dying after sleep or when macOS permission checks go stale: key events arriving at the tap now self-heal the Input Monitoring state instead of being dropped, the tap survives stale permission denials, and it is recreated on wake from sleep (#250)
+
 ## 0.8.2
 
 ### Patch Changes
