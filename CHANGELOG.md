@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+### Patch Changes
+
+- cd971a3: Reuse existing Parakeet downloads after upgrading FluidAudio
+
 ## 0.8.0
 
 ### Minor Changes
