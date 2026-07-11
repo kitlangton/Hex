@@ -10,6 +10,7 @@ import HexCore
 import IOKit
 import IOKit.hidsystem
 import Sauce
+import os
 
 private let logger = HexLog.keyEvent
 
@@ -92,6 +93,9 @@ extension DependencyValues {
 }
 
 class KeyEventMonitorClientLive {
+  private let accessibilityTrustCheck: @Sendable () -> Bool
+  private let accessibilityTrustPrompt: @Sendable () -> Bool
+  private let inputMonitoringTrustCheck: @Sendable () -> Bool
   private var eventTapPort: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: @Sendable (KeyEvent) -> Bool] = [:]
@@ -103,7 +107,7 @@ class KeyEventMonitorClientLive {
   private var inputMonitoringTrusted = false
   /// Set when key events are observed arriving at the tap. Key events only flow when Input
   /// Monitoring is genuinely granted, so this overrides stale `IOHIDCheckAccess` denials (#250).
-  private var inputMonitoringProvenByEvents = false
+  private let inputMonitoringProof = OSAllocatedUnfairLock(initialState: false)
   private var trustMonitorTask: Task<Void, Never>?
   private var systemEventObservers: [NSObjectProtocol] = []
   private var isFnPressed = false
@@ -112,7 +116,22 @@ class KeyEventMonitorClientLive {
 
   private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
-  init() {
+  init(
+    accessibilityTrustCheck: @escaping @Sendable () -> Bool = {
+      let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+      return AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary)
+    },
+    accessibilityTrustPrompt: @escaping @Sendable () -> Bool = {
+      let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+      return AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+    },
+    inputMonitoringTrustCheck: @escaping @Sendable () -> Bool = {
+      IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+    }
+  ) {
+    self.accessibilityTrustCheck = accessibilityTrustCheck
+    self.accessibilityTrustPrompt = accessibilityTrustPrompt
+    self.inputMonitoringTrustCheck = inputMonitoringTrustCheck
     logger.info("Initializing HotKeyClient with CGEvent tap.")
     registerSystemEventObservers()
   }
@@ -468,8 +487,8 @@ class KeyEventMonitorClientLive {
   }
 
   private func clearInputMonitoringProof() {
-    queue.async(flags: .barrier) { [weak self] in
-      self?.inputMonitoringProvenByEvents = false
+    inputMonitoringProof.withLock { proof in
+      proof = false
     }
   }
 
@@ -504,10 +523,12 @@ class KeyEventMonitorClientLive {
   /// Monitoring is genuinely granted even when `IOHIDCheckAccess` reports otherwise (#250).
   fileprivate func noteEventDelivered(type: CGEventType) {
     guard type == .keyDown || type == .keyUp else { return }
-    let alreadyProven = queue.sync { inputMonitoringProvenByEvents }
+    let alreadyProven = inputMonitoringProof.withLock { proof in
+      defer { proof = true }
+      return proof
+    }
     guard !alreadyProven else { return }
     queue.async(flags: .barrier) { [weak self] in
-      self?.inputMonitoringProvenByEvents = true
       self?.inputMonitoringTrusted = true
     }
     if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
@@ -562,22 +583,20 @@ extension KeyEventMonitorClientLive {
   }
 
   private func currentAccessibilityTrust() -> Bool {
-    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-    return AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary)
+    accessibilityTrustCheck()
   }
 
   private func requestAccessibilityTrustPrompt() -> Bool {
-    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-    return AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+    accessibilityTrustPrompt()
   }
 
   private func currentInputMonitoringTrust() -> Bool {
-    if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted {
+    if inputMonitoringTrustCheck() {
       return true
     }
     // A stale TCC cache can report denied while key events demonstrably flow (#250);
     // trust the events over the check so the watchdog and settings UI stay honest.
-    return queue.sync { inputMonitoringProvenByEvents }
+    return inputMonitoringProof.withLock { $0 }
   }
 
   // Intentionally no request helper: creating the event tap prompts macOS 15+ for Input Monitoring
