@@ -8,10 +8,11 @@ Add these GitHub Actions secrets under **Settings → Secrets and variables → 
 
 - `MACOS_CERTIFICATE`: base64-encoded Developer ID Application `.p12`
 - `MACOS_CERTIFICATE_PWD`: password for that certificate
-- `APPLE_ID`: Apple ID used for notarization
-- `APPLE_ID_PASSWORD`: Apple app-specific password
+- `APPLE_API_KEY`: App Store Connect API key `.p8` content
+- `APPLE_API_KEY_ID`: App Store Connect API key ID
+- `APPLE_API_ISSUER`: App Store Connect issuer UUID
 
-The Apple Developer Team ID is configured directly in the workflow as the public identifier `5YUPQC9D96`. The same Apple certificate and notarization credentials can be used for another app, but GitHub secrets must be added to this repository separately. Never commit certificates, passwords, or API keys.
+The Apple Developer Team ID is configured directly in the workflow as the public identifier `5YUPQC9D96`. This uses the same App Store Connect API-key authentication model as the existing Electron release workflow. The same certificate and API-key credentials can be used for another app, but GitHub secrets must be added to this repository separately. Never commit certificates, passwords, or API keys.
 
 ## Publish a release
 
