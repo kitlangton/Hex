@@ -4,7 +4,9 @@ This is a personal fork of [Kit Langton's Hex](https://github.com/kitlangton/Hex
 
 It remains Hex at its core: hold a global hotkey, speak, and have the transcription pasted into the app you are using. This fork adds more dependable recovery, more flexible hotkeys, and optional AI-powered cleanup when you want it.
 
-> This is not the official Hex distribution. Build this fork yourself if you want to use these additions; for the official app and releases, visit the [upstream project](https://github.com/kitlangton/Hex).
+**[Download the latest release](https://github.com/blackforestboi/Hex/releases/latest)**
+
+For the official Hex build without these fork-specific additions, visit the [upstream project](https://github.com/kitlangton/Hex).
 
 ## What this fork adds
 
