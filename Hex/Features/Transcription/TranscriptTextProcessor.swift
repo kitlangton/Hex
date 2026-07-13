@@ -1,7 +1,7 @@
 import Foundation
 import HexCore
 
-/// Applies word removals and remappings to a raw transcription, mirroring the
+/// Applies word removals, remappings, and formatting to a raw transcription, mirroring the
 /// pipeline used by the live recording flow. Used both by the recording handler
 /// and by history retry so retried rows produce the same processed text as a
 /// fresh recording.
@@ -22,6 +22,10 @@ struct TranscriptTextProcessor {
             output = WordRemovalApplier.apply(output, removals: settings.wordRemovals)
         }
         output = WordRemappingApplier.apply(output, remappings: settings.wordRemappings)
-        return output
+        return TranscriptFormattingApplier.apply(
+            output,
+            lowercase: settings.lowercaseTranscripts,
+            removePunctuation: settings.removePunctuation
+        )
     }
 }

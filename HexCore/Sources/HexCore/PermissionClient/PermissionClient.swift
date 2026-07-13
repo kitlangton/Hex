@@ -83,7 +83,9 @@ public struct PermissionClient: Sendable {
   ///
   /// - Note: On macOS, the app is killed when permissions change in System Settings,
   ///   so continuous polling is unnecessary. Checking on app activation is sufficient.
-  public var observeAppActivation: @Sendable () -> AsyncStream<AppActivation> = { .never }
+  // Note: An empty-closure AsyncStream never yields and never finishes, matching
+  // ConcurrencyExtras' `.never` without relying on that (undeclared) dependency.
+  public var observeAppActivation: @Sendable () -> AsyncStream<AppActivation> = { AsyncStream { _ in } }
 }
 
 extension DependencyValues {

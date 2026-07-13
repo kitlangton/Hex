@@ -52,7 +52,9 @@ public extension KeyEvent {
 
 @DependencyClient
 struct KeyEventMonitorClient {
-  var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = { .never }
+  var listenForKeyPress: @Sendable () async -> AsyncThrowingStream<KeyEvent, Error> = {
+    AsyncThrowingStream { _ in }
+  }
   var handleKeyEvent: @Sendable (@Sendable @escaping (KeyEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
   var handleInputEvent: @Sendable (@Sendable @escaping (InputEvent) -> Bool) -> KeyEventMonitorToken = { _ in .noop }
   var startMonitoring: @Sendable () async -> Void = {}
@@ -99,7 +101,11 @@ class KeyEventMonitorClientLive {
   private var wantsMonitoring = false
   private var accessibilityTrusted = false
   private var inputMonitoringTrusted = false
+  /// Set when key events are observed arriving at the tap. Key events only flow when Input
+  /// Monitoring is genuinely granted, so this overrides stale `IOHIDCheckAccess` denials (#250).
+  private var inputMonitoringProvenByEvents = false
   private var trustMonitorTask: Task<Void, Never>?
+  private var systemEventObservers: [NSObjectProtocol] = []
   private var isFnPressed = false
   private var hasPromptedForAccessibilityTrust = false
   @Shared(.hotkeyPermissionState) private var hotkeyPermissionState: HotkeyPermissionState
@@ -108,14 +114,15 @@ class KeyEventMonitorClientLive {
 
   init() {
     logger.info("Initializing HotKeyClient with CGEvent tap.")
+    registerSystemEventObservers()
   }
 
   deinit {
+    let center = NSWorkspace.shared.notificationCenter
+    for observer in systemEventObservers {
+      center.removeObserver(observer)
+    }
     self.stopMonitoring()
-  }
-
-  private var hasRequiredPermissions: Bool {
-    queue.sync { accessibilityTrusted && inputMonitoringTrusted }
   }
 
   private var hasHandlers: Bool {
@@ -129,10 +136,14 @@ class KeyEventMonitorClientLive {
   }
 
   private func desiredMonitoringState() -> Bool {
+    // Intentionally not gated on `inputMonitoringTrusted`: `IOHIDCheckAccess` is notorious for
+    // returning stale denials (after sleep, MDM re-logins, or OS updates) while events still
+    // flow, and tearing the tap down on that signal killed working hotkeys (#250). The tap only
+    // needs Accessibility to exist; without Input Monitoring, macOS simply withholds key events
+    // (modifiers still arrive), and creating the tap is what triggers the permission prompt.
     queue.sync {
       wantsMonitoring
         && accessibilityTrusted
-        && inputMonitoringTrusted
         && !(continuations.isEmpty && inputContinuations.isEmpty)
     }
   }
@@ -284,7 +295,7 @@ class KeyEventMonitorClientLive {
         }
         await handlePermissionChange(accessibility: current.accessibility, input: current.input, reason: reason)
         last = current
-      } else if current.accessibility && current.input {
+      } else if current.accessibility {
         await ensureTapIsRunning()
       }
     }
@@ -300,7 +311,7 @@ class KeyEventMonitorClientLive {
         logger.error("Accessibility permission missing (\(reason)); suspending tap.")
       }
       if !input {
-        logger.error("Input Monitoring permission missing (\(reason)); waiting for approval before restarting hotkeys.")
+        logger.error("Input Monitoring permission missing (\(reason)); keyed hotkeys may not fire until it is granted. Tap stays alive in case the check is stale.")
       }
     }
     await refreshMonitoringState(reason: "trust_\(reason)")
@@ -350,7 +361,15 @@ class KeyEventMonitorClientLive {
 
   @MainActor
   private func activateTapIfNeeded(reason: String) {
-    guard !isMonitoring else { return }
+    if isMonitoring {
+      // The 100ms permission watchdog lands here while healthy; use it to revive taps that
+      // macOS disabled without sending a tapDisabled event (observed after sleep, #250).
+      if let eventTapPort, !CGEvent.tapIsEnabled(tap: eventTapPort) {
+        CGEvent.tapEnable(tap: eventTapPort, enable: true)
+        logger.notice("Re-enabled event tap that was silently disabled (reason: \(reason)).")
+      }
+      return
+    }
     guard hasHandlers else { return }
 
     let accessibilityTrusted = currentAccessibilityTrust()
@@ -393,9 +412,10 @@ class KeyEventMonitorClientLive {
             return Unmanaged.passUnretained(cgEvent)
           }
 
-          guard hotKeyClientLive.hasRequiredPermissions else {
-            return Unmanaged.passUnretained(cgEvent)
-          }
+          // An event arriving at the tap is authoritative proof the underlying permission is
+          // granted. Never drop delivered events because a cached permission check went
+          // stale (#250) — that turned recoverable TCC hiccups into dead hotkeys.
+          hotKeyClientLive.noteEventDelivered(type: type)
 
           if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
             _ = hotKeyClientLive.processInputEvent(.mouseClick)
@@ -443,7 +463,14 @@ class KeyEventMonitorClientLive {
     }
 
     isMonitoring = false
+    clearInputMonitoringProof()
     logger.info("Suspended key event monitoring (reason: \(reason)).")
+  }
+
+  private func clearInputMonitoringProof() {
+    queue.async(flags: .barrier) { [weak self] in
+      self?.inputMonitoringProvenByEvents = false
+    }
   }
 
   private func handleTapDisabledEvent(_ type: CGEventType) {
@@ -471,6 +498,46 @@ class KeyEventMonitorClientLive {
 
   private func processInputEvent(_ inputEvent: InputEvent) -> Bool {
     processEvent(inputEvent, handlers: inputContinuations)
+  }
+
+  /// Records that an event was delivered to the tap. Key events are proof that Input
+  /// Monitoring is genuinely granted even when `IOHIDCheckAccess` reports otherwise (#250).
+  fileprivate func noteEventDelivered(type: CGEventType) {
+    guard type == .keyDown || type == .keyUp else { return }
+    let alreadyProven = queue.sync { inputMonitoringProvenByEvents }
+    guard !alreadyProven else { return }
+    queue.async(flags: .barrier) { [weak self] in
+      self?.inputMonitoringProvenByEvents = true
+      self?.inputMonitoringTrusted = true
+    }
+    if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
+      logger.notice("Key events are flowing while IOHIDCheckAccess reports denied; treating Input Monitoring as granted (stale TCC cache, #250).")
+    }
+  }
+
+  /// Recreate the event tap after system transitions that are known to leave taps in a dead or
+  /// stale state (wake from sleep, session reactivation after fast user switching / MDM logout).
+  private func registerSystemEventObservers() {
+    let center = NSWorkspace.shared.notificationCenter
+    let events: [(Notification.Name, String)] = [
+      (NSWorkspace.didWakeNotification, "system_wake"),
+      (NSWorkspace.sessionDidBecomeActiveNotification, "session_active"),
+    ]
+    for (name, reason) in events {
+      let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        self?.restartTapAfterSystemEvent(reason: reason)
+      }
+      systemEventObservers.append(observer)
+    }
+  }
+
+  private func restartTapAfterSystemEvent(reason: String) {
+    logger.notice("System transition (\(reason)); recreating event tap to recover from any stale state.")
+    Task { [weak self] in
+      guard let self else { return }
+      await self.deactivateTapOnMain(reason: reason)
+      await self.refreshMonitoringState(reason: reason)
+    }
   }
 }
 
@@ -505,7 +572,12 @@ extension KeyEventMonitorClientLive {
   }
 
   private func currentInputMonitoringTrust() -> Bool {
-    IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+    if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted {
+      return true
+    }
+    // A stale TCC cache can report denied while key events demonstrably flow (#250);
+    // trust the events over the check so the watchdog and settings UI stay honest.
+    return queue.sync { inputMonitoringProvenByEvents }
   }
 
   // Intentionally no request helper: creating the event tap prompts macOS 15+ for Input Monitoring

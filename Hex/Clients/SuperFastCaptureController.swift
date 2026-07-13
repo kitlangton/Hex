@@ -83,6 +83,12 @@ enum CaptureRecordingMode: String {
 }
 
 final class SuperFastCaptureController {
+  enum FinishRecordingResult {
+    case captured(URL)
+    case failed(RecordingFailure)
+    case idle
+  }
+
   struct StopTimingEstimate {
     let gracePeriod: TimeInterval
     let callbackInterval: TimeInterval
@@ -114,15 +120,17 @@ final class SuperFastCaptureController {
   private var converter: AVAudioConverter?
   private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
+  private var captureGeneration = 0
+  private var recordingFailure: RecordingFailure?
   private var keepWarmBuffer = false
   private var lastProcessedBufferAt: Date?
   private var recentCallbackIntervals: [TimeInterval] = []
   private var recentBufferDurations: [TimeInterval] = []
-  private let onEngineConfigurationChange: @Sendable () -> Void
+  private let onEngineConfigurationChange: @Sendable (Int) -> Void
 
   init(
     meterContinuation: AsyncStream<Meter>.Continuation,
-    onEngineConfigurationChange: @escaping @Sendable () -> Void
+    onEngineConfigurationChange: @escaping @Sendable (Int) -> Void
   ) {
     self.meterContinuation = meterContinuation
     self.onEngineConfigurationChange = onEngineConfigurationChange
@@ -163,13 +171,11 @@ final class SuperFastCaptureController {
   }
 
   func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
-    let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
-    self.keepWarmBuffer = keepWarmBuffer
-    if didDisableWarmBuffer {
-      processingQueue.sync {
-        if activeRecording == nil {
-          ringBuffer.clear()
-        }
+    processingQueue.sync {
+      let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
+      self.keepWarmBuffer = keepWarmBuffer
+      if didDisableWarmBuffer, activeRecording == nil {
+        ringBuffer.clear()
       }
     }
 
@@ -179,7 +185,20 @@ final class SuperFastCaptureController {
     }
 
     stop(reason: "restart-before-arm")
+    try armEngine(reason: reason)
+  }
 
+  /// Tears down and recreates the engine while keeping the active recording file open, so
+  /// capture resumes onto the same file after a device/route change mid-recording
+  /// (#251, #252, #218, #226). The ring buffer, timing metrics, and active recording survive;
+  /// only the engine, tap, and converter are rebuilt.
+  func restartPreservingRecording(reason: String) throws {
+    logger.notice("Restarting capture engine preserving active recording reason=\(reason)")
+    detachEngine()
+    try armEngine(reason: reason)
+  }
+
+  private func armEngine(reason: String) throws {
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
     let inputFormat = inputNode.inputFormat(forBus: 0)
@@ -194,11 +213,16 @@ final class SuperFastCaptureController {
       converter.channelMap = [NSNumber(value: 0)]
     }
 
-    self.converter = converter
+    let generation = processingQueue.sync {
+      captureGeneration += 1
+      self.converter = converter
+      recordingFailure = nil
+      return captureGeneration
+    }
 
     inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: inputFormat) {
       [weak self] buffer, _ in
-      self?.enqueue(buffer)
+      self?.enqueue(buffer, generation: generation)
     }
 
     engine.prepare()
@@ -206,7 +230,10 @@ final class SuperFastCaptureController {
       try engine.start()
     } catch {
       inputNode.removeTap(onBus: 0)
-      self.converter = nil
+      processingQueue.sync {
+        captureGeneration += 1
+        self.converter = nil
+      }
       throw error
     }
     self.engine = engine
@@ -215,7 +242,7 @@ final class SuperFastCaptureController {
       object: engine,
       queue: .main
     ) { [weak self] _ in
-      self?.handleConfigurationChange()
+      self?.handleConfigurationChange(generation: generation)
     }
     logger.notice(
       "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
@@ -226,6 +253,14 @@ final class SuperFastCaptureController {
     if engine != nil {
       logger.notice("Capture engine stopped reason=\(reason)")
     }
+    detachEngine(clearingRecordingState: true)
+  }
+
+  /// Removes the tap, observer, converter, and engine. Bumps the capture generation so
+  /// in-flight tap callbacks from the old engine are ignored. Recording state (active file,
+  /// ring buffer, timing metrics) is preserved unless `clearingRecordingState` is set, which
+  /// is what lets restartPreservingRecording resume capture onto the same file.
+  private func detachEngine(clearingRecordingState: Bool = false) {
     if let inputNode = engine?.inputNode {
       inputNode.removeTap(onBus: 0)
     }
@@ -233,22 +268,36 @@ final class SuperFastCaptureController {
       NotificationCenter.default.removeObserver(configurationChangeObserver)
       self.configurationChangeObserver = nil
     }
+    processingQueue.sync {
+      captureGeneration += 1
+      converter = nil
+      if clearingRecordingState {
+        activeRecording = nil
+        recordingFailure = nil
+        ringBuffer.clear()
+        lastProcessedBufferAt = nil
+        recentCallbackIntervals.removeAll(keepingCapacity: false)
+        recentBufferDurations.removeAll(keepingCapacity: false)
+      }
+    }
     engine?.stop()
     engine = nil
-    converter = nil
-
-    processingQueue.sync {
-      activeRecording = nil
-      ringBuffer.clear()
-      lastProcessedBufferAt = nil
-      recentCallbackIntervals.removeAll(keepingCapacity: false)
-      recentBufferDurations.removeAll(keepingCapacity: false)
-    }
   }
 
-  private func handleConfigurationChange() {
+  private func handleConfigurationChange(generation: Int) {
+    guard processingQueue.sync(execute: { Self.shouldProcessCallback(callbackGeneration: generation, currentGeneration: captureGeneration) }) else {
+      return
+    }
     logger.notice("Capture engine configuration changed")
-    onEngineConfigurationChange()
+    onEngineConfigurationChange(generation)
+  }
+
+  static func shouldProcessCallback(callbackGeneration: Int, currentGeneration: Int) -> Bool {
+    callbackGeneration == currentGeneration
+  }
+
+  func isCurrentGeneration(_ generation: Int) -> Bool {
+    processingQueue.sync { generation == captureGeneration }
   }
 
   func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {
@@ -257,6 +306,7 @@ final class SuperFastCaptureController {
     var startError: Error?
     processingQueue.sync {
       do {
+        recordingFailure = nil
         let file = try AVAudioFile(
           forWriting: url,
           settings: [
@@ -300,32 +350,36 @@ final class SuperFastCaptureController {
     }
   }
 
-  func finishRecording(clearBuffer: Bool = true) -> URL? {
+  func finishRecording(clearBuffer: Bool = true) -> FinishRecordingResult {
     processingQueue.sync {
-      let url = activeRecording?.url
+      let result: FinishRecordingResult
+      if let recordingFailure {
+        result = .failed(recordingFailure)
+      } else if let url = activeRecording?.url {
+        result = .captured(url)
+      } else {
+        result = .idle
+      }
       activeRecording = nil
+      recordingFailure = nil
       if clearBuffer {
         ringBuffer.clear()
       }
-      return url
+      return result
     }
   }
 
-  func clearWarmBuffer() {
-    processingQueue.sync {
-      guard activeRecording == nil else { return }
-      ringBuffer.clear()
-    }
-  }
-
-  private func enqueue(_ buffer: AVAudioPCMBuffer) {
+  private func enqueue(_ buffer: AVAudioPCMBuffer, generation: Int) {
     guard let copy = clone(buffer) else { return }
     processingQueue.async { [weak self] in
-      self?.process(copy)
+      self?.process(copy, generation: generation)
     }
   }
 
-  private func process(_ buffer: AVAudioPCMBuffer) {
+  private func process(_ buffer: AVAudioPCMBuffer, generation: Int) {
+    guard Self.shouldProcessCallback(callbackGeneration: generation, currentGeneration: captureGeneration) else {
+      return
+    }
     let now = Date()
     if let lastProcessedBufferAt {
       appendRecentMetric(now.timeIntervalSince(lastProcessedBufferAt), to: &recentCallbackIntervals)
@@ -364,6 +418,8 @@ final class SuperFastCaptureController {
     } catch {
       logger.error("Failed to write capture engine audio: \(error.localizedDescription)")
       activeRecording = nil
+      recordingFailure = .captureWriteFailed(error.localizedDescription)
+      FileManager.default.removeItemIfExists(at: recording.url)
     }
   }
 

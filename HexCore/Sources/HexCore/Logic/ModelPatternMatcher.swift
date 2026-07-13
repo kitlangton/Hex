@@ -17,6 +17,13 @@ public enum ModelPatternMatcher {
     return pattern == text
   }
 
+  /// Returns `true` if either name matches the other as a pattern.
+  /// Use when comparing a stored selection to a model name and either side
+  /// may be a glob (e.g. "distil*large-v3") or a concrete identifier.
+  public static func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
+    matches(lhs, rhs) || matches(rhs, lhs)
+  }
+
   /// Given a list of model names and download status, resolve a glob pattern to a concrete name.
   /// Preference: downloaded > non-turbo > any match.
   /// Returns `nil` if no match found.

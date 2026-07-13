@@ -16,7 +16,7 @@
     "storageSize": "650MB"
   },
   {
-    "displayName": "Whisper Small (Tiny)",
+    "displayName": "Whisper Tiny",
     "internalName": "openai_whisper-tiny",
     "size": "Multilingual",
     "accuracyStars": 2,
@@ -24,7 +24,7 @@
     "storageSize": "73MB"
   },
   {
-    "displayName": "Whisper Medium (Base)",
+    "displayName": "Whisper Base",
     "internalName": "openai_whisper-base",
     "size": "Multilingual",
     "accuracyStars": 3,
@@ -32,10 +32,18 @@
     "storageSize": "140MB"
   },
   {
+    "displayName": "Whisper Large v3 Turbo",
+    "internalName": "openai_whisper-large-v3-v20240930_turbo_632MB",
+    "size": "Multilingual",
+    "accuracyStars": 4,
+    "speedStars": 4,
+    "storageSize": "632MB"
+  },
+  {
     "displayName": "Whisper Large v3",
     "internalName": "openai_whisper-large-v3-v20240930",
     "size": "Multilingual",
-    "accuracyStars": 4,
+    "accuracyStars": 5,
     "speedStars": 2,
     "storageSize": "1.5GB"
   }

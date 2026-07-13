@@ -114,6 +114,8 @@ struct SettingsFeature {
     case updateWordRemapping(WordRemapping)
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
+    case setLowercaseTranscripts(Bool)
+    case setRemovePunctuation(Bool)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -400,6 +402,14 @@ struct SettingsFeature {
 
       case let .setRemappingScratchpadFocused(isFocused):
         state.$isRemappingScratchpadFocused.withLock { $0 = isFocused }
+        return .none
+
+      case let .setLowercaseTranscripts(enabled):
+        state.$hexSettings.withLock { $0.lowercaseTranscripts = enabled }
+        return .none
+
+      case let .setRemovePunctuation(enabled):
+        state.$hexSettings.withLock { $0.removePunctuation = enabled }
         return .none
 
       case .startSettingPasteLastTranscriptHotkey:

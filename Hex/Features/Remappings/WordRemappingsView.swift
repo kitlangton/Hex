@@ -11,66 +11,13 @@ struct WordRemappingsView: View {
 
 	var body: some View {
 		ScrollView {
-			VStack(alignment: .leading, spacing: 16) {
-				VStack(alignment: .leading, spacing: 6) {
-					Text("Transcript Modifications")
-						.font(.title2.bold())
-					Text("Remove or replace words in every transcript. Removals use regex patterns and match whole words.")
-						.font(.callout)
-						.foregroundStyle(.secondary)
-				}
-
-				GroupBox {
-					VStack(alignment: .leading, spacing: 10) {
-						HStack(spacing: 12) {
-							VStack(alignment: .leading, spacing: 4) {
-								Text("Scratchpad")
-									.font(.caption.weight(.semibold))
-									.foregroundStyle(.secondary)
-								TextField("Say something…", text: $store.remappingScratchpadText)
-									.textFieldStyle(.roundedBorder)
-									.focused($isScratchpadFocused)
-									.onChange(of: isScratchpadFocused) { _, newValue in
-										store.send(.setRemappingScratchpadFocused(newValue))
-									}
-							}
-
-							VStack(alignment: .leading, spacing: 4) {
-								Text("Preview")
-									.font(.caption.weight(.semibold))
-									.foregroundStyle(.secondary)
-								Text(previewText.isEmpty ? "—" : previewText)
-									.font(.body)
-									.frame(maxWidth: .infinity, alignment: .leading)
-									.padding(.horizontal, 8)
-									.padding(.vertical, 6)
-									.background(
-										RoundedRectangle(cornerRadius: 6)
-											.fill(Color(nsColor: .controlBackgroundColor))
-									)
-							}
-						}
-					}
-					.padding(.vertical, 6)
-				}
-
-				Picker("Modification Type", selection: $activeSection) {
-					ForEach(ModificationSection.allCases) { section in
-						Text(section.title).tag(section)
-					}
-				}
-				.pickerStyle(.segmented)
-				.labelsHidden()
-
-				switch activeSection {
-				case .removals:
-					removalsSection
-				case .remappings:
-					remappingsSection
-				}
+			VStack(alignment: .leading, spacing: 24) {
+				previewSection
+				wordRulesSection
+				outputFormattingSection
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
-			.padding()
+			.padding(20)
 		}
 		.onDisappear {
 			store.send(.setRemappingScratchpadFocused(false))
@@ -78,77 +25,171 @@ struct WordRemappingsView: View {
 		.enableInjection()
 	}
 
+	private var previewSection: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Text("Preview")
+				.font(.headline)
+
+			GroupBox {
+				HStack(alignment: .top, spacing: 12) {
+					VStack(alignment: .leading, spacing: 5) {
+						Text("Input")
+							.font(.caption.weight(.semibold))
+							.foregroundStyle(.secondary)
+						TextField("Type or speak a sample…", text: $store.remappingScratchpadText)
+							.textFieldStyle(.roundedBorder)
+							.focused($isScratchpadFocused)
+							.onChange(of: isScratchpadFocused) { _, newValue in
+								store.send(.setRemappingScratchpadFocused(newValue))
+							}
+					}
+
+					Image(systemName: "arrow.right")
+						.foregroundStyle(.tertiary)
+						.padding(.top, 27)
+
+					VStack(alignment: .leading, spacing: 5) {
+						Text("Output")
+							.font(.caption.weight(.semibold))
+							.foregroundStyle(.secondary)
+						Text(previewText.isEmpty ? "—" : previewText)
+							.frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
+							.padding(.horizontal, 8)
+							.padding(.vertical, 5)
+							.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+					}
+				}
+				.padding(.vertical, 4)
+			}
+		}
+	}
+
+	private var wordRulesSection: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Text("Word rules")
+				.font(.headline)
+
+			Picker("Rule type", selection: $activeSection) {
+				ForEach(ModificationSection.allCases) { section in
+					Text(section.title).tag(section)
+				}
+			}
+			.pickerStyle(.segmented)
+			.labelsHidden()
+			.frame(maxWidth: 360)
+
+			switch activeSection {
+			case .removals:
+				removalsSection
+			case .remappings:
+				remappingsSection
+			}
+		}
+	}
+
 	private var removalsSection: some View {
 		GroupBox {
 			VStack(alignment: .leading, spacing: 10) {
-				Toggle(
-					"Enable Word Removals",
-					isOn: Binding(
-						get: { store.hexSettings.wordRemovalsEnabled },
-						set: { store.send(.setWordRemovalsEnabled($0)) }
+				HStack {
+					Text("Remove matching words from every transcript.")
+						.settingsCaption()
+					Spacer()
+					Toggle(
+						"Enabled",
+						isOn: Binding(
+							get: { store.hexSettings.wordRemovalsEnabled },
+							set: { store.send(.setWordRemovalsEnabled($0)) }
+						)
 					)
-				)
-					.toggleStyle(.checkbox)
+					.toggleStyle(.switch)
+					.controlSize(.small)
+				}
 
+				Divider()
 				removalsColumnHeaders
 
-				LazyVStack(alignment: .leading, spacing: 6) {
-					ForEach(store.hexSettings.wordRemovals) { removal in
+				LazyVStack(alignment: .leading, spacing: 0) {
+					ForEach(Array(store.hexSettings.wordRemovals.enumerated()), id: \.element.id) { index, removal in
 						RemovalRow(removal: removalBinding(for: removal)) {
 							store.send(.removeWordRemoval(removal.id))
+						}
+						if index < store.hexSettings.wordRemovals.count - 1 {
+							Divider().padding(.leading, Layout.dividerLeadingPadding)
 						}
 					}
 				}
 
-				HStack {
-					Button {
-						store.send(.addWordRemoval)
-					} label: {
-						Label("Add Removal", systemImage: "plus")
-					}
-					Spacer()
+				Button {
+					store.send(.addWordRemoval)
+				} label: {
+					Label("Add pattern", systemImage: "plus")
 				}
+				.controlSize(.small)
 			}
 			.padding(.vertical, 4)
-		} label: {
-			VStack(alignment: .leading, spacing: 4) {
-				Text("Word Removals")
-					.font(.headline)
-				Text("Remove filler words using case-insensitive regex patterns.")
-					.settingsCaption()
-			}
 		}
 	}
 
 	private var remappingsSection: some View {
 		GroupBox {
 			VStack(alignment: .leading, spacing: 10) {
+				Text("Replace matching words in every transcript.")
+					.settingsCaption()
+				Divider()
 				remappingsColumnHeaders
 
-				LazyVStack(alignment: .leading, spacing: 6) {
-					ForEach(store.hexSettings.wordRemappings) { remapping in
+				LazyVStack(alignment: .leading, spacing: 0) {
+					ForEach(Array(store.hexSettings.wordRemappings.enumerated()), id: \.element.id) { index, remapping in
 						RemappingRow(remapping: remappingBinding(for: remapping)) {
 							store.send(.removeWordRemapping(remapping.id))
+						}
+						if index < store.hexSettings.wordRemappings.count - 1 {
+							Divider().padding(.leading, Layout.dividerLeadingPadding)
 						}
 					}
 				}
 
-				HStack {
-					Button {
-						store.send(.addWordRemapping)
-					} label: {
-						Label("Add Remapping", systemImage: "plus")
-					}
-					Spacer()
+				Button {
+					store.send(.addWordRemapping)
+				} label: {
+					Label("Add replacement", systemImage: "plus")
 				}
+				.controlSize(.small)
 			}
 			.padding(.vertical, 4)
-		} label: {
-			VStack(alignment: .leading, spacing: 4) {
-				Text("Word Remappings")
-					.font(.headline)
-				Text("Replace specific words in every transcript. Matches whole words, case-insensitive, in order.")
-					.settingsCaption()
+		}
+	}
+
+	private var outputFormattingSection: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Text("Output formatting")
+				.font(.headline)
+
+			GroupBox {
+				HStack(spacing: 20) {
+					Toggle(
+						"Lowercase output",
+						isOn: Binding(
+							get: { store.hexSettings.lowercaseTranscripts },
+							set: { store.send(.setLowercaseTranscripts($0)) }
+						)
+					)
+					.toggleStyle(.switch)
+
+					Divider()
+						.frame(height: 22)
+
+					Toggle(
+						"Remove punctuation",
+						isOn: Binding(
+							get: { store.hexSettings.removePunctuation },
+							set: { store.send(.setRemovePunctuation($0)) }
+						)
+					)
+					.toggleStyle(.switch)
+					Spacer()
+				}
+				.padding(.vertical, 4)
 			}
 		}
 	}
@@ -209,6 +250,11 @@ struct WordRemappingsView: View {
 			output = WordRemovalApplier.apply(output, removals: store.hexSettings.wordRemovals)
 		}
 		output = WordRemappingApplier.apply(output, remappings: store.hexSettings.wordRemappings)
+		output = TranscriptFormattingApplier.apply(
+			output,
+			lowercase: store.hexSettings.lowercaseTranscripts,
+			removePunctuation: store.hexSettings.removePunctuation
+		)
 		return output
 	}
 }
@@ -223,6 +269,7 @@ private struct RemovalRow: View {
 				.labelsHidden()
 				.toggleStyle(.checkbox)
 				.frame(width: Layout.toggleColumnWidth, alignment: .leading)
+				.accessibilityLabel("Enable \(removal.pattern.isEmpty ? "removal" : removal.pattern)")
 
 			TextField("Regex Pattern", text: $removal.pattern)
 				.textFieldStyle(.roundedBorder)
@@ -232,14 +279,11 @@ private struct RemovalRow: View {
 			}
 			.buttonStyle(.borderless)
 			.frame(width: Layout.deleteColumnWidth)
+			.help("Delete removal")
 		}
 		.padding(.horizontal, Layout.rowHorizontalPadding)
-		.padding(.vertical, Layout.rowVerticalPadding)
+		.padding(.vertical, 8)
 		.frame(maxWidth: .infinity)
-		.background(
-			RoundedRectangle(cornerRadius: Layout.rowCornerRadius)
-				.fill(Color(nsColor: .controlBackgroundColor))
-		)
 	}
 }
 
@@ -253,6 +297,7 @@ private struct RemappingRow: View {
 				.labelsHidden()
 				.toggleStyle(.checkbox)
 				.frame(width: Layout.toggleColumnWidth, alignment: .leading)
+				.accessibilityLabel("Enable \(remapping.match.isEmpty ? "replacement" : remapping.match)")
 
 			TextField("Match", text: $remapping.match)
 				.textFieldStyle(.roundedBorder)
@@ -271,14 +316,11 @@ private struct RemappingRow: View {
 			}
 			.buttonStyle(.borderless)
 			.frame(width: Layout.deleteColumnWidth)
+			.help("Delete replacement")
 		}
 		.padding(.horizontal, Layout.rowHorizontalPadding)
-		.padding(.vertical, Layout.rowVerticalPadding)
+		.padding(.vertical, 8)
 		.frame(maxWidth: .infinity)
-		.background(
-			RoundedRectangle(cornerRadius: Layout.rowCornerRadius)
-				.fill(Color(nsColor: .controlBackgroundColor))
-		)
 	}
 }
 
@@ -291,9 +333,9 @@ private enum ModificationSection: String, CaseIterable, Identifiable {
 	var title: String {
 		switch self {
 		case .removals:
-			return "Word Removals"
+			return "Remove words"
 		case .remappings:
-			return "Word Remappings"
+			return "Replace words"
 		}
 	}
 }
@@ -303,6 +345,5 @@ private enum Layout {
 	static let deleteColumnWidth: CGFloat = 24
 	static let arrowColumnWidth: CGFloat = 16
 	static let rowHorizontalPadding: CGFloat = 10
-	static let rowVerticalPadding: CGFloat = 6
-	static let rowCornerRadius: CGFloat = 8
+	static let dividerLeadingPadding: CGFloat = toggleColumnWidth + rowHorizontalPadding + 8
 }

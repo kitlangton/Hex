@@ -76,7 +76,10 @@ actor SoundEffectsClientLive {
   @Shared(.hexSettings) var hexSettings: HexSettings
   private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
-  private var isEngineRunning = false
+  private var idleShutdownTask: Task<Void, Never>?
+  /// Comfortably longer than any sound effect, short enough that an idle Hex doesn't keep
+  /// an output IOProc (and coreaudiod) running around the clock (#209).
+  private static let idleShutdownDelay: Duration = .seconds(10)
 
   func play(_ soundEffect: SoundEffect) {
     guard hexSettings.soundEffectsEnabled else { return }
@@ -90,6 +93,18 @@ actor SoundEffectsClientLive {
     player.stop()
     player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
     player.play()
+    scheduleIdleShutdown()
+  }
+
+  /// Stops the output engine shortly after playback so it doesn't run while idle.
+  /// Restarting it on the next play costs only a few milliseconds.
+  private func scheduleIdleShutdown() {
+    idleShutdownTask?.cancel()
+    idleShutdownTask = Task {
+      try? await Task.sleep(for: Self.idleShutdownDelay)
+      guard !Task.isCancelled else { return }
+      stopEngineIfNeeded()
+    }
   }
 
   func stop(_ soundEffect: SoundEffect) {
@@ -113,10 +128,11 @@ actor SoundEffectsClientLive {
   func setEnabled(_: Bool) async {
     await preloadSounds()
 
-    if hexSettings.soundEffectsEnabled {
-      prepareEngineIfNeeded()
-    } else {
+    // No prewarm on enable: play() starts the engine lazily, and an idle prewarm would
+    // just be shut down again by the idle timer.
+    if !hexSettings.soundEffectsEnabled {
       stopAll()
+      idleShutdownTask?.cancel()
       stopEngineIfNeeded()
     }
   }
@@ -152,24 +168,22 @@ actor SoundEffectsClientLive {
   }
 
   private func prepareEngineIfNeeded() {
-    if !isEngineRunning || !engine.isRunning {
-      engine.prepare()
-      if #available(macOS 13.0, *) {
-        engine.isAutoShutdownEnabled = false
-      }
-      do {
-        try engine.start()
-        isEngineRunning = true
-      } catch {
-        logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
-      }
+    guard !engine.isRunning else { return }
+    engine.prepare()
+    if #available(macOS 13.0, *) {
+      engine.isAutoShutdownEnabled = false
+    }
+    do {
+      try engine.start()
+    } catch {
+      logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
     }
   }
 
   private func stopEngineIfNeeded() {
-    guard isEngineRunning || engine.isRunning else { return }
+    guard engine.isRunning else { return }
     engine.stop()
-    isEngineRunning = false
+    logger.debug("Sound effects engine stopped")
   }
 
   deinit {

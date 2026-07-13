@@ -29,8 +29,7 @@ public enum WordRemappingApplier {
 			let escaped = NSRegularExpression.escapedPattern(for: trimmed)
 			let pattern = "(?<!\\w)\(escaped)(?!\\w)"
 			let replacement = processEscapeSequences(remapping.replacement)
-			// Escape backslashes for regex replacement (backslash is special in replacement strings)
-			let escapedReplacement = replacement.replacingOccurrences(of: "\\", with: "\\\\")
+			let escapedReplacement = NSRegularExpression.escapedTemplate(for: replacement)
 			output = output.replacingOccurrences(
 				of: pattern,
 				with: escapedReplacement,

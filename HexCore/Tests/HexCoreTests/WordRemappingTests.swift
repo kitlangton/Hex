@@ -57,6 +57,15 @@ struct WordRemappingTests {
 	}
 
 	@Test
+	func literalDollarSign() {
+		let remappings = [
+			WordRemapping(match: "price", replacement: "$1")
+		]
+		let result = WordRemappingApplier.apply("It costs price today", remappings: remappings)
+		#expect(result == "It costs $1 today")
+	}
+
+	@Test
 	func caseInsensitive() {
 		let remappings = [
 			WordRemapping(match: "COMMA", replacement: ",")

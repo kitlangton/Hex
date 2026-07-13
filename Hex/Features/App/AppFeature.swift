@@ -13,6 +13,10 @@ import SwiftUI
 
 @Reducer
 struct AppFeature {
+	private enum CancelID {
+		case modelMissingFlash
+	}
+
   enum ActiveTab: Equatable {
     case settings
     case remappings
@@ -100,11 +104,12 @@ struct AppFeature {
         return .run { send in
           await MainActor.run {
             HexLog.app.notice("Activating app for model missing")
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            NotificationCenter.default.post(name: .presentSettingsWindow, object: nil)
           }
           try? await Task.sleep(for: .seconds(2))
           await send(.settings(.set(\.shouldFlashModelSection, false)))
         }
+		.cancellable(id: CancelID.modelMissingFlash, cancelInFlight: true)
 
       case .transcription:
         return .none

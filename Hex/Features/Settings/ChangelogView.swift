@@ -22,16 +22,14 @@ struct ChangelogView: View {
                     Text("Changelog could not be loaded.")
                         .foregroundColor(.red)
                 }
-
-                Spacer()
-
-                Button("Close") {
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 20)
             }
             .padding()
+        }
+        .frame(minWidth: 600, minHeight: 500)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { dismiss() }
+            }
         }
         .enableInjection()
     }
