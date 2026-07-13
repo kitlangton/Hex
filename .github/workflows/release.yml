@@ -92,10 +92,12 @@ jobs:
 
       - name: Package release assets
         id: package
+        env:
+          INPUT_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNNER_TEMP/Hex-export/Hex.app/Contents/Info.plist")
-          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG="$INPUT_TAG"
           if [ "$VERSION" != "${TAG#v}" ]; then
             echo "Tag $TAG does not match app version $VERSION" >&2
             exit 1
@@ -115,9 +117,10 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG="$INPUT_TAG"
           gh release create "$TAG" \
             --verify-tag \
             --title "Hex ${{ steps.package.outputs.version }}" \

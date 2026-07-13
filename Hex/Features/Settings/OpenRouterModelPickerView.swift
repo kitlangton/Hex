@@ -26,6 +26,8 @@ struct OpenRouterModelPickerView: View {
 						systemImage: "cpu",
 						description: Text("Check your OpenRouter API key and refresh the catalog.")
 					)
+				} else if filteredModels.isEmpty {
+					ContentUnavailableView.search(text: searchText)
 				} else {
 					List(filteredModels) { model in
 						Button {

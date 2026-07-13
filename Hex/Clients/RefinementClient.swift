@@ -237,7 +237,6 @@ private struct GeminiRequest: Encodable {
 	let systemInstruction: Content
 	let contents: [Content]
 	let generationConfig = GenerationConfig()
-	let store = false
 
 	init(instruction: String, text: String) {
 		systemInstruction = .init(parts: [.init(text: instruction)])
