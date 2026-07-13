@@ -9,10 +9,17 @@ Hex is a macOS menu bar application for on‑device voice‑to‑text. It suppor
 ## Build & Development Commands
 
 ```bash
-# Build the app
-xcodebuild -scheme Hex -configuration Release
+# Local development build (the default for feature work): builds an unsigned Debug .app.
+# Do not run tests, archives, signing, DMGs, or release builds unless explicitly requested.
+xcodebuild -scheme Hex -configuration Debug \
+  -skipMacroValidation -skipPackagePluginValidation \
+  CODE_SIGNING_ALLOWED=NO build
 
-# Run tests (must be run from HexCore directory for unit tests)
+# Launch the locally built bundle
+open ~/Library/Developer/Xcode/DerivedData/Hex-*/Build/Products/Debug/'Hex Debug.app'
+
+# Tests are opt-in only: run them only when the user explicitly asks.
+# Unit tests (must be run from HexCore directory)
 cd HexCore && swift test
 
 # Or run all tests via Xcode
@@ -21,6 +28,21 @@ xcodebuild test -scheme Hex
 # Open in Xcode (recommended for development)
 open Hex.xcodeproj
 ```
+
+### Xcode 26 / macOS Tahoe local-build hang
+
+On macOS Tahoe 26.4.1, `SWBBuildService` can hang before compilation while running
+`clang -v -E -dM` SDK probes. This is an Xcode build-service issue, not a Hex source,
+signing, or packaging failure. If the local Debug build stops after `CreateBuildDescription`,
+leave that build running and kill only the stuck probe processes, then let it continue:
+
+```bash
+ps -axo pid=,command= | awk '$0 ~ /\/clang -v -E -dM/ {print $1}' | xargs -r kill -9
+```
+
+Do not switch to `xcodebuild test`, a Release build, cleaning DerivedData, or a release
+workflow to work around this. Restarting the Mac is a last resort; restarting Xcode is
+irrelevant when only command-line builds are running.
 
 ## Architecture
 

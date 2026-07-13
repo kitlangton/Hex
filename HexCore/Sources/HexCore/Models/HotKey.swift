@@ -320,6 +320,20 @@ public struct HotKey: Codable, Equatable, Sendable {
     self.key = key
     self.modifiers = modifiers
   }
+
+  /// Whether two shortcuts cannot be distinguished reliably by the global key monitor.
+  /// A modifier-only shortcut is a prefix of any keyed shortcut with the same modifiers.
+  public func conflicts(with other: HotKey) -> Bool {
+    if self == other { return true }
+    if key == nil, other.key != nil {
+      return modifiers.isSubset(of: other.modifiers)
+    }
+    if key != nil, other.key == nil {
+      return other.modifiers.isSubset(of: modifiers)
+    }
+    return key == nil && other.key == nil
+      && (modifiers.isSubset(of: other.modifiers) || other.modifiers.isSubset(of: modifiers))
+  }
 }
 
 extension Key {

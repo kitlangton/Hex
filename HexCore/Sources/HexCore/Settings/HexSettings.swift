@@ -50,10 +50,48 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemappings: [WordRemapping]
 	public var lowercaseTranscripts: Bool
 	public var removePunctuation: Bool
+	/// Optional post-processing is deliberately separate from the transcription pipeline.
+	public var refinementMode: RefinementMode
+	public var refinementProvider: RefinementProvider
+	/// User-authored instructions appended to Hex's refinement contract.
+	public var refinementInstructions: String
+	public var openRouterModelID: String?
+	/// Optional second recording shortcut that always runs the refinement stage.
+	public var refinedHotkey: HotKey?
+	public var refinedDoubleTapLockEnabled: Bool
+	public var refinedUseDoubleTapOnly: Bool
+	public var refinedMinimumKeyTime: Double
+	/// Whether the refined-transcription hotkey captures selected text as the source material.
+	public var includeSelectedTextInRefinement: Bool
+
+	public func refinementRequest(
+		for text: String,
+		mode: RefinementMode,
+		spokenInstruction: String? = nil
+	) -> RefinementRequest {
+		let spokenInstruction = spokenInstruction?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		var instructionParts = [refinementInstructions.trimmingCharacters(in: .whitespacesAndNewlines)]
+		if !spokenInstruction.isEmpty {
+			instructionParts.append("Spoken instruction:\n\(spokenInstruction)")
+		}
+		instructionParts.removeAll { $0.isEmpty }
+		let instructions = instructionParts.joined(separator: "\n\n")
+
+		return .init(
+			text: text,
+			mode: mode,
+			instructions: instructions,
+			provider: refinementProvider,
+			modelID: openRouterModelID
+		)
+	}
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
 			useDoubleTapOnly = false
+		}
+		if !refinedDoubleTapLockEnabled {
+			refinedUseDoubleTapOnly = false
 		}
 	}
 
@@ -84,7 +122,16 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
 		wordRemappings: [WordRemapping] = [],
 		lowercaseTranscripts: Bool = false,
-		removePunctuation: Bool = false
+		removePunctuation: Bool = false,
+		refinementMode: RefinementMode = .raw,
+		refinementProvider: RefinementProvider = .apple,
+		refinementInstructions: String = "",
+		openRouterModelID: String? = nil,
+		refinedHotkey: HotKey? = nil,
+		refinedDoubleTapLockEnabled: Bool = true,
+		refinedUseDoubleTapOnly: Bool = false,
+		refinedMinimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
+		includeSelectedTextInRefinement: Bool = true
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -113,6 +160,15 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemappings = wordRemappings
 		self.lowercaseTranscripts = lowercaseTranscripts
 		self.removePunctuation = removePunctuation
+		self.refinementMode = refinementMode
+		self.refinementProvider = refinementProvider
+		self.refinementInstructions = refinementInstructions
+		self.openRouterModelID = openRouterModelID
+		self.refinedHotkey = refinedHotkey
+		self.refinedDoubleTapLockEnabled = refinedDoubleTapLockEnabled
+		self.refinedUseDoubleTapOnly = refinedUseDoubleTapOnly
+		self.refinedMinimumKeyTime = refinedMinimumKeyTime
+		self.includeSelectedTextInRefinement = includeSelectedTextInRefinement
 		normalizeDoubleTapSettings()
 	}
 
@@ -164,6 +220,15 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemappings
 	case lowercaseTranscripts
 	case removePunctuation
+	case refinementMode
+	case refinementProvider
+	case refinementInstructions
+	case openRouterModelID
+	case refinedHotkey
+	case refinedDoubleTapLockEnabled
+	case refinedUseDoubleTapOnly
+	case refinedMinimumKeyTime
+	case includeSelectedTextInRefinement
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -299,6 +364,25 @@ private enum HexSettingsSchema {
 			default: defaults.wordRemappings
 		).eraseToAny(),
 		SettingsField(.lowercaseTranscripts, keyPath: \.lowercaseTranscripts, default: defaults.lowercaseTranscripts).eraseToAny(),
-		SettingsField(.removePunctuation, keyPath: \.removePunctuation, default: defaults.removePunctuation).eraseToAny()
+		SettingsField(.removePunctuation, keyPath: \.removePunctuation, default: defaults.removePunctuation).eraseToAny(),
+		SettingsField(.refinementMode, keyPath: \.refinementMode, default: defaults.refinementMode).eraseToAny(),
+		SettingsField(.refinementProvider, keyPath: \.refinementProvider, default: defaults.refinementProvider).eraseToAny(),
+		SettingsField(.refinementInstructions, keyPath: \.refinementInstructions, default: defaults.refinementInstructions).eraseToAny(),
+		SettingsField(
+			.openRouterModelID,
+			keyPath: \.openRouterModelID,
+			default: defaults.openRouterModelID,
+			encode: { container, key, value in try container.encodeIfPresent(value, forKey: key) }
+		).eraseToAny(),
+		SettingsField(
+			.refinedHotkey,
+			keyPath: \.refinedHotkey,
+			default: defaults.refinedHotkey,
+			encode: { container, key, value in try container.encodeIfPresent(value, forKey: key) }
+		).eraseToAny(),
+		SettingsField(.refinedDoubleTapLockEnabled, keyPath: \.refinedDoubleTapLockEnabled, default: defaults.refinedDoubleTapLockEnabled).eraseToAny(),
+		SettingsField(.refinedUseDoubleTapOnly, keyPath: \.refinedUseDoubleTapOnly, default: defaults.refinedUseDoubleTapOnly).eraseToAny(),
+		SettingsField(.refinedMinimumKeyTime, keyPath: \.refinedMinimumKeyTime, default: defaults.refinedMinimumKeyTime).eraseToAny(),
+		SettingsField(.includeSelectedTextInRefinement, keyPath: \.includeSelectedTextInRefinement, default: defaults.includeSelectedTextInRefinement).eraseToAny()
 	]
 }

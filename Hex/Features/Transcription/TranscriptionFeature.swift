@@ -17,11 +17,24 @@ private let transcriptionFeatureLogger = HexLog.transcription
 
 @Reducer
 struct TranscriptionFeature {
+  enum RecordingSource: Equatable {
+    case regular
+    case refined
+  }
+
   @ObservableState
   struct State: Equatable {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
+	var isRefining: Bool = false
+		var isCapturingSelectedTextForRefinement = false
+		var refinedHotKeyReleasedWhileCapturingSelection = false
+		var selectedTextForRefinement: SelectedTextCapture?
     var isPrewarming: Bool = false
+		var forcedRefinementMode: RefinementMode?
+		var activeRecordingHotkey: HotKey?
+		var activeMinimumKeyTime: Double?
+		var activeRecordingSource: RecordingSource?
     var error: String?
     var recordingStartTime: Date?
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
@@ -46,19 +59,26 @@ struct TranscriptionFeature {
 
     // Hotkey actions
     case hotKeyPressed
-    case hotKeyReleased
+    case hotKeyReleased(RecordingSource)
+			case refinedHotKeyPressed
+			case selectedTextCaptured(SelectedTextCapture)
+			case selectedTextCaptureUnavailable
 
     // Recording flow
     case startRecording
+		case startRefinedRecording
     case stopRecording
 
     // Cancel/discard flow
     case cancel   // Explicit cancellation with sound
     case discard  // Silent discard (too short/accidental)
+		case hotKeyCancelled(RecordingSource)
+		case hotKeyDiscarded(RecordingSource)
 
     // Transcription result flow
     case transcriptionAudioCaptured(URL, TimeInterval)
     case transcriptionResult(String, URL)
+	case refinementResult(String, URL, TimeInterval)
     case transcriptionError(Error, URL?)
 
     // Model availability
@@ -75,6 +95,7 @@ struct TranscriptionFeature {
     /// Must NOT be cancelled by handleStartRecording or we leak the temp file or lose the row.
     case recordingFinalize
     case transcription
+		case selectedTextRefinement
   }
 
   @Dependency(\.transcription) var transcription
@@ -85,6 +106,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+	@Dependency(\.refinement) var refinement
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -111,19 +133,71 @@ struct TranscriptionFeature {
       // MARK: - HotKey Flow
 
       case .hotKeyPressed:
-        // If we're transcribing, send a cancel first. Otherwise start recording immediately.
+        // If we're transcribing or refining, send a cancel first. Otherwise start recording immediately.
         // We'll decide later (on release) whether to keep or discard the recording.
-        return handleHotKeyPressed(isTranscribing: state.isTranscribing)
+		return handleHotKeyPressed(isBusy: state.isTranscribing || state.isRefining)
 
-      case .hotKeyReleased:
+      case .hotKeyReleased(.regular):
         // If we're currently recording, then stop. Otherwise, just cancel
         // the delayed "startRecording" effect if we never actually started.
-        return handleHotKeyReleased(isRecording: state.isRecording)
+        return handleHotKeyReleased(isRecording: state.isRecording, source: .regular, activeSource: state.activeRecordingSource)
+
+		case .hotKeyReleased(.refined):
+				if state.isCapturingSelectedTextForRefinement,
+					!(state.hexSettings.refinedDoubleTapLockEnabled && state.hexSettings.refinedUseDoubleTapOnly)
+				{
+					state.refinedHotKeyReleasedWhileCapturingSelection = true
+					return .none
+				}
+				return handleHotKeyReleased(isRecording: state.isRecording, source: .refined, activeSource: state.activeRecordingSource)
+
+			case .refinedHotKeyPressed:
+				guard !(state.isTranscribing || state.isRefining) else {
+					return handleHotKeyPressed(isBusy: true, startAction: .startRefinedRecording)
+				}
+				guard state.hexSettings.includeSelectedTextInRefinement else {
+					return .send(.startRefinedRecording)
+				}
+				state.isRefining = false
+				state.isCapturingSelectedTextForRefinement = true
+				state.refinedHotKeyReleasedWhileCapturingSelection = false
+				return .run { [pasteboard] send in
+					let selectedText = await pasteboard.captureSelectedText()
+					guard !Task.isCancelled else {
+						await selectedText?.cancel()
+						return
+					}
+					if let selectedText {
+						await send(.selectedTextCaptured(selectedText))
+					} else {
+						await send(.selectedTextCaptureUnavailable)
+					}
+				}
+				.cancellable(id: CancelID.selectedTextRefinement, cancelInFlight: true)
+
+			case .selectedTextCaptureUnavailable:
+				let refinedHotKeyWasReleased = state.refinedHotKeyReleasedWhileCapturingSelection
+				state.isCapturingSelectedTextForRefinement = false
+				state.refinedHotKeyReleasedWhileCapturingSelection = false
+				return refinedHotKeyWasReleased ? .none : .send(.startRefinedRecording)
+
+			case let .selectedTextCaptured(selectedText):
+				let refinedHotKeyWasReleased = state.refinedHotKeyReleasedWhileCapturingSelection
+				state.isCapturingSelectedTextForRefinement = false
+				state.refinedHotKeyReleasedWhileCapturingSelection = false
+				guard !refinedHotKeyWasReleased else {
+					return .run { _ in await selectedText.cancel() }
+				}
+				state.selectedTextForRefinement = selectedText
+				return .send(.startRefinedRecording)
 
       // MARK: - Recording Flow
 
       case .startRecording:
-        return handleStartRecording(&state)
+		return handleStartRecording(&state, source: .regular)
+
+		case .startRefinedRecording:
+			return handleStartRecording(&state, forcedRefinementMode: .refined, source: .refined)
 
       case .stopRecording:
         return handleStopRecording(&state)
@@ -138,6 +212,9 @@ struct TranscriptionFeature {
       case let .transcriptionResult(result, audioURL):
         return handleTranscriptionResult(&state, result: result, audioURL: audioURL)
 
+	  case let .refinementResult(result, audioURL, duration):
+		return handleRefinementResult(&state, result: result, audioURL: audioURL, duration: duration)
+
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
 
@@ -148,7 +225,7 @@ struct TranscriptionFeature {
 
       case .cancel:
         // Only cancel if we're in the middle of recording, transcribing, or post-processing
-        guard state.isRecording || state.isTranscribing else {
+        guard state.isRecording || state.isTranscribing || state.isRefining || state.isCapturingSelectedTextForRefinement else {
           return .none
         }
         return handleCancel(&state)
@@ -159,6 +236,16 @@ struct TranscriptionFeature {
           return .none
         }
         return handleDiscard(&state)
+
+		case let .hotKeyCancelled(source):
+			guard state.activeRecordingSource == source
+				|| (source == .refined && state.isCapturingSelectedTextForRefinement)
+			else { return .none }
+			return handleCancel(&state)
+
+		case let .hotKeyDiscarded(source):
+			guard state.activeRecordingSource == source, state.isRecording else { return .none }
+			return handleDiscard(&state)
       }
     }
   }
@@ -181,15 +268,26 @@ private extension TranscriptionFeature {
   func startHotKeyMonitoringEffect() -> Effect<Action> {
     .run { send in
       var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
+		var refinedHotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: []))
       @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+		@Shared(.isSettingRefinedHotKey) var isSettingRefinedHotKey: Bool
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
         // Skip if the user is currently setting a hotkey
-        if isSettingHotKey {
+		if isSettingHotKey || isSettingRefinedHotKey {
           return false
         }
+
+		let refinedHotkey = hexSettings.refinedHotkey
+		let shouldMonitorRefinedHotkey = refinedHotkey.map { !$0.conflicts(with: hexSettings.hotkey) } ?? false
+		if let refinedHotkey, shouldMonitorRefinedHotkey {
+			refinedHotKeyProcessor.hotkey = refinedHotkey
+			refinedHotKeyProcessor.doubleTapLockEnabled = hexSettings.refinedDoubleTapLockEnabled
+			refinedHotKeyProcessor.useDoubleTapOnly = hexSettings.refinedDoubleTapLockEnabled && hexSettings.refinedUseDoubleTapOnly
+			refinedHotKeyProcessor.minimumKeyTime = hexSettings.refinedMinimumKeyTime
+		}
 
         // Always keep hotKeyProcessor in sync with current user hotkey preference
         hotKeyProcessor.hotkey = hexSettings.hotkey
@@ -200,6 +298,24 @@ private extension TranscriptionFeature {
 
         switch inputEvent {
         case .keyboard(let keyEvent):
+			if shouldMonitorRefinedHotkey {
+				switch refinedHotKeyProcessor.process(keyEvent: keyEvent) {
+				case .startRecording:
+					Task { await send(.refinedHotKeyPressed) }
+					return refinedHotKeyProcessor.useDoubleTapOnly || keyEvent.key != nil
+				case .stopRecording:
+					Task { await send(.hotKeyReleased(.refined)) }
+					return false
+				case .cancel:
+					Task { await send(.hotKeyCancelled(.refined)) }
+					return true
+				case .discard:
+					Task { await send(.hotKeyDiscarded(.refined)) }
+					return false
+				case .none:
+					break
+				}
+			}
           // If Escape is pressed with no modifiers while idle, let's treat that as `cancel`.
           if keyEvent.key == .escape, keyEvent.modifiers.isEmpty,
              hotKeyProcessor.state == .idle
@@ -216,16 +332,16 @@ private extension TranscriptionFeature {
             // But if useDoubleTapOnly is true, always intercept the key
             return useDoubleTapOnly || keyEvent.key != nil
 
-          case .stopRecording:
-            Task { await send(.hotKeyReleased) }
+		  case .stopRecording:
+			Task { await send(.hotKeyReleased(.regular)) }
             return false // or `true` if you want to intercept
 
-          case .cancel:
-            Task { await send(.cancel) }
+		  case .cancel:
+			Task { await send(.hotKeyCancelled(.regular)) }
             return true
 
-          case .discard:
-            Task { await send(.discard) }
+		  case .discard:
+			Task { await send(.hotKeyDiscarded(.regular)) }
             return false // Don't intercept - let the key chord reach other apps
 
           case .none:
@@ -240,13 +356,21 @@ private extension TranscriptionFeature {
           }
 
         case .mouseClick:
+			if shouldMonitorRefinedHotkey, refinedHotKeyProcessor.state != .idle {
+				switch refinedHotKeyProcessor.processMouseClick() {
+				case .cancel: Task { await send(.hotKeyCancelled(.refined)) }
+				case .discard: Task { await send(.hotKeyDiscarded(.refined)) }
+				case .startRecording, .stopRecording, .none: break
+				}
+				return false
+			}
           // Process mouse click - for modifier-only hotkeys, this may cancel/discard
           switch hotKeyProcessor.processMouseClick() {
-          case .cancel:
-            Task { await send(.cancel) }
+		  case .cancel:
+			Task { await send(.hotKeyCancelled(.regular)) }
             return false // Don't intercept the click itself
-          case .discard:
-            Task { await send(.discard) }
+		  case .discard:
+			Task { await send(.hotKeyDiscarded(.regular)) }
             return false // Don't intercept the click itself
           case .startRecording, .stopRecording, .none:
             return false
@@ -276,32 +400,42 @@ private extension TranscriptionFeature {
 // MARK: - HotKey Press/Release Handlers
 
 private extension TranscriptionFeature {
-  func handleHotKeyPressed(isTranscribing: Bool) -> Effect<Action> {
-    // If already transcribing, cancel first. Otherwise start recording immediately.
-    guard isTranscribing else { return .send(.startRecording) }
+  func handleHotKeyPressed(isBusy: Bool, startAction: Action = .startRecording) -> Effect<Action> {
+	// If already transcribing or refining, cancel first. Otherwise start recording immediately.
+	guard isBusy else { return .send(startAction) }
     return .concatenate(
       .send(.cancel),
-      .send(.startRecording)
+		.send(startAction)
     )
   }
 
-  func handleHotKeyReleased(isRecording: Bool) -> Effect<Action> {
+  func handleHotKeyReleased(isRecording: Bool, source: RecordingSource, activeSource: RecordingSource?) -> Effect<Action> {
     // Always stop recording when hotkey is released
-    return isRecording ? .send(.stopRecording) : .none
+    return isRecording && source == activeSource ? .send(.stopRecording) : .none
   }
 }
 
 // MARK: - Recording Handlers
 
 private extension TranscriptionFeature {
-  func handleStartRecording(_ state: inout State) -> Effect<Action> {
+  func handleStartRecording(_ state: inout State, forcedRefinementMode: RefinementMode? = nil, source: RecordingSource) -> Effect<Action> {
+    guard !state.isRecording else { return .none }
     guard state.modelBootstrapState.isModelReady else {
+		let selectedText = state.selectedTextForRefinement
+		state.selectedTextForRefinement = nil
       return .merge(
         .send(.modelMissing),
-        .run { _ in soundEffect.play(.cancel) }
+			.run { _ in
+				await selectedText?.cancel()
+				soundEffect.play(.cancel)
+			}
       )
     }
     state.isRecording = true
+		state.forcedRefinementMode = forcedRefinementMode
+		state.activeRecordingHotkey = forcedRefinementMode == nil ? state.hexSettings.hotkey : state.hexSettings.refinedHotkey
+		state.activeMinimumKeyTime = forcedRefinementMode == nil ? state.hexSettings.minimumKeyTime : state.hexSettings.refinedMinimumKeyTime
+		state.activeRecordingSource = source
     let startTime = now
     state.recordingStartTime = startTime
     
@@ -343,8 +477,8 @@ private extension TranscriptionFeature {
 
     let decision = RecordingDecisionEngine.decide(
       .init(
-        hotkey: state.hexSettings.hotkey,
-        minimumKeyTime: state.hexSettings.minimumKeyTime,
+			hotkey: state.activeRecordingHotkey ?? state.hexSettings.hotkey,
+			minimumKeyTime: state.activeMinimumKeyTime ?? state.hexSettings.minimumKeyTime,
         recordingStartTime: state.recordingStartTime,
         currentTime: stopTime
       )
@@ -352,13 +486,19 @@ private extension TranscriptionFeature {
 
     let startStamp = startTime?.ISO8601Format() ?? "nil"
     let stopStamp = stopTime.ISO8601Format()
-    let minimumKeyTime = state.hexSettings.minimumKeyTime
-    let hotkeyHasKey = state.hexSettings.hotkey.key != nil
+		let minimumKeyTime = state.activeMinimumKeyTime ?? state.hexSettings.minimumKeyTime
+		let hotkeyHasKey = (state.activeRecordingHotkey ?? state.hexSettings.hotkey).key != nil
     transcriptionFeatureLogger.notice(
       "Recording stopped duration=\(String(format: "%.3f", duration))s start=\(startStamp) stop=\(stopStamp) decision=\(String(describing: decision)) minimumKeyTime=\(String(format: "%.2f", minimumKeyTime)) hotkeyHasKey=\(hotkeyHasKey)"
     )
 
     guard decision == .proceedToTranscription else {
+		let selectedText = state.selectedTextForRefinement
+		state.selectedTextForRefinement = nil
+		state.forcedRefinementMode = nil
+		state.activeRecordingHotkey = nil
+		state.activeMinimumKeyTime = nil
+		state.activeRecordingSource = nil
       // Recording was below minimum duration. If it captured at least 1.0s of audio we still
       // persist it as a cancelled entry so the user can retry; otherwise discard silently
       // (covers accidental modifier-only taps).
@@ -369,6 +509,7 @@ private extension TranscriptionFeature {
       return .merge(
         .cancel(id: CancelID.recordingStart),
         .run { [duration, sleepManagement] _ in
+			await selectedText?.cancel()
           await sleepManagement.allowSleep()
           let stopResult = await recording.stopRecording()
           guard !Task.isCancelled else { return }
@@ -491,14 +632,18 @@ private extension TranscriptionFeature {
     let duration = state.activeTranscriptionDuration
       ?? state.recordingStartTime.map { now.timeIntervalSince($0) }
       ?? 0
-    state.activeTranscriptionAudioURL = nil
-    state.activeTranscriptionDuration = nil
 
     state.isTranscribing = false
     state.isPrewarming = false
 
     // Check for force quit command (emergency escape hatch)
     if ForceQuitCommandDetector.matches(result) {
+	  state.activeTranscriptionAudioURL = nil
+	  state.activeTranscriptionDuration = nil
+	  state.forcedRefinementMode = nil
+	  state.activeRecordingHotkey = nil
+	  state.activeMinimumKeyTime = nil
+	  state.activeRecordingSource = nil
       transcriptionFeatureLogger.fault("Force quit voice command recognized; terminating Hex.")
       return .run { _ in
         FileManager.default.removeItemIfExists(at: audioURL)
@@ -508,15 +653,26 @@ private extension TranscriptionFeature {
       }
     }
 
-    // Empty raw text: clean up the temp WAV so we don't leak files for silent recordings.
-    guard !result.isEmpty else {
+    let selectedText = state.selectedTextForRefinement
+
+    // A silent selected-text recording still has useful work to do: apply the configured
+    // refinement prompt to the captured selection without an extra spoken instruction.
+    guard !result.isEmpty || selectedText != nil else {
+	  state.activeTranscriptionAudioURL = nil
+	  state.activeTranscriptionDuration = nil
+	  state.forcedRefinementMode = nil
+	  state.activeRecordingHotkey = nil
+	  state.activeMinimumKeyTime = nil
+	  state.activeRecordingSource = nil
       return .run { _ in
         FileManager.default.removeItemIfExists(at: audioURL)
       }
     }
 
-    transcriptionFeatureLogger.info("Raw transcription: '\(result, privacy: .private)'")
-    let modifiedResult = TranscriptTextProcessor.process(
+    if !result.isEmpty {
+      transcriptionFeatureLogger.info("Raw transcription: '\(result, privacy: .private)'")
+    }
+    let modifiedResult = result.isEmpty ? "" : TranscriptTextProcessor.process(
       result,
       settings: state.hexSettings,
       bypassFilters: state.isRemappingScratchpadFocused
@@ -528,28 +684,128 @@ private extension TranscriptionFeature {
     }
 
     // Empty after post-processing: same cleanup as empty raw.
-    guard !modifiedResult.isEmpty else {
+    guard !modifiedResult.isEmpty || selectedText != nil else {
+	  state.activeTranscriptionAudioURL = nil
+	  state.activeTranscriptionDuration = nil
+	  state.forcedRefinementMode = nil
+	  state.activeRecordingHotkey = nil
+	  state.activeMinimumKeyTime = nil
+	  state.activeRecordingSource = nil
       return .run { _ in
         FileManager.default.removeItemIfExists(at: audioURL)
       }
     }
 
+		// The ordinary hotkey always produces the normal transcription. Only the
+		// dedicated refined-transcription hotkey enables downstream AI processing.
+		let refinementMode = state.forcedRefinementMode ?? .raw
+			let refinementSettings = state.hexSettings
     let sourceAppBundleID = state.sourceAppBundleID
     let sourceAppName = state.sourceAppName
     let transcriptionHistory = state.$transcriptionHistory
 
-    return .run { _ in
-      await finalizeRecordingAndStoreTranscript(
-        result: modifiedResult,
-        duration: duration,
-        sourceAppBundleID: sourceAppBundleID,
-        sourceAppName: sourceAppName,
-        audioURL: audioURL,
-        transcriptionHistory: transcriptionHistory
-      )
-    }
-    .cancellable(id: CancelID.transcription)
+	// Refinement is intentionally downstream-only: it receives the existing final transcript
+	// text and never participates in capture, transcription, or audio ownership.
+	guard refinementMode != .raw else {
+		state.forcedRefinementMode = nil
+		state.activeRecordingHotkey = nil
+		state.activeMinimumKeyTime = nil
+		state.activeRecordingSource = nil
+		state.activeTranscriptionAudioURL = nil
+		state.activeTranscriptionDuration = nil
+		return finalizeTranscriptEffect(
+			result: modifiedResult,
+			duration: duration,
+			sourceAppBundleID: sourceAppBundleID,
+			sourceAppName: sourceAppName,
+			audioURL: audioURL,
+			transcriptionHistory: transcriptionHistory,
+			selectedText: selectedText
+		)
+	}
+
+	let refinementInput = selectedText?.text ?? modifiedResult
+	let spokenInstruction = selectedText == nil ? nil : modifiedResult
+	state.isRefining = true
+	return .run { [refinement] send in
+		do {
+				let refinedResult = try await refinement.refine(
+					refinementSettings.refinementRequest(
+						for: refinementInput,
+						mode: refinementMode,
+						spokenInstruction: spokenInstruction
+					)
+				)
+			try Task.checkCancellation()
+			await send(.refinementResult(refinedResult, audioURL, duration))
+		} catch is CancellationError {
+			// Cancellation is terminally handled by the existing cancel action, which also owns audio cleanup.
+			return
+		} catch {
+			transcriptionFeatureLogger.warning("Refinement failed: \(error.localizedDescription, privacy: .private)")
+			await send(.transcriptionError(error, audioURL))
+		}
+	}
+	.cancellable(id: CancelID.transcription)
   }
+
+  func handleRefinementResult(
+	_ state: inout State,
+	result: String,
+	audioURL: URL,
+	duration: TimeInterval
+  ) -> Effect<Action> {
+	// The audio URL remains owned by the active session while refinement runs. This makes
+	// cancellation retain the exact same persistence semantics as a normal transcription.
+	guard state.activeTranscriptionAudioURL == audioURL else { return .none }
+	state.activeTranscriptionAudioURL = nil
+	state.activeTranscriptionDuration = nil
+	state.isRefining = false
+		state.isCapturingSelectedTextForRefinement = false
+		state.refinedHotKeyReleasedWhileCapturingSelection = false
+		let selectedText = state.selectedTextForRefinement
+		state.selectedTextForRefinement = nil
+		state.forcedRefinementMode = nil
+		state.activeRecordingHotkey = nil
+		state.activeMinimumKeyTime = nil
+		state.activeRecordingSource = nil
+
+	let sourceAppBundleID = state.sourceAppBundleID
+	let sourceAppName = state.sourceAppName
+	let transcriptionHistory = state.$transcriptionHistory
+	return finalizeTranscriptEffect(
+		result: result,
+		duration: duration,
+		sourceAppBundleID: sourceAppBundleID,
+		sourceAppName: sourceAppName,
+		audioURL: audioURL,
+		transcriptionHistory: transcriptionHistory,
+		selectedText: selectedText
+	)
+  }
+
+	func finalizeTranscriptEffect(
+		result: String,
+		duration: TimeInterval,
+		sourceAppBundleID: String?,
+		sourceAppName: String?,
+		audioURL: URL,
+		transcriptionHistory: Shared<TranscriptionHistory>,
+		selectedText: SelectedTextCapture? = nil
+	) -> Effect<Action> {
+		.run { _ in
+			await finalizeRecordingAndStoreTranscript(
+				result: result,
+				duration: duration,
+				sourceAppBundleID: sourceAppBundleID,
+				sourceAppName: sourceAppName,
+				audioURL: audioURL,
+				transcriptionHistory: transcriptionHistory,
+				selectedText: selectedText
+			)
+		}
+		.cancellable(id: CancelID.transcription)
+	}
 
   func handleTranscriptionError(
     _ state: inout State,
@@ -570,11 +826,18 @@ private extension TranscriptionFeature {
     state.activeTranscriptionDuration = nil
 
     state.isTranscribing = false
+	state.isRefining = false
+		let selectedText = state.selectedTextForRefinement
+		state.selectedTextForRefinement = nil
+		state.forcedRefinementMode = nil
+		state.activeRecordingHotkey = nil
+		state.activeMinimumKeyTime = nil
+		state.activeRecordingSource = nil
     state.isPrewarming = false
     state.error = error.localizedDescription
 
     guard let audioURL else {
-      return .none
+      return .run { _ in await selectedText?.cancel() }
     }
 
     let sourceAppBundleID = state.sourceAppBundleID
@@ -582,6 +845,7 @@ private extension TranscriptionFeature {
     let transcriptionHistory = state.$transcriptionHistory
 
     return .run { _ in
+		await selectedText?.cancel()
       await persistOrDiscard(
         status: .failed,
         audioURL: audioURL,
@@ -601,10 +865,17 @@ private extension TranscriptionFeature {
     duration: TimeInterval,
     sourceAppBundleID: String?,
     sourceAppName: String?,
-    audioURL: URL,
-    transcriptionHistory: Shared<TranscriptionHistory>
+		audioURL: URL,
+		transcriptionHistory: Shared<TranscriptionHistory>,
+		selectedText: SelectedTextCapture? = nil
   ) async {
     @Shared(.hexSettings) var hexSettings: HexSettings
+
+	let selectionReplacementResult: SelectedTextReplacementResult? = if let selectedText {
+		await selectedText.replace(with: result)
+	} else {
+		nil
+	}
 
     if hexSettings.saveTranscriptionHistory {
       do {
@@ -630,8 +901,22 @@ private extension TranscriptionFeature {
       FileManager.default.removeItemIfExists(at: audioURL)
     }
 
-    await pasteboard.paste(result)
-    soundEffect.play(.pasteTranscript)
+	if selectedText == nil {
+		await pasteboard.paste(result)
+		soundEffect.play(.pasteTranscript)
+		return
+	}
+
+	switch selectionReplacementResult {
+	case .replaced:
+		soundEffect.play(.pasteTranscript)
+	case .clipboardChanged:
+		transcriptionFeatureLogger.notice("Skipped selected-text replacement because the source app or clipboard changed")
+	case .pasteFailed:
+		transcriptionFeatureLogger.warning("Selected-text replacement failed after refinement")
+	case nil:
+		break
+	}
   }
 
   /// Persist an entry in history (move audio + insert + prune to maxHistoryEntries).
@@ -726,7 +1011,16 @@ private extension TranscriptionFeature {
   func handleCancel(_ state: inout State) -> Effect<Action> {
     let wasRecording = state.isRecording
     state.isTranscribing = false
+	state.isRefining = false
+		state.isCapturingSelectedTextForRefinement = false
+		state.refinedHotKeyReleasedWhileCapturingSelection = false
+		let selectedText = state.selectedTextForRefinement
+		state.selectedTextForRefinement = nil
     state.isRecording = false
+		state.forcedRefinementMode = nil
+		state.activeRecordingHotkey = nil
+		state.activeMinimumKeyTime = nil
+		state.activeRecordingSource = nil
     state.isPrewarming = false
 
     // Snapshot any captured transcription metadata before clearing — handleCancel during
@@ -747,8 +1041,10 @@ private extension TranscriptionFeature {
 
     return .merge(
       .cancel(id: CancelID.transcription),
+			.cancel(id: CancelID.selectedTextRefinement),
       .cancel(id: CancelID.recordingStart),
       .run { [sleepManagement] _ in
+		await selectedText?.cancel()
         // Allow system to sleep again
         await sleepManagement.allowSleep()
         soundEffect.play(.cancel)
@@ -786,11 +1082,18 @@ private extension TranscriptionFeature {
   func handleDiscard(_ state: inout State) -> Effect<Action> {
     state.isRecording = false
     state.isPrewarming = false
+	state.forcedRefinementMode = nil
+	state.activeRecordingHotkey = nil
+	state.activeMinimumKeyTime = nil
+	state.activeRecordingSource = nil
+		let selectedText = state.selectedTextForRefinement
+		state.selectedTextForRefinement = nil
 
     // Silently discard - no sound effect
     return .merge(
       .cancel(id: CancelID.recordingStart),
       .run { [sleepManagement] _ in
+		await selectedText?.cancel()
         // Allow system to sleep again
         await sleepManagement.allowSleep()
 		let result = await recording.stopRecording()
@@ -811,7 +1114,9 @@ struct TranscriptionView: View {
   @ObserveInjection var inject
 
   var status: TranscriptionIndicatorView.Status {
-    if store.isTranscribing {
+	if store.isRefining {
+	  return .refining
+	} else if store.isTranscribing {
       return .transcribing
     } else if store.isRecording {
       return .recording

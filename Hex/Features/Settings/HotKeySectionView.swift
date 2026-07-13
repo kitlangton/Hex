@@ -89,7 +89,7 @@ struct HotKeySectionView: View {
     }
 }
 
-private struct ModifierSideControls: View {
+struct ModifierSideControls: View {
     @ObserveInjection var inject
     var modifiers: Modifiers
     var onSelect: (Modifier.Kind, Modifier.Side) -> Void

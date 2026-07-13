@@ -17,6 +17,7 @@ struct TranscriptionIndicatorView: View {
     case optionKeyPressed
     case recording
     case transcribing
+	case refining
     case prewarming
   }
 
@@ -31,6 +32,7 @@ struct TranscriptionIndicatorView: View {
     case .recording:
       return mixedColor(mixedNSColor(.red, with: .black, by: 0.5), with: .red, by: meter.averagePower * 3)
     case .transcribing: return mixedColor(.blue, with: .black, by: 0.5)
+	case .refining: return mixedColor(.purple, with: .black, by: 0.5)
     case .prewarming: return mixedColor(.blue, with: .black, by: 0.5)
     }
   }
@@ -41,6 +43,7 @@ struct TranscriptionIndicatorView: View {
     case .optionKeyPressed: return Color.black
     case .recording: return mixedColor(.red, with: .white, by: 0.1).opacity(0.6)
     case .transcribing: return mixedColor(.blue, with: .white, by: 0.1).opacity(0.6)
+	case .refining: return mixedColor(.purple, with: .white, by: 0.1).opacity(0.6)
     case .prewarming: return mixedColor(.blue, with: .white, by: 0.1).opacity(0.6)
     }
   }
@@ -60,6 +63,7 @@ struct TranscriptionIndicatorView: View {
     case .optionKeyPressed: return Color.clear
     case .recording: return Color.red
     case .transcribing: return transcribeBaseColor
+	case .refining: return .purple
     case .prewarming: return transcribeBaseColor
     }
   }
@@ -131,17 +135,17 @@ struct TranscriptionIndicatorView: View {
         .changeEffect(.glow(color: .red.opacity(0.5), radius: 8), value: status)
         .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: transcribeEffect)
         .compositingGroup()
-        .task(id: status == .transcribing) {
-          while status == .transcribing, !Task.isCancelled {
+		.task(id: status == .transcribing || status == .refining) {
+		  while (status == .transcribing || status == .refining), !Task.isCancelled {
             transcribeEffect += 1
             try? await Task.sleep(for: .seconds(0.25))
           }
         }
       
-      // Show tooltip when prewarming
-      if status == .prewarming {
+	  // Show tooltip when prewarming or refining
+	  if status == .prewarming || status == .refining {
         VStack(spacing: 4) {
-          Text("Model prewarming...")
+		  Text(status == .refining ? "Refining..." : "Model prewarming...")
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(.white)
             .padding(.horizontal, 8)
@@ -166,6 +170,7 @@ struct TranscriptionIndicatorView: View {
     TranscriptionIndicatorView(status: .optionKeyPressed, meter: .init(averagePower: 0, peakPower: 0))
     TranscriptionIndicatorView(status: .recording, meter: .init(averagePower: 0.5, peakPower: 0.5))
     TranscriptionIndicatorView(status: .transcribing, meter: .init(averagePower: 0, peakPower: 0))
+	TranscriptionIndicatorView(status: .refining, meter: .init(averagePower: 0, peakPower: 0))
     TranscriptionIndicatorView(status: .prewarming, meter: .init(averagePower: 0, peakPower: 0))
   }
   .padding(40)

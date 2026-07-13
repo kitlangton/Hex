@@ -5,6 +5,7 @@
 //  Created by Kit Langton on 1/24/25.
 //
 
+import AppKit
 import ComposableArchitecture
 import Dependencies
 import DependenciesMacros
@@ -15,11 +16,49 @@ import SwiftUI
 
 private let pasteboardLogger = HexLog.pasteboard
 
+@MainActor
+enum SelectedTextReplacementResult: Equatable, Sendable {
+    case replaced
+    case clipboardChanged
+    case pasteFailed
+}
+
+@MainActor
+final class SelectedTextCapture: Equatable {
+    let text: String
+    private let replaceSelection: @MainActor (String) async -> SelectedTextReplacementResult
+    private let cancelSelection: @MainActor () -> Void
+
+    init(
+        text: String,
+        replaceSelection: @escaping @MainActor (String) async -> SelectedTextReplacementResult,
+        cancelSelection: @escaping @MainActor () -> Void
+    ) {
+        self.text = text
+        self.replaceSelection = replaceSelection
+        self.cancelSelection = cancelSelection
+    }
+
+    func replace(with text: String) async -> SelectedTextReplacementResult {
+        await replaceSelection(text)
+    }
+
+    func cancel() {
+        cancelSelection()
+    }
+
+    nonisolated static func == (lhs: SelectedTextCapture, rhs: SelectedTextCapture) -> Bool {
+        lhs === rhs
+    }
+}
+
 @DependencyClient
 struct PasteboardClient {
     var paste: @Sendable (String) async -> Void
     var copy: @Sendable (String) async -> Void
     var sendKeyboardCommand: @Sendable (KeyboardCommand) async -> Void
+    /// Copies the current selection while saving the user's clipboard for later restoration.
+    var captureSelectedText: @Sendable () async -> SelectedTextCapture?
 }
 
 extension PasteboardClient: DependencyKey {
@@ -34,6 +73,9 @@ extension PasteboardClient: DependencyKey {
             },
             sendKeyboardCommand: { command in
                 await live.sendKeyboardCommand(command)
+            },
+            captureSelectedText: {
+                await live.captureSelectedText()
             }
         )
     }
@@ -46,7 +88,7 @@ extension DependencyValues {
     }
 }
 
-struct PasteboardClientLive {
+final class PasteboardClientLive {
     @Shared(.hexSettings) var hexSettings: HexSettings
     
     private struct PasteboardSnapshot {
@@ -67,15 +109,18 @@ struct PasteboardClientLive {
         }
         
         func restore(to pasteboard: NSPasteboard) {
-            pasteboard.clearContents()
-            for itemDict in items {
+            let restoredItems = items.map { itemDict in
                 let item = NSPasteboardItem()
                 for (type, data) in itemDict {
                     if let data = data as? Data {
                         item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type))
                     }
                 }
-                pasteboard.writeObjects([item])
+                return item
+            }
+            pasteboard.clearContents()
+            if !restoredItems.isEmpty {
+                pasteboard.writeObjects(restoredItems)
             }
         }
     }
@@ -94,6 +139,88 @@ struct PasteboardClientLive {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    /// Copies the current selection without leaving it on the user's clipboard after replacement.
+    @MainActor
+    func captureSelectedText() async -> SelectedTextCapture? {
+        let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+        let initialChangeCount = pasteboard.changeCount
+        guard let sourceProcessIdentifier = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+            return nil
+        }
+
+        await sendKeyboardCommand(.init(key: .c, modifiers: [.command]))
+
+        guard await waitForPasteboardCommit(targetChangeCount: initialChangeCount + 1) else {
+            return nil
+        }
+
+        let capturedChangeCount = pasteboard.changeCount
+        guard let selectedText = pasteboard.string(forType: .string),
+              !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            if pasteboard.changeCount == capturedChangeCount {
+                snapshot.restore(to: pasteboard)
+            }
+            return nil
+        }
+
+        return SelectedTextCapture(
+            text: selectedText,
+            replaceSelection: { [weak self] text in
+                guard let self else { return .pasteFailed }
+                return await self.replaceSelectedText(
+                    with: text,
+                    snapshot: snapshot,
+                    capturedChangeCount: capturedChangeCount,
+                    sourceProcessIdentifier: sourceProcessIdentifier
+                )
+            },
+            cancelSelection: {
+                guard pasteboard.changeCount == capturedChangeCount else { return }
+                snapshot.restore(to: pasteboard)
+            }
+        )
+    }
+
+    /// Replaces the captured selection and restores the user's previous clipboard contents.
+    /// Reports whether replacement succeeded, the clipboard/source app changed, or paste failed.
+    @MainActor
+    private func replaceSelectedText(
+        with text: String,
+        snapshot: PasteboardSnapshot,
+        capturedChangeCount: Int,
+        sourceProcessIdentifier: pid_t
+    ) async -> SelectedTextReplacementResult {
+        let pasteboard = NSPasteboard.general
+        guard pasteboard.changeCount == capturedChangeCount else {
+            pasteboardLogger.notice("Skipped selected-text replacement because the clipboard changed")
+            return .clipboardChanged
+        }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == sourceProcessIdentifier else {
+            pasteboardLogger.notice("Skipped selected-text replacement because the source app changed")
+            return .clipboardChanged
+        }
+
+        let targetChangeCount = writeAndTrackChangeCount(pasteboard: pasteboard, text: text)
+        guard await waitForPasteboardCommit(targetChangeCount: targetChangeCount) else {
+            return .pasteFailed
+        }
+
+        guard await performPaste(text) else {
+            return .pasteFailed
+        }
+
+        Task { @MainActor in
+            // Give the target app time to read the replacement text, but never overwrite a
+            // clipboard update that happened after the paste.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard pasteboard.changeCount == targetChangeCount else { return }
+            snapshot.restore(to: pasteboard)
+        }
+        return .replaced
     }
     
     @MainActor

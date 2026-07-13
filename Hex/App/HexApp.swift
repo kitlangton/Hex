@@ -11,10 +11,10 @@ struct HexApp: App {
 	}
 
 	@NSApplicationDelegateAdaptor(HexAppDelegate.self) var appDelegate
-  
     var body: some Scene {
         MenuBarExtra {
             MenuBarCopyLastTranscriptButton()
+            MenuBarRefineSelectedTextButton()
 
             Button("Settings…") {
                 appDelegate.presentSettingsView()
