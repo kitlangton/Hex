@@ -10,9 +10,8 @@ Add these GitHub Actions secrets under **Settings → Secrets and variables → 
 - `MACOS_CERTIFICATE_PWD`: password for that certificate
 - `APPLE_ID`: Apple ID used for notarization
 - `APPLE_ID_PASSWORD`: Apple app-specific password
-- `TEAM_ID`: Apple Developer Team ID (`QC99C9JE59` for this project)
 
-The same Apple certificate and notarization credentials can be used for another app, but GitHub secrets must be added to this repository separately. Never commit certificates, passwords, or API keys.
+The Apple Developer Team ID is configured directly in the workflow as the public identifier `5YUPQC9D96`. The same Apple certificate and notarization credentials can be used for another app, but GitHub secrets must be added to this repository separately. Never commit certificates, passwords, or API keys.
 
 ## Publish a release
 
@@ -28,7 +27,9 @@ The `.github/workflows/release.yml` workflow will:
 1. Import the Developer ID certificate.
 2. Archive and export the Release app.
 3. Submit the app to Apple notarization and staple the ticket.
-4. Create a DMG and ZIP installer.
+4. Create a DMG and ZIP installer, notarize and staple the DMG, and verify its staple.
 5. Attach both installers to the GitHub Release.
+
+The workflow fails before publishing if the `vX.Y.Z` tag does not match the app's `CFBundleShortVersionString`.
 
 The workflow can also be run manually for an existing tag from the GitHub Actions tab.

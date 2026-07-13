@@ -20,7 +20,8 @@ jobs:
     env:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-      TEAM_ID: ${{ secrets.TEAM_ID }}
+      # Apple Developer Team IDs are public identifiers, not credentials.
+      TEAM_ID: 5YUPQC9D96
     steps:
       - name: Check out release tag
         uses: actions/checkout@v4
@@ -57,7 +58,7 @@ jobs:
             <key>method</key><string>developer-id</string>
             <key>signingStyle</key><string>manual</string>
             <key>signingCertificate</key><string>Developer ID Application</string>
-            <key>teamID</key><string>$(TEAM_ID)</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
           </dict></plist>
           PLIST
           xcodebuild -exportArchive \
@@ -81,9 +82,21 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNNER_TEMP/Hex-export/Hex.app/Contents/Info.plist")
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if [ "$VERSION" != "${TAG#v}" ]; then
+            echo "Tag $TAG does not match app version $VERSION" >&2
+            exit 1
+          fi
           mkdir -p dist
           ditto -c -k --keepParent "$RUNNER_TEMP/Hex-export/Hex.app" "dist/Hex-$VERSION.zip"
           hdiutil create -volname "Hex $VERSION" -srcfolder "$RUNNER_TEMP/Hex-export/Hex.app" -ov -format UDZO "dist/Hex-$VERSION.dmg"
+          xcrun notarytool submit "dist/Hex-$VERSION.dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$TEAM_ID" \
+            --wait
+          xcrun stapler staple "dist/Hex-$VERSION.dmg"
+          xcrun stapler validate "dist/Hex-$VERSION.dmg"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
