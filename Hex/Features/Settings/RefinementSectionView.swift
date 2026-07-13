@@ -93,15 +93,14 @@ struct RefinementSectionView: View {
 				}
 				.contentShape(Rectangle())
 				.onTapGesture { store.send(.startSettingRefinedHotKey) }
+
+				if !store.isSettingRefinedHotKey, refinedHotkey.key == nil, !refinedHotkey.modifiers.isEmpty {
+					ModifierSideControls(modifiers: refinedHotkey.modifiers) { kind, side in
+						store.send(.setRefinedModifierSide(kind, side))
+					}
+				}
 			}
 			.listRowSeparator(.hidden)
-
-			if !store.isSettingRefinedHotKey, refinedHotkey.key == nil, !refinedHotkey.modifiers.isEmpty {
-				ModifierSideControls(modifiers: refinedHotkey.modifiers) { kind, side in
-					store.send(.setRefinedModifierSide(kind, side))
-				}
-				.listRowSeparator(.hidden, edges: .top)
-			}
 
 			Label {
 				Toggle("Enable double-tap lock", isOn: $store.hexSettings.refinedDoubleTapLockEnabled)

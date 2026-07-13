@@ -1,6 +1,5 @@
 import ComposableArchitecture
 import Inject
-import Sparkle
 import AppKit
 import SwiftUI
 
@@ -20,8 +19,6 @@ struct HexApp: App {
                 appDelegate.presentSettingsView()
             }.keyboardShortcut(",")
 
-            CheckForUpdatesView()
-			
 			Divider()
 			
 			Button("Quit Hex") {
@@ -41,8 +38,6 @@ struct HexApp: App {
 		}
 		.commands {
 			CommandGroup(after: .appInfo) {
-				CheckForUpdatesView()
-
 				Button("Settings…") {
 					appDelegate.presentSettingsView()
 				}.keyboardShortcut(",")
