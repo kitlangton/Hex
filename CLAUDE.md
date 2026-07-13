@@ -10,10 +10,18 @@ Hex is a macOS menu bar application for on‑device voice‑to‑text. It suppor
 
 ```bash
 # Local development build (the default for feature work): builds an unsigned Debug .app.
+# The watchdog prevents the known Tahoe/Xcode clang SDK-probe stall from consuming a build.
 # Do not run tests, archives, signing, DMGs, or release builds unless explicitly requested.
 xcodebuild -scheme Hex -configuration Debug \
   -skipMacroValidation -skipPackagePluginValidation \
-  CODE_SIGNING_ALLOWED=NO build
+  CODE_SIGNING_ALLOWED=NO build > /tmp/hex-local-build.log 2>&1 &
+build_pid=$!
+while kill -0 "$build_pid" 2>/dev/null; do
+  probe_pids=$(ps -axo pid=,command= | awk '$2 ~ /\/clang$/ && $0 ~ / -v -E -dM / {print $1}')
+  if [ -n "$probe_pids" ]; then kill -9 $probe_pids 2>/dev/null || true; fi
+  sleep 1
+done
+wait "$build_pid"
 
 # Launch the locally built bundle
 open ~/Library/Developer/Xcode/DerivedData/Hex-*/Build/Products/Debug/'Hex Debug.app'
@@ -33,11 +41,13 @@ open Hex.xcodeproj
 
 On macOS Tahoe 26.4.1, `SWBBuildService` can hang before compilation while running
 `clang -v -E -dM` SDK probes. This is an Xcode build-service issue, not a Hex source,
-signing, or packaging failure. If the local Debug build stops after `CreateBuildDescription`,
-leave that build running and kill only the stuck probe processes, then let it continue:
+signing, or packaging failure. The default build command above continuously removes only
+the stuck probe processes while the build is running, so it should not sit at
+`CreateBuildDescription`. If a build was started manually and does stop there, run:
 
 ```bash
-ps -axo pid=,command= | awk '$0 ~ /\/clang -v -E -dM/ {print $1}' | xargs -r kill -9
+probe_pids=$(ps -axo pid=,command= | awk '$2 ~ /\/clang$/ && $0 ~ / -v -E -dM / {print $1}')
+if [ -n "$probe_pids" ]; then kill -9 $probe_pids; fi
 ```
 
 Do not switch to `xcodebuild test`, a Release build, cleaning DerivedData, or a release
