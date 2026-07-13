@@ -13,8 +13,12 @@ struct RefinementSectionView: View {
 
 	var body: some View {
 		Section {
+			let refinedHotkey = store.hexSettings.refinedHotkey ?? .init(key: nil, modifiers: [])
+			let refinedKey = store.isSettingRefinedHotKey ? nil : refinedHotkey.key
+			let refinedModifiers = store.isSettingRefinedHotKey ? store.currentRefinedModifiers : refinedHotkey.modifiers
+
 			VStack(alignment: .leading, spacing: 8) {
-				Text("Refinement Instructions")
+				Label("Refinement Instructions", systemImage: "sparkles")
 					.font(.headline)
 				TextEditor(text: $store.hexSettings.refinementInstructions)
 					.font(.body)
@@ -73,9 +77,55 @@ struct RefinementSectionView: View {
 						.font(.caption)
 						.foregroundStyle(.secondary)
 				}
-			RefinedHotKeyConfiguration(store: store)
+			RefinedHotKeyIntroduction(
+				hasConflict: store.hexSettings.refinedHotkey?.conflicts(with: store.hexSettings.hotkey) ?? false
+			)
+
+			HStack {
+				Spacer()
+				HotKeyView(modifiers: refinedModifiers, key: refinedKey, isActive: store.isSettingRefinedHotKey)
+				Spacer()
+			}
+			.contentShape(Rectangle())
+			.onTapGesture { store.send(.startSettingRefinedHotKey) }
+
+			if !store.isSettingRefinedHotKey, refinedHotkey.key == nil, !refinedHotkey.modifiers.isEmpty {
+				ModifierSideControls(modifiers: refinedHotkey.modifiers) { kind, side in
+					store.send(.setRefinedModifierSide(kind, side))
+				}
+			}
+
+			Label {
+				Toggle("Enable double-tap lock", isOn: $store.hexSettings.refinedDoubleTapLockEnabled)
+			} icon: {
+				Image(systemName: "hand.tap")
+			}
+
+			if store.hexSettings.refinedDoubleTapLockEnabled {
+				Label {
+					Toggle("Use double-tap only", isOn: $store.hexSettings.refinedUseDoubleTapOnly)
+				} icon: {
+					Image(systemName: "hand.tap.fill")
+				}
+			}
+
+			if refinedHotkey.key == nil, !(store.hexSettings.refinedDoubleTapLockEnabled && store.hexSettings.refinedUseDoubleTapOnly) {
+				Label {
+					Slider(value: $store.hexSettings.refinedMinimumKeyTime, in: 0 ... 2, step: 0.1) {
+						Text("Ignore below \(store.hexSettings.refinedMinimumKeyTime, specifier: "%.1f")s")
+					}
+				} icon: {
+					Image(systemName: "clock")
+				}
+			}
+
+			Label {
+				Toggle("Include selected text", isOn: $store.hexSettings.includeSelectedTextInRefinement)
+			} icon: {
+				Image(systemName: "text.cursor")
+			}
 		} header: {
-			Label("Transcription Refinement", systemImage: "sparkles")
+			Text("Transcription Refinement")
 		} footer: {
 			Text("These instructions apply only to the refined-transcription hotkey, after transcription and your configured text transforms complete.")
 		}
@@ -126,51 +176,21 @@ struct RefinementSectionView: View {
 	}
 }
 
-private struct RefinedHotKeyConfiguration: View {
-	@Bindable var store: StoreOf<SettingsFeature>
+private struct RefinedHotKeyIntroduction: View {
+	let hasConflict: Bool
 
 	var body: some View {
-		let hotkey = store.hexSettings.refinedHotkey ?? .init(key: nil, modifiers: [])
-		let key = store.isSettingRefinedHotKey ? nil : hotkey.key
-		let modifiers = store.isSettingRefinedHotKey ? store.currentRefinedModifiers : hotkey.modifiers
-
 		VStack(alignment: .leading, spacing: 8) {
 			Text("Refined Transcription Hotkey")
 				.font(.headline)
 			Text("Records normally, then always runs refinement using the instructions above.")
 				.font(.caption)
 				.foregroundStyle(.secondary)
-			if let refinedHotkey = store.hexSettings.refinedHotkey,
-			   refinedHotkey.conflicts(with: store.hexSettings.hotkey) {
+			if hasConflict {
 				Text("Choose a non-overlapping shortcut. A modifier-only shortcut cannot share a prefix with the regular shortcut.")
 					.font(.caption)
 					.foregroundStyle(.orange)
 			}
-			HStack {
-				Spacer()
-				HotKeyView(modifiers: modifiers, key: key, isActive: store.isSettingRefinedHotKey)
-				Spacer()
-			}
-			.contentShape(Rectangle())
-			.onTapGesture { store.send(.startSettingRefinedHotKey) }
-
-			if !store.isSettingRefinedHotKey, hotkey.key == nil, !hotkey.modifiers.isEmpty {
-				ModifierSideControls(modifiers: hotkey.modifiers) { kind, side in
-					store.send(.setRefinedModifierSide(kind, side))
-				}
-			}
-
-			Toggle("Enable double-tap lock", isOn: $store.hexSettings.refinedDoubleTapLockEnabled)
-			if store.hexSettings.refinedDoubleTapLockEnabled {
-				Toggle("Use double-tap only", isOn: $store.hexSettings.refinedUseDoubleTapOnly)
-			}
-			if hotkey.key == nil, !(store.hexSettings.refinedDoubleTapLockEnabled && store.hexSettings.refinedUseDoubleTapOnly) {
-				Slider(value: $store.hexSettings.refinedMinimumKeyTime, in: 0 ... 2, step: 0.1) {
-					Text("Ignore below \(store.hexSettings.refinedMinimumKeyTime, specifier: "%.1f")s")
-				}
-			}
-			Toggle("Include selected text", isOn: $store.hexSettings.includeSelectedTextInRefinement)
-
 		}
 	}
 }

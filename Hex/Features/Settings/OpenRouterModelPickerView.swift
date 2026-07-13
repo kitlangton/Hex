@@ -14,7 +14,10 @@ struct OpenRouterModelPickerView: View {
 
 	var body: some View {
 		NavigationStack {
-			Group {
+			VStack(spacing: 0) {
+				header
+				Divider()
+
 				if models.isEmpty, isRefreshing {
 					ProgressView("Loading OpenRouter models…")
 				} else if models.isEmpty {
@@ -51,23 +54,6 @@ struct OpenRouterModelPickerView: View {
 					}
 				}
 			}
-			.navigationTitle("OpenRouter Models")
-			.searchable(text: $searchText, prompt: "Search models")
-			.toolbar {
-				ToolbarItem(placement: .primaryAction) {
-					Button(action: refresh) {
-						if isRefreshing { ProgressView() } else { Image(systemName: "arrow.clockwise") }
-					}
-					.disabled(isRefreshing)
-				}
-				ToolbarItem(placement: .automatic) {
-					Picker("Sort", selection: $sortOrder) {
-						Text("Name").tag(SortOrder.name)
-						Text("Input Price").tag(SortOrder.inputPrice)
-					}
-					.pickerStyle(.menu)
-				}
-			}
 			.alert("Couldn’t Refresh Models", isPresented: Binding(
 				get: { errorMessage != nil },
 				set: { if !$0 { errorMessage = nil } }
@@ -82,6 +68,36 @@ struct OpenRouterModelPickerView: View {
 			models = OpenRouterModelCatalog.cachedModels()
 			refresh()
 		}
+	}
+
+	private var header: some View {
+		HStack(spacing: 12) {
+			Text("OpenRouter Models")
+				.font(.headline)
+
+			Picker("Sort", selection: $sortOrder) {
+				Text("Name").tag(SortOrder.name)
+				Text("Input Price").tag(SortOrder.inputPrice)
+			}
+			.pickerStyle(.menu)
+			.frame(width: 140)
+
+			TextField("Search models", text: $searchText)
+				.textFieldStyle(.roundedBorder)
+				.frame(minWidth: 160, maxWidth: .infinity)
+
+			Button(action: refresh) {
+				if isRefreshing {
+					ProgressView()
+				} else {
+					Image(systemName: "arrow.clockwise")
+				}
+			}
+			.buttonStyle(.borderedProminent)
+			.disabled(isRefreshing)
+		}
+		.padding(.horizontal, 20)
+		.padding(.vertical, 14)
 	}
 
 	private var filteredModels: [OpenRouterModel] {
