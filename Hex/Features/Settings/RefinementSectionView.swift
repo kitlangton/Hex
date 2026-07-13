@@ -32,11 +32,15 @@ struct RefinementSectionView: View {
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 
+			Label {
 				Picker("Provider", selection: $store.hexSettings.refinementProvider) {
 					Text("Apple Intelligence").tag(RefinementProvider.apple)
 					Text("Gemini Flash").tag(RefinementProvider.gemini)
 					Text("OpenRouter").tag(RefinementProvider.openRouter)
 				}
+			} icon: {
+				Image(systemName: "cpu")
+			}
 
 				if store.hexSettings.refinementProvider == .apple {
 					if #unavailable(macOS 26.0) {
@@ -77,22 +81,26 @@ struct RefinementSectionView: View {
 						.font(.caption)
 						.foregroundStyle(.secondary)
 				}
-			RefinedHotKeyIntroduction(
-				hasConflict: store.hexSettings.refinedHotkey?.conflicts(with: store.hexSettings.hotkey) ?? false
-			)
+			VStack(alignment: .leading, spacing: 14) {
+				RefinedHotKeyIntroduction(
+					hasConflict: store.hexSettings.refinedHotkey?.conflicts(with: store.hexSettings.hotkey) ?? false
+				)
 
-			HStack {
-				Spacer()
-				HotKeyView(modifiers: refinedModifiers, key: refinedKey, isActive: store.isSettingRefinedHotKey)
-				Spacer()
+				HStack {
+					Spacer()
+					HotKeyView(modifiers: refinedModifiers, key: refinedKey, isActive: store.isSettingRefinedHotKey)
+					Spacer()
+				}
+				.contentShape(Rectangle())
+				.onTapGesture { store.send(.startSettingRefinedHotKey) }
 			}
-			.contentShape(Rectangle())
-			.onTapGesture { store.send(.startSettingRefinedHotKey) }
+			.listRowSeparator(.hidden)
 
 			if !store.isSettingRefinedHotKey, refinedHotkey.key == nil, !refinedHotkey.modifiers.isEmpty {
 				ModifierSideControls(modifiers: refinedHotkey.modifiers) { kind, side in
 					store.send(.setRefinedModifierSide(kind, side))
 				}
+				.listRowSeparator(.hidden, edges: .top)
 			}
 
 			Label {
@@ -127,7 +135,7 @@ struct RefinementSectionView: View {
 		} header: {
 			Text("Transcription Refinement")
 		} footer: {
-			Text("These instructions apply only to the refined-transcription hotkey, after transcription and your configured text transforms complete.")
+			Text("Rewrite or clean up your transcriptions and/or selected text with custom prompts")
 		}
 		.task {
 			geminiAPIKey = GeminiAPIKeyStore.read() ?? ""
@@ -181,7 +189,7 @@ private struct RefinedHotKeyIntroduction: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
-			Text("Refined Transcription Hotkey")
+			Label("Refined Transcription Hotkey", systemImage: "keyboard")
 				.font(.headline)
 			Text("Records normally, then always runs refinement using the instructions above.")
 				.font(.caption)
