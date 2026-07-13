@@ -41,6 +41,8 @@ jobs:
           xcodebuild \
             -scheme Hex \
             -configuration Release \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
             -archivePath "$RUNNER_TEMP/Hex.xcarchive" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
