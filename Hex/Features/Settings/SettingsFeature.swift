@@ -12,22 +12,9 @@ import SwiftUI
 private let settingsLogger = HexLog.settings
 private typealias SettingsAudioPropertyListenerBlock = @convention(block) (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
 
-private enum HotKeyCaptureTarget {
-  case recording
-  case pasteLastTranscript
-}
-
 extension SharedReaderKey
   where Self == InMemoryKey<Bool>.Default
 {
-  static var isSettingHotKey: Self {
-    Self[.inMemory("isSettingHotKey"), default: false]
-  }
-  
-  static var isSettingPasteLastTranscriptHotkey: Self {
-    Self[.inMemory("isSettingPasteLastTranscriptHotkey"), default: false]
-  }
-
   static var isRemappingScratchpadFocused: Self {
     Self[.inMemory("isRemappingScratchpadFocused"), default: false]
   }
@@ -40,8 +27,7 @@ struct SettingsFeature {
   @ObservableState
   struct State {
     @Shared(.hexSettings) var hexSettings: HexSettings
-    @Shared(.isSettingHotKey) var isSettingHotKey: Bool = false
-    @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool = false
+    @Shared(.hotKeyCaptureTarget) var hotKeyCaptureTarget: HotKeyCaptureTarget?
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
     @Shared(.hotkeyPermissionState) var hotkeyPermissionState: HotkeyPermissionState
@@ -59,6 +45,9 @@ struct SettingsFeature {
     var modelDownload = ModelDownloadFeature.State()
     var shouldFlashModelSection = false
 
+    var isSettingHotKey: Bool { hotKeyCaptureTarget == .recording }
+    var isSettingPasteLastTranscriptHotkey: Bool { hotKeyCaptureTarget == .pasteLastTranscript }
+
   }
 
   enum Action: BindableAction {
@@ -68,6 +57,7 @@ struct SettingsFeature {
     case task
     case startSettingHotKey
     case startSettingPasteLastTranscriptHotkey
+		case cancelHotKeyCapture
     case clearPasteLastTranscriptHotkey
     case keyEvent(KeyEvent)
     case toggleOpenOnLogin(Bool)
@@ -132,23 +122,25 @@ struct SettingsFeature {
   }
 
   private func beginCapture(_ target: HotKeyCaptureTarget, state: inout State) {
+		endCapture(state: &state)
+		state.$hotKeyCaptureTarget.withLock { $0 = target }
+
     switch target {
     case .recording:
-      state.$isSettingHotKey.withLock { $0 = true }
       state.currentModifiers = .init(modifiers: [])
     case .pasteLastTranscript:
-      state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = true }
       state.currentPasteLastModifiers = .init(modifiers: [])
     }
   }
 
-  private func endCapture(_ target: HotKeyCaptureTarget, state: inout State) {
+  private func endCapture(state: inout State) {
+		guard let target = state.hotKeyCaptureTarget else { return }
+		state.$hotKeyCaptureTarget.withLock { $0 = nil }
+
     switch target {
     case .recording:
-      state.$isSettingHotKey.withLock { $0 = false }
       state.currentModifiers = .init(modifiers: [])
     case .pasteLastTranscript:
-      state.$isSettingPasteLastTranscriptHotkey.withLock { $0 = false }
       state.currentPasteLastModifiers = .init(modifiers: [])
     }
   }
@@ -188,7 +180,7 @@ struct SettingsFeature {
 
   private func handleCapture(_ keyEvent: KeyEvent, for target: HotKeyCaptureTarget, state: inout State) -> Effect<Action> {
     if keyEvent.key == .escape {
-      endCapture(target, state: &state)
+		endCapture(state: &state)
       return .none
     }
 
@@ -201,13 +193,13 @@ struct SettingsFeature {
 
     if let key = keyEvent.key {
       applyCapturedHotKey(key: key, modifiers: updatedModifiers, for: target, state: &state)
-      endCapture(target, state: &state)
+		endCapture(state: &state)
       return .none
     }
 
     if target == .recording, keyEvent.modifiers.isEmpty {
       applyCapturedHotKey(key: nil, modifiers: updatedModifiers, for: target, state: &state)
-      endCapture(target, state: &state)
+		endCapture(state: &state)
     }
 
     return .none
@@ -414,18 +406,21 @@ struct SettingsFeature {
       case .startSettingPasteLastTranscriptHotkey:
         beginCapture(.pasteLastTranscript, state: &state)
         return .none
+
+		case .cancelHotKeyCapture:
+			endCapture(state: &state)
+			return .none
         
       case .clearPasteLastTranscriptHotkey:
+			if state.hotKeyCaptureTarget == .pasteLastTranscript {
+				endCapture(state: &state)
+			}
         state.$hexSettings.withLock { $0.pasteLastTranscriptHotkey = nil }
         return .none
 
       case let .keyEvent(keyEvent):
-        if state.isSettingPasteLastTranscriptHotkey {
-          return handleCapture(keyEvent, for: .pasteLastTranscript, state: &state)
-        }
-
-        guard state.isSettingHotKey else { return .none }
-        return handleCapture(keyEvent, for: .recording, state: &state)
+			guard let target = state.hotKeyCaptureTarget else { return .none }
+			return handleCapture(keyEvent, for: target, state: &state)
 
       case let .toggleOpenOnLogin(enabled):
         state.$hexSettings.withLock { $0.openOnLogin = enabled }
