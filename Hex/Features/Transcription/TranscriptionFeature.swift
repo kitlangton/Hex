@@ -191,35 +191,29 @@ private extension TranscriptionFeature {
           }
 
 		  // Process the key event
-		  switch hotKeyProcessor.process(keyEvent: keyEvent) {
+		  let output = hotKeyProcessor.process(keyEvent: keyEvent)
+		  switch output {
 		  case .startRecording:
 			Task { await send(.hotKeyPressed) }
-            // If the hotkey is purely modifiers, return false to keep it from interfering with normal usage
-            // But if useDoubleTapOnly is true, always intercept the key
-            return useDoubleTapOnly || keyEvent.key != nil
 
           case .stopRecording:
             Task { await send(.hotKeyReleased) }
-            return false // or `true` if you want to intercept
 
           case .cancel:
             Task { await send(.cancel) }
-            return true
 
           case .discard:
             Task { await send(.discard) }
-            return false // Don't intercept - let the key chord reach other apps
 
-          case .none:
-            // If we detect repeated same chord, maybe intercept.
-            if let pressedKey = keyEvent.key,
-               pressedKey == hotKeyProcessor.hotkey.key,
-               keyEvent.modifiers == hotKeyProcessor.hotkey.modifiers
-            {
-              return true
-            }
-            return false
-          }
+		  case nil:
+			break
+		  }
+		  return HotKeyEventInterception.shouldIntercept(
+			output: output,
+			keyEvent: keyEvent,
+			hotkey: hotKeyProcessor.hotkey,
+			useDoubleTapOnly: useDoubleTapOnly
+		  )
 
         case .mouseClick:
           // Process mouse click - for modifier-only hotkeys, this may cancel/discard

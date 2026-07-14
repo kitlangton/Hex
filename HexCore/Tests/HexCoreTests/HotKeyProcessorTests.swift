@@ -35,6 +35,54 @@ struct HotKeyProcessorTests {
         )
     }
 
+	@Test
+	func printableKeyThatStopsDoubleTapLockIsIntercepted() {
+		let hotkey = HotKey(key: .backslash, modifiers: [])
+		var processor = withDependencies {
+			$0.date.now = Date(timeIntervalSince1970: 0)
+		} operation: {
+			HotKeyProcessor(hotkey: hotkey)
+		}
+
+		func process(at time: TimeInterval, key: Key?) -> (HotKeyProcessor.Output?, Bool) {
+			let keyEvent = KeyEvent(key: key, modifiers: [])
+			let output = withDependencies {
+				$0.date.now = Date(timeIntervalSince1970: time)
+			} operation: {
+				processor.process(keyEvent: keyEvent)
+			}
+			let intercepted = HotKeyEventInterception.shouldIntercept(
+				output: output,
+				keyEvent: keyEvent,
+				hotkey: hotkey,
+				useDoubleTapOnly: false
+			)
+			return (output, intercepted)
+		}
+
+		_ = process(at: 0, key: .backslash)
+		_ = process(at: 0.1, key: nil)
+		_ = process(at: 0.2, key: .backslash)
+		_ = process(at: 0.3, key: nil)
+		let (stopOutput, stopWasIntercepted) = process(at: 1, key: .backslash)
+
+		#expect(stopOutput == .stopRecording)
+		#expect(stopWasIntercepted)
+	}
+
+	@Test
+	func unrelatedPrintableKeyThatStopsRecordingIsNotIntercepted() {
+		let hotkey = HotKey(key: .backslash, modifiers: [])
+		let keyEvent = KeyEvent(key: .a, modifiers: [])
+
+		#expect(!HotKeyEventInterception.shouldIntercept(
+			output: .stopRecording,
+			keyEvent: keyEvent,
+			hotkey: hotkey,
+			useDoubleTapOnly: false
+		))
+	}
+
     // Tests releasing the hotkey stops recording
     @Test
     func pressAndHold_stopsRecordingOnHotkeyRelease_standard() throws {

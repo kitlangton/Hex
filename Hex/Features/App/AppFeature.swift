@@ -188,9 +188,7 @@ struct AppFeature {
 
         // Check if this matches the paste last transcript hotkey
         guard let pasteHotkey = hexSettings.pasteLastTranscriptHotkey,
-              let key = keyEvent.key,
-              key == pasteHotkey.key,
-              keyEvent.modifiers.matchesExactly(pasteHotkey.modifiers) else {
+              pasteHotkey.matches(keyEvent) else {
           return false
         }
 

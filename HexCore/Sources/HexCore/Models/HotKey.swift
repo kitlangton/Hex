@@ -320,6 +320,10 @@ public struct HotKey: Codable, Equatable, Sendable {
     self.key = key
     self.modifiers = modifiers
   }
+
+  public func matches(_ event: KeyEvent) -> Bool {
+    event.key == key && event.modifiers.matchesExactly(modifiers)
+  }
 }
 
 extension Key {

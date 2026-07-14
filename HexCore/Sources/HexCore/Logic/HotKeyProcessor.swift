@@ -444,11 +444,7 @@ extension HotKeyProcessor {
     /// - Parameter e: The keyboard event to check
     /// - Returns: True if event matches hotkey configuration
     private func chordMatchesHotkey(_ e: KeyEvent) -> Bool {
-        if hotkey.key != nil {
-            return e.key == hotkey.key && e.modifiers.matchesExactly(hotkey.modifiers)
-        } else {
-            return e.key == nil && e.modifiers.matchesExactly(hotkey.modifiers)
-        }
+        hotkey.matches(e)
     }
 
     /// Checks if keyboard event contains extra keys/modifiers that should trigger dirty state.
