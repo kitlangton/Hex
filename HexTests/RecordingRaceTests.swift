@@ -676,6 +676,75 @@ final class RecordingRaceTests: XCTestCase {
 		XCTAssertEqual(recordingCounts.startCalls, 1)
 	}
 
+	func testRefinedHotkeyFinishesRegularRecordingWithRefinement() async throws {
+		let now = Date(timeIntervalSince1970: 1_234)
+		let audioURL = FileManager.default.temporaryDirectory
+			.appendingPathComponent("refined-finish-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let refinementProbe = RefinementProbe()
+		let regularHotkey = HotKey(key: .a, modifiers: [.command])
+		var state = Self.makeState()
+		state.isRecording = true
+		state.recordingStartTime = now.addingTimeInterval(-1)
+		state.activeRecordingHotkey = regularHotkey
+		state.activeMinimumKeyTime = 0.2
+		state.activeRecordingSource = .regular
+		state.$hexSettings.withLock {
+			$0.hotkey = regularHotkey
+			$0.refinedHotkey = HotKey(key: .r, modifiers: [.command])
+			$0.refinementMode = .raw
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.date.now = now
+			$0.recording.stopRecording = { .captured(audioURL) }
+			$0.transcription.transcribe = { _, _, _, _ in "dictated text" }
+			$0.refinement.refine = { request in
+				await refinementProbe.recordInput(request.text)
+				return "refined text"
+			}
+			$0.pasteboard.paste = { _ in }
+			$0.sleepManagement.allowSleep = {}
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.finishRecordingWithRefinement) {
+			$0.forcedRefinementMode = .refined
+		}
+		await store.receive(.stopRecording) {
+			$0.isRecording = false
+			$0.isTranscribing = true
+			$0.error = nil
+			$0.isPrewarming = true
+		}
+		await store.receive(.transcriptionAudioCaptured(audioURL, 1)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 1
+		}
+		await store.receive(.transcriptionResult("dictated text", audioURL)) {
+			$0.isTranscribing = false
+			$0.isPrewarming = false
+			$0.isRefining = true
+		}
+		await store.receive(.refinementResult("refined text", audioURL, 1)) {
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+			$0.isRefining = false
+			$0.forcedRefinementMode = nil
+			$0.activeRecordingHotkey = nil
+			$0.activeMinimumKeyTime = nil
+			$0.activeRecordingSource = nil
+		}
+		await store.finish()
+
+		XCTAssertEqual(await refinementProbe.input, "dictated text")
+		XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+	}
+
   private static func makeState() -> TranscriptionFeature.State {
     TranscriptionFeature.State(
       hexSettings: Shared(value: .init()),

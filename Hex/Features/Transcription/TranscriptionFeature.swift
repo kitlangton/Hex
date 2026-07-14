@@ -61,6 +61,7 @@ struct TranscriptionFeature {
     case hotKeyPressed
     case hotKeyReleased(RecordingSource)
 			case refinedHotKeyPressed
+			case finishRecordingWithRefinement
 			case selectedTextCaptured(SelectedTextCapture)
 			case selectedTextCaptureUnavailable
 
@@ -174,6 +175,14 @@ struct TranscriptionFeature {
 					}
 				}
 				.cancellable(id: CancelID.selectedTextRefinement, cancelInFlight: true)
+
+			case .finishRecordingWithRefinement:
+				// This action is emitted for a single press of the refinement shortcut only
+				// while the regular hotkey still owns an active recording. Preserve the
+				// original session's timing rules, but refine its resulting transcript.
+				guard state.isRecording, state.activeRecordingSource == .regular else { return .none }
+				state.forcedRefinementMode = .refined
+				return .send(.stopRecording)
 
 			case .selectedTextCaptureUnavailable:
 				let refinedHotKeyWasReleased = state.refinedHotKeyReleasedWhileCapturingSelection
@@ -298,6 +307,17 @@ private extension TranscriptionFeature {
 
         switch inputEvent {
         case .keyboard(let keyEvent):
+			if let refinedHotkey,
+				hotKeyProcessor.isMatched,
+				keyEvent.key == refinedHotkey.key,
+				keyEvent.modifiers.matchesExactly(refinedHotkey.modifiers)
+			{
+				// While a regular recording is active, one press of the refinement hotkey
+				// finishes that recording. Do not feed this press to the refinement processor:
+				// its double-tap tracker must remain untouched for the next recording.
+				Task { await send(.finishRecordingWithRefinement) }
+				return true
+			}
 			if shouldMonitorRefinedHotkey {
 				switch refinedHotKeyProcessor.process(keyEvent: keyEvent) {
 				case .startRecording:
