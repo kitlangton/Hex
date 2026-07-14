@@ -88,20 +88,26 @@ struct HotKeySectionView: View {
 
             LabeledContent {
                 TextField(
-                    "Stop delay in ms",
+                    "",
                     value: Binding(
                         get: { store.hexSettings.stopDelayMilliseconds },
                         set: { store.send(.setStopDelayMilliseconds($0)) }
                     ),
                     format: .number
                 )
+                .labelsHidden()
+                .accessibilityLabel("Stop delay in milliseconds")
                 .frame(width: 64)
                 .multilineTextAlignment(.trailing)
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Stop delay in ms")
-                    Text("Grace period to include audio in transcription after stop button is pressed")
-                        .settingsCaption()
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Stop delay in ms")
+                        Text("Grace period to include audio in transcription after stop button is pressed")
+                            .settingsCaption()
+                    }
+                } icon: {
+                    Image(systemName: "timer")
                 }
             }
         }
