@@ -69,6 +69,7 @@ enum IgnoredRecordingStopReason: Equatable {
 
 enum RecordingFailure: Error, Equatable {
   case captureWriteFailed(String)
+  case captureFinalizationTimedOut
   case fallbackExportFailed(String)
   case noCapturedAudio
 }
@@ -78,6 +79,8 @@ extension RecordingFailure: LocalizedError {
     switch self {
     case let .captureWriteFailed(message):
       "Failed to write captured audio: \(message)"
+    case .captureFinalizationTimedOut:
+      "The microphone did not finish delivering the final audio. Please try again."
     case let .fallbackExportFailed(message):
       "Failed to export recorded audio: \(message)"
     case .noCapturedAudio:
@@ -1248,6 +1251,14 @@ actor RecordingClientLive {
     mediaControlTask?.cancel()
     mediaControlTask = nil
 
+    // `stopRecording()` awaits capture finalization and therefore releases this actor. Do not
+    // let a rapid next hotkey press replace the file that is still draining final PCM frames.
+    await captureController.waitForPendingFinish()
+    guard !Task.isCancelled, recordingSessionID == sessionID else {
+      recordingLogger.notice("Ignoring recording start superseded while finalizing prior capture")
+      return
+    }
+
     // Handle audio behavior based on user preference
     switch hexSettings.recordingAudioBehavior {
     case .pauseMedia:
@@ -1355,23 +1366,23 @@ actor RecordingClientLive {
     let stopSessionID = recordingSessionID
     let activeSession = activeRecordingSession
 
-    if activeSession?.backend == .captureEngine || captureController.isRecording {
-      let stopTimingEstimate = captureController.stopTimingEstimate
-      recordingLogger.debug(
-        "Waiting \(self.formatDuration(stopTimingEstimate.gracePeriod)) before finalizing capture-engine recording callbackInterval=\(self.formatDuration(stopTimingEstimate.callbackInterval)) bufferDuration=\(self.formatDuration(stopTimingEstimate.bufferDuration))"
-      )
-      try? await Task.sleep(for: .milliseconds(Int((stopTimingEstimate.gracePeriod * 1000).rounded())))
+    let captureFinishResult = await captureController.finishRecording(
+      clearBuffer: currentCaptureMode() == .superFast
+    )
 
-      if Self.shouldIgnoreStopRequest(
-        snapshotSessionID: stopSessionID,
-        currentSessionID: recordingSessionID
-      ) {
-        recordingLogger.notice("Ignoring stale stop request after a newer recording session started")
-        return .ignored(.staleSession)
-      }
+    if Self.shouldIgnoreStopRequest(
+      snapshotSessionID: stopSessionID,
+      currentSessionID: recordingSessionID
+    ) {
+      recordingLogger.notice("Ignoring stale stop request after a newer recording session started")
+      return .ignored(.staleSession)
     }
 
-    switch captureController.finishRecording(clearBuffer: currentCaptureMode() == .superFast) {
+    switch captureFinishResult {
+    case .finalizing:
+      recordingLogger.notice("Ignoring duplicate stop while capture engine finalization is already in progress")
+      return .ignored(.staleSession)
+
     case let .captured(captureURL):
       let stoppedAt = Date()
       let session = activeSession ?? ActiveRecordingSession(

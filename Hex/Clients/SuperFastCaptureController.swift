@@ -1,4 +1,5 @@
 import AVFoundation
+import Darwin
 import Foundation
 import HexCore
 
@@ -57,11 +58,8 @@ private struct SuperFastCaptureConstants {
   static let ringBufferDuration: TimeInterval = 1.0
   static let defaultPreRollDuration: TimeInterval = 0.45
   static let tapBufferSize: AVAudioFrameCount = 2_048
-  static let fallbackStopGracePeriod: TimeInterval = 0.05
-  static let minimumStopGracePeriod: TimeInterval = 0.02
-  static let maximumStopGracePeriod: TimeInterval = 0.08
-  static let stopGraceSafetyMargin: TimeInterval = 0.008
-  static let callbackTimingWindowSize = 8
+  static let stopPostRollDuration: TimeInterval = 0.15
+  static let stopDrainTimeout: TimeInterval = 2
 }
 
 enum CaptureRecordingMode: String {
@@ -86,13 +84,19 @@ final class SuperFastCaptureController {
   enum FinishRecordingResult {
     case captured(URL)
     case failed(RecordingFailure)
+    case finalizing
     case idle
   }
 
-  struct StopTimingEstimate {
-    let gracePeriod: TimeInterval
-    let callbackInterval: TimeInterval
-    let bufferDuration: TimeInterval
+  private struct PendingFinish {
+    let targetHostTime: UInt64
+    let clearBuffer: Bool
+    let continuation: CheckedContinuation<FinishRecordingResult, Never>
+  }
+
+  private struct StopBoundary {
+    let targetHostTime: UInt64
+    var hasReachedTarget = false
   }
 
   private struct ActiveRecording {
@@ -105,6 +109,7 @@ final class SuperFastCaptureController {
 
   private let logger = HexLog.recording
   private let processingQueue = DispatchQueue(label: "com.kitlangton.Hex.SuperFastCapture")
+  private let stopBoundaryLock = NSLock()
   private let meterContinuation: AsyncStream<Meter>.Continuation
   private let ringBuffer = FloatRingBuffer(
     capacity: Int(SuperFastCaptureConstants.sampleRate * SuperFastCaptureConstants.ringBufferDuration)
@@ -123,9 +128,10 @@ final class SuperFastCaptureController {
   private var captureGeneration = 0
   private var recordingFailure: RecordingFailure?
   private var keepWarmBuffer = false
-  private var lastProcessedBufferAt: Date?
-  private var recentCallbackIntervals: [TimeInterval] = []
-  private var recentBufferDurations: [TimeInterval] = []
+  private var stopBoundary: StopBoundary?
+  private var pendingFinish: PendingFinish?
+  private var pendingFinishWaiters: [CheckedContinuation<Void, Never>] = []
+  private var stopDrainTimeoutTask: Task<Void, Never>?
   private let onEngineConfigurationChange: @Sendable (Int) -> Void
 
   init(
@@ -148,28 +154,6 @@ final class SuperFastCaptureController {
     processingQueue.sync { activeRecording != nil }
   }
 
-  var stopTimingEstimate: StopTimingEstimate {
-    processingQueue.sync {
-      let callbackInterval = recentCallbackIntervals.max() ?? 0
-      let bufferDuration = recentBufferDurations.max() ?? 0
-      let observedCadence = max(callbackInterval, bufferDuration)
-      let gracePeriod = min(
-        max(
-          observedCadence > 0
-            ? observedCadence + SuperFastCaptureConstants.stopGraceSafetyMargin
-            : SuperFastCaptureConstants.fallbackStopGracePeriod,
-          SuperFastCaptureConstants.minimumStopGracePeriod
-        ),
-        SuperFastCaptureConstants.maximumStopGracePeriod
-      )
-      return StopTimingEstimate(
-        gracePeriod: gracePeriod,
-        callbackInterval: callbackInterval,
-        bufferDuration: bufferDuration
-      )
-    }
-  }
-
   func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
     processingQueue.sync {
       let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
@@ -190,7 +174,7 @@ final class SuperFastCaptureController {
 
   /// Tears down and recreates the engine while keeping the active recording file open, so
   /// capture resumes onto the same file after a device/route change mid-recording
-  /// (#251, #252, #218, #226). The ring buffer, timing metrics, and active recording survive;
+  /// (#251, #252, #218, #226). The ring buffer and active recording survive;
   /// only the engine, tap, and converter are rebuilt.
   func restartPreservingRecording(reason: String) throws {
     logger.notice("Restarting capture engine preserving active recording reason=\(reason)")
@@ -221,8 +205,8 @@ final class SuperFastCaptureController {
     }
 
     inputNode.installTap(onBus: 0, bufferSize: SuperFastCaptureConstants.tapBufferSize, format: inputFormat) {
-      [weak self] buffer, _ in
-      self?.enqueue(buffer, generation: generation)
+      [weak self] buffer, time in
+      self?.enqueue(buffer, time: time, generation: generation)
     }
 
     engine.prepare()
@@ -272,12 +256,11 @@ final class SuperFastCaptureController {
       captureGeneration += 1
       converter = nil
       if clearingRecordingState {
+        resolvePendingFinish(with: .idle)
+        clearStopBoundary()
         activeRecording = nil
         recordingFailure = nil
         ringBuffer.clear()
-        lastProcessedBufferAt = nil
-        recentCallbackIntervals.removeAll(keepingCapacity: false)
-        recentBufferDurations.removeAll(keepingCapacity: false)
       }
     }
     engine?.stop()
@@ -350,42 +333,69 @@ final class SuperFastCaptureController {
     }
   }
 
-  func finishRecording(clearBuffer: Bool = true) -> FinishRecordingResult {
-    processingQueue.sync {
-      let result: FinishRecordingResult
-      if let recordingFailure {
-        result = .failed(recordingFailure)
-      } else if let url = activeRecording?.url {
-        result = .captured(url)
-      } else {
-        result = .idle
+  /// Prevents a new capture file from replacing one that is still draining its final PCM
+  /// frames. RecordingClient awaits this before it opens a new session.
+  func waitForPendingFinish() async {
+    await withCheckedContinuation { continuation in
+      processingQueue.async { [weak self] in
+        guard let self, self.pendingFinish != nil || self.currentStopBoundary() != nil else {
+          continuation.resume()
+          return
+        }
+        self.pendingFinishWaiters.append(continuation)
       }
-      activeRecording = nil
-      recordingFailure = nil
-      if clearBuffer {
-        ringBuffer.clear()
-      }
-      return result
     }
   }
 
-  private func enqueue(_ buffer: AVAudioPCMBuffer, generation: Int) {
+  /// Finalizes at an audio-clock boundary rather than after a wall-clock delay. The hotkey
+  /// event supplies the boundary in host time; tap timestamps let us retain every PCM frame
+  /// through that point even when Core Audio delivers the final buffer late.
+  func finishRecording(clearBuffer: Bool = true) async -> FinishRecordingResult {
+    let targetHostTime = mach_absolute_time() + AVAudioTime.hostTime(
+      forSeconds: SuperFastCaptureConstants.stopPostRollDuration
+    )
+    guard requestStopBoundary(targetHostTime) else {
+      return .finalizing
+    }
+
+    return await withCheckedContinuation { continuation in
+      processingQueue.async { [weak self] in
+        guard let self else {
+          continuation.resume(returning: .idle)
+          return
+        }
+        guard self.activeRecording != nil else {
+          self.clearStopBoundary()
+          continuation.resume(returning: self.finishResult())
+          self.resumePendingFinishWaiters()
+          return
+        }
+
+        self.pendingFinish = PendingFinish(
+          targetHostTime: targetHostTime,
+          clearBuffer: clearBuffer,
+          continuation: continuation
+        )
+        if self.hasReachedStopBoundary(targetHostTime) {
+          self.resolvePendingFinish(with: self.finishResult())
+          return
+        }
+        self.scheduleStopDrainTimeout()
+      }
+    }
+  }
+
+  private func enqueue(_ buffer: AVAudioPCMBuffer, time: AVAudioTime, generation: Int) {
     guard let copy = clone(buffer) else { return }
     processingQueue.async { [weak self] in
-      self?.process(copy, generation: generation)
+      self?.process(copy, time: time, generation: generation)
     }
   }
 
-  private func process(_ buffer: AVAudioPCMBuffer, generation: Int) {
+  private func process(_ buffer: AVAudioPCMBuffer, time: AVAudioTime, generation: Int) {
     guard Self.shouldProcessCallback(callbackGeneration: generation, currentGeneration: captureGeneration) else {
       return
     }
-    let now = Date()
-    if let lastProcessedBufferAt {
-      appendRecentMetric(now.timeIntervalSince(lastProcessedBufferAt), to: &recentCallbackIntervals)
-    }
-    lastProcessedBufferAt = now
-    appendRecentMetric(Double(buffer.frameLength) / buffer.format.sampleRate, to: &recentBufferDurations)
 
     guard let converted = convert(buffer),
           converted.frameLength > 0,
@@ -413,14 +423,184 @@ final class SuperFastCaptureController {
       activeRecording = recording
     }
 
+    let stopBoundary = currentStopBoundary()
+    let inputFramesToWrite: Int
+    if let stopBoundary,
+       time.isHostTimeValid
+    {
+      inputFramesToWrite = Self.inputFramesToWrite(
+        bufferStartHostTime: time.hostTime,
+        inputSampleRate: buffer.format.sampleRate,
+        inputFrameCount: Int(buffer.frameLength),
+        targetHostTime: stopBoundary.targetHostTime
+      )
+    } else {
+      inputFramesToWrite = Int(buffer.frameLength)
+    }
+
+    let outputFramesToWrite = Self.outputFramesToWrite(
+      convertedFrameCount: Int(converted.frameLength),
+      inputFrameCount: Int(buffer.frameLength),
+      inputFramesToWrite: inputFramesToWrite
+    )
+
     do {
-      try recording.file.write(from: converted)
+      if outputFramesToWrite > 0 {
+        converted.frameLength = AVAudioFrameCount(outputFramesToWrite)
+        try recording.file.write(from: converted)
+      }
+      if let stopBoundary,
+         time.isHostTimeValid,
+         Self.bufferReachesTarget(
+           bufferStartHostTime: time.hostTime,
+           inputSampleRate: buffer.format.sampleRate,
+           inputFrameCount: Int(buffer.frameLength),
+           targetHostTime: stopBoundary.targetHostTime
+         )
+      {
+        markStopBoundaryReached(stopBoundary.targetHostTime)
+        if pendingFinish != nil {
+          let postRollDuration = String(
+            format: "%.3f",
+            SuperFastCaptureConstants.stopPostRollDuration
+          )
+          logger.notice("Capture engine finalizing at audio boundary postRoll=\(postRollDuration)s")
+          resolvePendingFinish(with: .captured(recording.url))
+        }
+      }
     } catch {
       logger.error("Failed to write capture engine audio: \(error.localizedDescription)")
       activeRecording = nil
       recordingFailure = .captureWriteFailed(error.localizedDescription)
       FileManager.default.removeItemIfExists(at: recording.url)
+      resolvePendingFinish(with: .failed(.captureWriteFailed(error.localizedDescription)))
     }
+  }
+
+  /// Maps the desired host-clock boundary onto the buffer's PCM timeline. This uses Core
+  /// Audio's timestamp rather than queue or wall-clock timing, so delayed callbacks do not
+  /// discard samples that were captured before the stop boundary.
+  static func inputFramesToWrite(
+    bufferStartHostTime: UInt64,
+    inputSampleRate: Double,
+    inputFrameCount: Int,
+    targetHostTime: UInt64
+  ) -> Int {
+    guard inputSampleRate > 0, inputFrameCount > 0, targetHostTime > bufferStartHostTime else {
+      return 0
+    }
+    let secondsToTarget = AVAudioTime.seconds(forHostTime: targetHostTime - bufferStartHostTime)
+    let frameCount = Int((secondsToTarget * inputSampleRate).rounded(.down))
+    return min(max(frameCount, 0), inputFrameCount)
+  }
+
+  static func outputFramesToWrite(
+    convertedFrameCount: Int,
+    inputFrameCount: Int,
+    inputFramesToWrite: Int
+  ) -> Int {
+    guard convertedFrameCount > 0, inputFrameCount > 0, inputFramesToWrite > 0 else {
+      return 0
+    }
+    let ratio = Double(inputFramesToWrite) / Double(inputFrameCount)
+    return min(
+      convertedFrameCount,
+      max(1, Int((Double(convertedFrameCount) * ratio).rounded(.down)))
+    )
+  }
+
+  static func bufferReachesTarget(
+    bufferStartHostTime: UInt64,
+    inputSampleRate: Double,
+    inputFrameCount: Int,
+    targetHostTime: UInt64
+  ) -> Bool {
+    guard inputSampleRate > 0, inputFrameCount > 0 else { return false }
+    let bufferDurationHostTime = AVAudioTime.hostTime(
+      forSeconds: Double(inputFrameCount) / inputSampleRate
+    )
+    return targetHostTime <= bufferStartHostTime + bufferDurationHostTime
+  }
+
+  private func requestStopBoundary(_ targetHostTime: UInt64) -> Bool {
+    stopBoundaryLock.lock()
+    defer { stopBoundaryLock.unlock() }
+    guard stopBoundary == nil else { return false }
+    stopBoundary = StopBoundary(targetHostTime: targetHostTime)
+    return true
+  }
+
+  private func currentStopBoundary() -> StopBoundary? {
+    stopBoundaryLock.lock()
+    defer { stopBoundaryLock.unlock() }
+    return stopBoundary
+  }
+
+  private func markStopBoundaryReached(_ targetHostTime: UInt64) {
+    stopBoundaryLock.lock()
+    defer { stopBoundaryLock.unlock() }
+    guard stopBoundary?.targetHostTime == targetHostTime else { return }
+    stopBoundary?.hasReachedTarget = true
+  }
+
+  private func hasReachedStopBoundary(_ targetHostTime: UInt64) -> Bool {
+    stopBoundaryLock.lock()
+    defer { stopBoundaryLock.unlock() }
+    return stopBoundary?.targetHostTime == targetHostTime && stopBoundary?.hasReachedTarget == true
+  }
+
+  private func clearStopBoundary() {
+    stopBoundaryLock.lock()
+    defer { stopBoundaryLock.unlock() }
+    stopBoundary = nil
+  }
+
+  private func scheduleStopDrainTimeout() {
+    stopDrainTimeoutTask?.cancel()
+    stopDrainTimeoutTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(SuperFastCaptureConstants.stopDrainTimeout))
+      guard !Task.isCancelled else { return }
+      self?.processingQueue.async { [weak self] in
+        guard let self, self.pendingFinish != nil else { return }
+        self.logger.error("Timed out waiting for capture engine to reach the stop audio boundary")
+        let failure = RecordingFailure.captureFinalizationTimedOut
+        if let url = self.activeRecording?.url {
+          FileManager.default.removeItemIfExists(at: url)
+        }
+        self.resolvePendingFinish(with: .failed(failure))
+      }
+    }
+  }
+
+  private func finishResult() -> FinishRecordingResult {
+    if let recordingFailure {
+      return .failed(recordingFailure)
+    }
+    if let url = activeRecording?.url {
+      return .captured(url)
+    }
+    return .idle
+  }
+
+  private func resolvePendingFinish(with result: FinishRecordingResult) {
+    guard let pendingFinish else { return }
+    self.pendingFinish = nil
+    clearStopBoundary()
+    stopDrainTimeoutTask?.cancel()
+    stopDrainTimeoutTask = nil
+    activeRecording = nil
+    recordingFailure = nil
+    if pendingFinish.clearBuffer {
+      ringBuffer.clear()
+    }
+    pendingFinish.continuation.resume(returning: result)
+    resumePendingFinishWaiters()
+  }
+
+  private func resumePendingFinishWaiters() {
+    let waiters = pendingFinishWaiters
+    pendingFinishWaiters.removeAll(keepingCapacity: false)
+    waiters.forEach { $0.resume() }
   }
 
   private func convert(_ inputBuffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
@@ -517,11 +697,4 @@ final class SuperFastCaptureController {
     return copy
   }
 
-  private func appendRecentMetric(_ value: TimeInterval, to metrics: inout [TimeInterval]) {
-    guard value.isFinite, value > 0 else { return }
-    metrics.append(value)
-    if metrics.count > SuperFastCaptureConstants.callbackTimingWindowSize {
-      metrics.removeFirst(metrics.count - SuperFastCaptureConstants.callbackTimingWindowSize)
-    }
-  }
 }

@@ -1,5 +1,7 @@
 import AppKit
+import AVFoundation
 import ComposableArchitecture
+import Darwin
 import Foundation
 import HexCore
 import XCTest
@@ -99,6 +101,62 @@ final class RecordingRaceTests: XCTestCase {
       SuperFastCaptureController.shouldProcessCallback(
         callbackGeneration: 1,
         currentGeneration: 2
+      )
+    )
+  }
+
+  func testCaptureStopBoundaryKeepsOnlyPCMFramesBeforeCutoff() {
+    let sampleRate = 16_000.0
+    let inputFrames = 1_600 // 100 ms
+    let convertedFrames = 1_600
+    let bufferStart = mach_absolute_time()
+    let target = bufferStart + AVAudioTime.hostTime(forSeconds: 0.075)
+
+    let inputFramesToWrite = SuperFastCaptureController.inputFramesToWrite(
+      bufferStartHostTime: bufferStart,
+      inputSampleRate: sampleRate,
+      inputFrameCount: inputFrames,
+      targetHostTime: target
+    )
+    let outputFramesToWrite = SuperFastCaptureController.outputFramesToWrite(
+      convertedFrameCount: convertedFrames,
+      inputFrameCount: inputFrames,
+      inputFramesToWrite: inputFramesToWrite
+    )
+
+    XCTAssertTrue((1_199 ... 1_200).contains(inputFramesToWrite))
+    XCTAssertTrue((1_199 ... 1_200).contains(outputFramesToWrite))
+    XCTAssertTrue(
+      SuperFastCaptureController.bufferReachesTarget(
+        bufferStartHostTime: bufferStart,
+        inputSampleRate: sampleRate,
+        inputFrameCount: inputFrames,
+        targetHostTime: target
+      )
+    )
+  }
+
+  func testCaptureStopBoundaryExcludesLaterPCMBuffer() {
+    let sampleRate = 16_000.0
+    let inputFrames = 1_600 // 100 ms
+    let target = mach_absolute_time()
+    let laterBufferStart = target + AVAudioTime.hostTime(forSeconds: 0.1)
+
+    XCTAssertEqual(
+      SuperFastCaptureController.inputFramesToWrite(
+        bufferStartHostTime: laterBufferStart,
+        inputSampleRate: sampleRate,
+        inputFrameCount: inputFrames,
+        targetHostTime: target
+      ),
+      0
+    )
+    XCTAssertTrue(
+      SuperFastCaptureController.bufferReachesTarget(
+        bufferStartHostTime: laterBufferStart,
+        inputSampleRate: sampleRate,
+        inputFrameCount: inputFrames,
+        targetHostTime: target
       )
     )
   }
