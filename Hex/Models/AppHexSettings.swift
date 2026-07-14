@@ -9,6 +9,7 @@ typealias HexSettings = HexCore.HexSettings
 
 enum HotKeyCaptureTarget: Equatable, Sendable {
 	case recording
+	case refinedRecording
 	case pasteLastTranscript
 }
 
