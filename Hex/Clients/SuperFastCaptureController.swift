@@ -58,7 +58,6 @@ private struct SuperFastCaptureConstants {
   static let ringBufferDuration: TimeInterval = 1.0
   static let defaultPreRollDuration: TimeInterval = 0.45
   static let tapBufferSize: AVAudioFrameCount = 2_048
-  static let stopPostRollDuration: TimeInterval = 0.15
   static let stopDrainTimeout: TimeInterval = 2
 }
 
@@ -90,6 +89,7 @@ final class SuperFastCaptureController {
 
   private struct PendingFinish {
     let targetHostTime: UInt64
+    let postRollDuration: TimeInterval
     let clearBuffer: Bool
     let continuation: CheckedContinuation<FinishRecordingResult, Never>
   }
@@ -350,9 +350,13 @@ final class SuperFastCaptureController {
   /// Finalizes at an audio-clock boundary rather than after a wall-clock delay. The hotkey
   /// event supplies the boundary in host time; tap timestamps let us retain every PCM frame
   /// through that point even when Core Audio delivers the final buffer late.
-  func finishRecording(clearBuffer: Bool = true) async -> FinishRecordingResult {
+  func finishRecording(
+    clearBuffer: Bool = true,
+    postRollDuration: TimeInterval = 0
+  ) async -> FinishRecordingResult {
+    let postRollDuration = max(0, postRollDuration)
     let targetHostTime = mach_absolute_time() + AVAudioTime.hostTime(
-      forSeconds: SuperFastCaptureConstants.stopPostRollDuration
+      forSeconds: postRollDuration
     )
     guard requestStopBoundary(targetHostTime) else {
       return .finalizing
@@ -373,6 +377,7 @@ final class SuperFastCaptureController {
 
         self.pendingFinish = PendingFinish(
           targetHostTime: targetHostTime,
+          postRollDuration: postRollDuration,
           clearBuffer: clearBuffer,
           continuation: continuation
         )
@@ -459,12 +464,9 @@ final class SuperFastCaptureController {
          )
       {
         markStopBoundaryReached(stopBoundary.targetHostTime)
-        if pendingFinish != nil {
-          let postRollDuration = String(
-            format: "%.3f",
-            SuperFastCaptureConstants.stopPostRollDuration
-          )
-          logger.notice("Capture engine finalizing at audio boundary postRoll=\(postRollDuration)s")
+        if let pendingFinish {
+          let postRollDescription = String(format: "%.3f", pendingFinish.postRollDuration)
+          logger.notice("Capture engine finalizing at audio boundary postRoll=\(postRollDescription)s")
           resolvePendingFinish(with: .captured(recording.url))
         }
       }

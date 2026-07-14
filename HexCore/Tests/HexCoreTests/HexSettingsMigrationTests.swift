@@ -15,6 +15,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.useClipboardPaste, false)
 		XCTAssertEqual(decoded.preventSystemSleep, true)
 		XCTAssertEqual(decoded.minimumKeyTime, 0.25)
+		XCTAssertEqual(decoded.stopDelayMilliseconds, 0)
 		XCTAssertEqual(decoded.copyToClipboard, true)
 		XCTAssertTrue(decoded.superFastModeEnabled)
 		XCTAssertEqual(decoded.useDoubleTapOnly, true)
@@ -38,6 +39,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 
 	func testNewSettingsEnableSuperFastModeByDefault() {
 		XCTAssertTrue(HexSettings().superFastModeEnabled)
+		XCTAssertEqual(HexSettings().stopDelayMilliseconds, 0)
 	}
 
 	func testInitNormalizesDoubleTapOnlyWhenLockDisabled() {

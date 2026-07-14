@@ -33,6 +33,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var preventSystemSleep: Bool
 	public var recordingAudioBehavior: RecordingAudioBehavior
 	public var minimumKeyTime: Double
+	public var stopDelayMilliseconds: Int
 	public var copyToClipboard: Bool
 	public var superFastModeEnabled: Bool
 	public var useDoubleTapOnly: Bool
@@ -67,6 +68,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		preventSystemSleep: Bool = true,
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
 		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
+		stopDelayMilliseconds: Int = 0,
 		copyToClipboard: Bool = false,
 		superFastModeEnabled: Bool = true,
 		useDoubleTapOnly: Bool = false,
@@ -94,6 +96,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.preventSystemSleep = preventSystemSleep
 		self.recordingAudioBehavior = recordingAudioBehavior
 		self.minimumKeyTime = minimumKeyTime
+		self.stopDelayMilliseconds = max(0, stopDelayMilliseconds)
 		self.copyToClipboard = copyToClipboard
 		self.superFastModeEnabled = superFastModeEnabled
 		self.useDoubleTapOnly = useDoubleTapOnly
@@ -144,6 +147,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case recordingAudioBehavior
 	case pauseMediaOnRecord // Legacy
 	case minimumKeyTime
+	case stopDelayMilliseconds
 	case copyToClipboard
 	case superFastModeEnabled
 	case useDoubleTapOnly
@@ -243,6 +247,7 @@ private enum HexSettingsSchema {
 			}
 		).eraseToAny(),
 		SettingsField(.minimumKeyTime, keyPath: \.minimumKeyTime, default: defaults.minimumKeyTime).eraseToAny(),
+		SettingsField(.stopDelayMilliseconds, keyPath: \.stopDelayMilliseconds, default: defaults.stopDelayMilliseconds).eraseToAny(),
 		SettingsField(.copyToClipboard, keyPath: \.copyToClipboard, default: defaults.copyToClipboard).eraseToAny(),
 		SettingsField(.superFastModeEnabled, keyPath: \.superFastModeEnabled, default: defaults.superFastModeEnabled).eraseToAny(),
 		SettingsField(.useDoubleTapOnly, keyPath: \.useDoubleTapOnly, default: defaults.useDoubleTapOnly).eraseToAny(),

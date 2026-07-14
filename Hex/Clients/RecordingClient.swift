@@ -1367,7 +1367,8 @@ actor RecordingClientLive {
     let activeSession = activeRecordingSession
 
     let captureFinishResult = await captureController.finishRecording(
-      clearBuffer: currentCaptureMode() == .superFast
+      clearBuffer: currentCaptureMode() == .superFast,
+      postRollDuration: Double(hexSettings.stopDelayMilliseconds) / 1_000
     )
 
     if Self.shouldIgnoreStopRequest(
