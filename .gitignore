@@ -2,6 +2,8 @@ build/
 updates/
 .vscode
 .DS_Store
+.credentials/
+.env.notarization
 
 # Xcode
 *.xcodeproj/xcuserdata/

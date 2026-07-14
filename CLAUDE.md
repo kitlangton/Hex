@@ -9,10 +9,25 @@ Hex is a macOS menu bar application for on‑device voice‑to‑text. It suppor
 ## Build & Development Commands
 
 ```bash
-# Build the app
-xcodebuild -scheme Hex -configuration Release
+# Local development build (the default for feature work): builds an unsigned Debug .app.
+# The watchdog prevents the known Tahoe/Xcode clang SDK-probe stall from consuming a build.
+# Do not run tests, archives, signing, DMGs, or release builds unless explicitly requested.
+xcodebuild -scheme Hex -configuration Debug \
+  -skipMacroValidation -skipPackagePluginValidation \
+  CODE_SIGNING_ALLOWED=NO build > /tmp/hex-local-build.log 2>&1 &
+build_pid=$!
+while kill -0 "$build_pid" 2>/dev/null; do
+  probe_pids=$(ps -axo pid=,command= | awk '$2 ~ /\/clang$/ && $0 ~ / -v -E -dM / {print $1}')
+  if [ -n "$probe_pids" ]; then kill -9 $probe_pids 2>/dev/null || true; fi
+  sleep 1
+done
+wait "$build_pid"
 
-# Run tests (must be run from HexCore directory for unit tests)
+# Launch the locally built bundle
+open ~/Library/Developer/Xcode/DerivedData/Hex-*/Build/Products/Debug/'Hex Debug.app'
+
+# Tests are opt-in only: run them only when the user explicitly asks.
+# Unit tests (must be run from HexCore directory)
 cd HexCore && swift test
 
 # Or run all tests via Xcode
@@ -21,6 +36,23 @@ xcodebuild test -scheme Hex
 # Open in Xcode (recommended for development)
 open Hex.xcodeproj
 ```
+
+### Xcode 26 / macOS Tahoe local-build hang
+
+On macOS Tahoe 26.4.1, `SWBBuildService` can hang before compilation while running
+`clang -v -E -dM` SDK probes. This is an Xcode build-service issue, not a Hex source,
+signing, or packaging failure. The default build command above continuously removes only
+the stuck probe processes while the build is running, so it should not sit at
+`CreateBuildDescription`. If a build was started manually and does stop there, run:
+
+```bash
+probe_pids=$(ps -axo pid=,command= | awk '$2 ~ /\/clang$/ && $0 ~ / -v -E -dM / {print $1}')
+if [ -n "$probe_pids" ]; then kill -9 $probe_pids; fi
+```
+
+Do not switch to `xcodebuild test`, a Release build, cleaning DerivedData, or a release
+workflow to work around this. Restarting the Mac is a last resort; restarting Xcode is
+irrelevant when only command-line builds are running.
 
 ## Architecture
 

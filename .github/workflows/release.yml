@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release (for example v0.8.4)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      # Apple Developer Team IDs are public identifiers, not credentials.
+      TEAM_ID: 5YUPQC9D96
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+
+      - name: Archive signed app
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild \
+            -scheme Hex \
+            -configuration Release \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            -archivePath "$RUNNER_TEMP/Hex.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            archive
+
+      - name: Export app
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>developer-id</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Developer ID Application</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Hex.xcarchive" \
+            -exportPath "$RUNNER_TEMP/Hex-export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Prepare App Store Connect API key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_API_KEY_CONTENT"
+          test -n "$APPLE_API_KEY_ID"
+          test -n "$APPLE_API_ISSUER"
+          APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
+          chmod 600 "$APPLE_API_KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Notarize app
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent "$RUNNER_TEMP/Hex-export/Hex.app" "$RUNNER_TEMP/Hex-notarization.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/Hex-notarization.zip" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$RUNNER_TEMP/Hex-export/Hex.app"
+
+      - name: Package release assets
+        id: package
+        env:
+          INPUT_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNNER_TEMP/Hex-export/Hex.app/Contents/Info.plist")
+          TAG="$INPUT_TAG"
+          if [ "$VERSION" != "${TAG#v}" ]; then
+            echo "Tag $TAG does not match app version $VERSION" >&2
+            exit 1
+          fi
+          mkdir -p dist
+          ditto -c -k --keepParent "$RUNNER_TEMP/Hex-export/Hex.app" "dist/Hex-$VERSION.zip"
+          hdiutil create -volname "Hex $VERSION" -srcfolder "$RUNNER_TEMP/Hex-export/Hex.app" -ov -format UDZO "dist/Hex-$VERSION.dmg"
+          xcrun notarytool submit "dist/Hex-$VERSION.dmg" \
+            --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "dist/Hex-$VERSION.dmg"
+          xcrun stapler validate "dist/Hex-$VERSION.dmg"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="$INPUT_TAG"
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "Hex ${{ steps.package.outputs.version }}" \
+            --generate-notes \
+            "dist/Hex-${{ steps.package.outputs.version }}.dmg" \
+            "dist/Hex-${{ steps.package.outputs.version }}.zip"

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.0
+
+### Minor Changes
+
+- 701519d: Add optional transcript and selected-text refinement with Apple Intelligence, Gemini, or OpenRouter (#191). The refined hotkey supports optional spoken instructions, source-text replacement, configurable selected-text capture, and shared provider prompts while preserving recording, cancellation, persistence, and audio ownership behavior. Inspired by upstream PR #191 by Rohit Lal Chandani.
+- ac290c9: Retry failed and cancelled transcriptions from history (#216)
+
+### Patch Changes
+
+- 2c54567: Remove refinement hotkey row separator
+- c0008a4: Auto-copy retried transcriptions to the clipboard (#216)
+- ff012d0: Keep OpenRouter model controls together in the picker header and separate refinement hotkey settings into icon-labelled rows
+- 8739929: Overhaul audio engine lifecycle: recover recordings across device/route changes instead of silently capturing nothing (#251, #252, #218, #226), rebuild the warm capture engine immediately when devices change while idle instead of leaving a stale engine running (#209), suspend the warm microphone while the screen is locked or asleep and rearm on wake, stop the sound-effects engine when idle (#209), and fix a crash on quit caused by racy audio teardown (#245)
+- 47b5982: Allow modifier-only hotkeys to use double-tap-only mode and hide inactive hold controls (#78)
+- 078ee74: Add setting to opt out of storing cancelled recordings (#216)
+- 2c5d8ae: Add Whisper Large v3 Turbo (632MB) to the model library: near large-v3 accuracy at several times the speed (#185). Whisper models are now labeled by their real sizes (Tiny, Base) instead of Small/Medium.
+- 2c54567: Publish signed installers through GitHub Releases without in-app updates
+- c8a8c71: Clarify transcription refinement settings and shortcut controls
+- 3d6dd32: Fix Gemini refinement requests, show an empty state for OpenRouter model searches, and harden release tag handling (#257).
+
 ## 0.8.3
 
 ### Patch Changes

@@ -22,11 +22,18 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.outputLanguage, "en")
 		XCTAssertEqual(decoded.selectedMicrophoneID, "builtin:mic")
 		XCTAssertEqual(decoded.saveTranscriptionHistory, false)
+		XCTAssertEqual(decoded.saveCancelledRecordings, true)
 		XCTAssertEqual(decoded.maxHistoryEntries, 10)
 		XCTAssertEqual(decoded.hasCompletedModelBootstrap, true)
 		XCTAssertEqual(decoded.hasCompletedStorageMigration, true)
 		XCTAssertFalse(decoded.lowercaseTranscripts)
 		XCTAssertFalse(decoded.removePunctuation)
+		XCTAssertEqual(decoded.refinementMode, .raw)
+		XCTAssertEqual(decoded.refinementProvider, .apple)
+		XCTAssertEqual(decoded.refinementInstructions, "")
+		XCTAssertNil(decoded.openRouterModelID)
+		XCTAssertNil(decoded.refinedHotkey)
+		XCTAssertTrue(decoded.includeSelectedTextInRefinement)
 	}
 
 	func testEncodeDecodeRoundTripPreservesDefaults() throws {
@@ -58,6 +65,29 @@ final class HexSettingsMigrationTests: XCTestCase {
 
 		XCTAssertFalse(decoded.useDoubleTapOnly)
 		XCTAssertFalse(decoded.doubleTapLockEnabled)
+	}
+
+	func testDecodeNormalizesRefinedDoubleTapOnlyWhenLockDisabled() throws {
+		let payload = "{\"refinedUseDoubleTapOnly\":true,\"refinedDoubleTapLockEnabled\":false}"
+		let decoded = try JSONDecoder().decode(HexSettings.self, from: Data(payload.utf8))
+
+		XCTAssertFalse(decoded.refinedUseDoubleTapOnly)
+		XCTAssertFalse(decoded.refinedDoubleTapLockEnabled)
+	}
+
+	func testRefinedHotkeyAndInstructionsRoundTrip() throws {
+		let settings = HexSettings(
+			refinementInstructions: "Return exactly three points.",
+			refinedHotkey: HotKey(key: .space, modifiers: [.command]),
+			refinedMinimumKeyTime: 0.4,
+			includeSelectedTextInRefinement: false
+		)
+		let decoded = try JSONDecoder().decode(HexSettings.self, from: JSONEncoder().encode(settings))
+
+		XCTAssertEqual(decoded.refinementInstructions, "Return exactly three points.")
+		XCTAssertEqual(decoded.refinedHotkey, HotKey(key: .space, modifiers: [.command]))
+		XCTAssertEqual(decoded.refinedMinimumKeyTime, 0.4)
+		XCTAssertFalse(decoded.includeSelectedTextInRefinement)
 	}
 
 	func testEncodeDecodeRoundTripPreservesNormalizedDoubleTapValues() throws {

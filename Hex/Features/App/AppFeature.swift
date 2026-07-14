@@ -89,7 +89,8 @@ struct AppFeature {
         
       case .pasteLastTranscript:
         @Shared(.transcriptionHistory) var transcriptionHistory: TranscriptionHistory
-        guard let lastTranscript = transcriptionHistory.history.first?.text else {
+        guard let lastTranscript = transcriptionHistory.history
+          .first(where: { $0.resolvedStatus == .completed })?.text else {
           return .none
         }
         return .run { _ in
@@ -177,12 +178,12 @@ struct AppFeature {
   
   private func startPasteLastTranscriptMonitoring() -> Effect<Action> {
     .run { send in
-      @Shared(.isSettingPasteLastTranscriptHotkey) var isSettingPasteLastTranscriptHotkey: Bool
+		@Shared(.hotKeyCaptureTarget) var hotKeyCaptureTarget: HotKeyCaptureTarget?
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       let token = keyEventMonitor.handleKeyEvent { keyEvent in
         // Skip if user is setting a hotkey
-        if isSettingPasteLastTranscriptHotkey {
+        if hotKeyCaptureTarget != nil {
           return false
         }
 

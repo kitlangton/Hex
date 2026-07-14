@@ -323,6 +323,145 @@ struct HotKeyProcessorTests {
         )
     }
 
+    // MARK: - Double-Tap Only (Key + Modifier)
+
+    @Test
+    func doubleTapOnly_standard_singlePressIgnored() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_standard_requiresSecondPress() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .doubleTapLock)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_standard_releaseAfterLockDoesNotStop() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.4, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 1.0, key: .a, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    // MARK: - Double-Tap Only (Modifier-Only)
+
+    @Test
+    func doubleTapOnly_modifierOnly_requiresSecondPress() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                // First press — no recording yet
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // First release — still no recording, just records release time
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Second press within threshold — starts recording in lock mode
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_stopsOnThirdPress() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Release after lock — should NOT stop (modifier-only lock persists)
+                ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true),
+                // Third press — stops recording
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.command], expectedOutput: .stopRecording, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_slowDoubleTapIgnored() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                // First press
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // First release
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                // Second press too slow (> 0.3s after release)
+                ScenarioStep(time: 0.5, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // Release — nothing happens
+                ScenarioStep(time: 0.6, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_singlePressIgnored() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                // Single press — no recording
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                // Release — no recording
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_slowFirstHoldDoesNotArm() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.5, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.6, key: nil, modifiers: [.command], expectedOutput: nil, expectedIsMatched: false)
+            ]
+        )
+    }
+
+    @Test
+    func doubleTapOnly_modifierOnly_multipleModifiersPartialReleaseArmsSecondPress() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option, .command]),
+            useDoubleTapOnly: true,
+            steps: [
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.1, key: nil, modifiers: [.option, .command], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: false),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [.option, .command], expectedOutput: .startRecording, expectedIsMatched: true, expectedState: .doubleTapLock),
+                ScenarioStep(time: 0.4, key: nil, modifiers: [.option], expectedOutput: nil, expectedIsMatched: true, expectedState: .doubleTapLock)
+            ]
+        )
+    }
+
     // MARK: - Edge Cases
 
     // Tests that after pressing a key with option, releasing the key but keeping option pressed
@@ -358,7 +497,7 @@ struct HotKeyProcessorTests {
                 ScenarioStep(time: 0.05, key: nil, modifiers: [],    expectedOutput: nil, expectedIsMatched: false),
                 // Next standalone Fn press should trigger recording
                 ScenarioStep(time: 0.20, key: nil, modifiers: [.fn], expectedOutput: .startRecording, expectedIsMatched: true),
-                // Release Fn should stop recording (must exceed modifierOnlyMinimumDuration)
+                // Release Fn should stop recording (must exceed minimumKeyTime)
                 ScenarioStep(time: 0.40, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
@@ -378,7 +517,7 @@ struct HotKeyProcessorTests {
                 // Only once the user fully releases and presses Fn again should it start
                 ScenarioStep(time: 0.10, key: nil, modifiers: [],    expectedOutput: nil, expectedIsMatched: false),
                 ScenarioStep(time: 0.25, key: nil, modifiers: [.fn], expectedOutput: .startRecording, expectedIsMatched: true),
-                // Must exceed modifierOnlyMinimumDuration before stopping
+                // Must exceed minimumKeyTime before stopping
                 ScenarioStep(time: 0.60, key: nil, modifiers: [],    expectedOutput: .stopRecording, expectedIsMatched: false),
             ]
         )
@@ -738,8 +877,8 @@ struct RecordingDecisionTests {
 
     @Test
     func longPressModifierOnlyProceeds() {
-        // Duration at modifierOnlyMinimumDuration threshold (0.3s)
-        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), duration: 0.3)
+        // Duration above default minimumKeyTime (0.2s)
+        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), duration: 0.2)
         #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
     }
 
@@ -757,29 +896,29 @@ struct RecordingDecisionTests {
     // MARK: - Modifier-Only Minimum Duration Tests
     
     @Test
-    func modifierOnly_enforcesMinimumDuration_0_3s() {
-        // User sets minimumKeyTime to 0.1s, but modifier-only enforces modifierOnlyMinimumDuration (0.3s)
-        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.1, duration: 0.25)
+    func modifierOnly_respectsUserMinimumKeyTime() {
+        // User sets minimumKeyTime to 0.1s, modifier-only hotkey respects it directly
+        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.1, duration: 0.05)
         #expect(RecordingDecisionEngine.decide(ctx) == .discardShortRecording)
     }
     
     @Test
-    func modifierOnly_proceedsWhenAboveMinimumDuration() {
-        // User sets minimumKeyTime to 0.1s, recording is 0.35s (above modifierOnlyMinimumDuration)
-        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.1, duration: 0.35)
+    func modifierOnly_proceedsWhenAboveUserMinimumKeyTime() {
+        // User sets minimumKeyTime to 0.1s, recording is 0.15s (above user setting)
+        let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.1, duration: 0.15)
         #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
     }
     
     @Test
     func modifierOnly_respectsUserPreferenceWhenHigher() {
-        // User sets minimumKeyTime to 0.5s (higher than modifierOnlyMinimumDuration)
+        // User sets minimumKeyTime to 0.5s
         let ctx = makeContext(hotkey: HotKey(key: nil, modifiers: [.option]), minimumKeyTime: 0.5, duration: 0.4)
         #expect(RecordingDecisionEngine.decide(ctx) == .discardShortRecording)
     }
     
     @Test
     func printableKey_doesNotEnforceModifierOnlyMinimum() {
-        // Printable key hotkeys use user's minimumKeyTime, not modifierOnlyMinimumDuration
+        // Printable key hotkeys use user's minimumKeyTime
         let ctx = makeContext(hotkey: HotKey(key: .a, modifiers: [.command]), minimumKeyTime: 0.1, duration: 0.15)
         #expect(RecordingDecisionEngine.decide(ctx) == .proceedToTranscription)
     }
@@ -804,9 +943,9 @@ struct MouseClickTests {
         }
         #expect(startOutput == .startRecording)
         
-        // Mouse click 0.25s later (< 0.3s threshold for modifier-only) should discard silently
+        // Mouse click 0.1s later (< 0.15s minimumKeyTime) should discard silently
         let clickOutput = withDependencies {
-            $0.date.now = Date(timeIntervalSince1970: 0.25)
+            $0.date.now = Date(timeIntervalSince1970: 0.1)
         } operation: {
             processor.processMouseClick()
         }
@@ -829,9 +968,9 @@ struct MouseClickTests {
         }
         #expect(startOutput == .startRecording)
         
-        // Mouse click 0.35s later (> 0.3s threshold) should be ignored - only ESC cancels
+        // Mouse click 0.2s later (> 0.15s minimumKeyTime) should be ignored - only ESC cancels
         let clickOutput = withDependencies {
-            $0.date.now = Date(timeIntervalSince1970: 0.35)
+            $0.date.now = Date(timeIntervalSince1970: 0.2)
         } operation: {
             processor.processMouseClick()
         }
@@ -923,7 +1062,7 @@ struct MouseClickTests {
         }
         #expect(startOutput == .startRecording)
         
-        // Mouse click 0.4s later (> 0.3s but < 0.5s user preference) should still discard
+        // Mouse click 0.4s later (< 0.5s user minimumKeyTime) should still discard
         let clickOutput = withDependencies {
             $0.date.now = Date(timeIntervalSince1970: 0.4)
         } operation: {

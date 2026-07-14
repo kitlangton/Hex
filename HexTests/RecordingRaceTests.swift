@@ -232,7 +232,14 @@ final class RecordingRaceTests: XCTestCase {
       TranscriptionFeature()
     }
 
-    await store.send(.transcriptionResult("", audioURL, 1.25))
+    await store.send(.transcriptionAudioCaptured(audioURL, 1.25)) {
+      $0.activeTranscriptionAudioURL = audioURL
+      $0.activeTranscriptionDuration = 1.25
+    }
+    await store.send(.transcriptionResult("", audioURL)) {
+      $0.activeTranscriptionAudioURL = nil
+      $0.activeTranscriptionDuration = nil
+    }
     await store.finish()
 
     XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
@@ -248,21 +255,40 @@ final class RecordingRaceTests: XCTestCase {
       audioPath: audioURL,
       duration: duration,
       sourceAppBundleID: nil,
-      sourceAppName: nil
+      sourceAppName: nil,
+      status: .completed
     )
     let probe = TranscriptPersistenceProbe()
     let store = TestStore(initialState: Self.makeState()) {
       TranscriptionFeature()
     } withDependencies: {
-      $0.transcriptPersistence.save = { text, audioURL, duration, sourceAppBundleID, sourceAppName in
+      $0.transcriptPersistence.save = { text, audioURL, duration, sourceAppBundleID, sourceAppName, status in
         await probe.record(duration: duration)
-        return transcript
+        return Transcript(
+          id: transcript.id,
+          timestamp: transcript.timestamp,
+          text: text,
+          audioPath: audioURL,
+          duration: duration,
+          sourceAppBundleID: sourceAppBundleID,
+          sourceAppName: sourceAppName,
+          status: status
+        )
       }
       $0.pasteboard.paste = { _ in }
       $0.soundEffects.play = { _ in }
     }
 
-    await store.send(.transcriptionResult("hello", audioURL, duration))
+    await store.send(.transcriptionAudioCaptured(audioURL, duration)) {
+      $0.activeTranscriptionAudioURL = audioURL
+      $0.activeTranscriptionDuration = duration
+    }
+    await store.send(.transcriptionResult("hello", audioURL)) {
+      $0.activeTranscriptionAudioURL = nil
+      $0.activeTranscriptionDuration = nil
+      $0.isTranscribing = false
+      $0.isPrewarming = false
+    }
     while await probe.duration == nil {
       await Task.yield()
     }
@@ -275,6 +301,450 @@ final class RecordingRaceTests: XCTestCase {
     XCTAssertEqual(storedDuration, duration)
   }
 
+  func testTranscriptTextProcessorAppliesFormattingAfterWordTransforms() {
+    var settings = HexSettings()
+    settings.lowercaseTranscripts = true
+    settings.removePunctuation = true
+
+    XCTAssertEqual(
+      TranscriptTextProcessor.process("Hello, World!", settings: settings, bypassFilters: false),
+      "hello world"
+    )
+  }
+
+  func testTranscriptTextProcessorBypassesEveryTransformForScratchpadPreview() {
+    var settings = HexSettings()
+    settings.lowercaseTranscripts = true
+    settings.removePunctuation = true
+
+    XCTAssertEqual(
+      TranscriptTextProcessor.process("Hello, World!", settings: settings, bypassFilters: true),
+      "Hello, World!"
+    )
+  }
+
+	func testRefinementReceivesProcessedTranscriptAndKeepsAudioOwnedUntilItCompletes() async throws {
+		let now = Date(timeIntervalSince1970: 1_234)
+		let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("refinement-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let probe = RefinementProbe()
+		var state = Self.makeState()
+		state.isTranscribing = true
+		state.isPrewarming = true
+		state.$hexSettings.withLock {
+			$0.refinementMode = .refined
+			$0.lowercaseTranscripts = true
+			$0.removePunctuation = true
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) { TranscriptionFeature() } withDependencies: {
+			$0.date.now = now
+			$0.refinement.refine = { request in
+				await probe.recordInput(request.text)
+				return "refined text"
+			}
+			$0.pasteboard.paste = { text in await probe.recordPaste(text) }
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.transcriptionAudioCaptured(audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 2
+		}
+		await store.send(.transcriptionResult("Hello, World!", audioURL)) {
+			$0.isTranscribing = false
+			$0.isPrewarming = false
+			$0.isRefining = true
+		}
+		await store.receive(.refinementResult("refined text", audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+			$0.isRefining = false
+		}
+		await store.finish()
+
+		let refinementInput = await probe.input
+		let pastedText = await probe.paste
+		XCTAssertEqual(refinementInput, "hello world")
+		XCTAssertEqual(pastedText, "refined text")
+		XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+	}
+
+	func testRefinementFailureFallsBackToProcessedTranscript() async throws {
+		let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("refinement-fallback-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let probe = RefinementProbe()
+		var state = Self.makeState()
+		state.isTranscribing = true
+		state.$hexSettings.withLock {
+			$0.refinementMode = .refined
+			$0.lowercaseTranscripts = true
+			$0.removePunctuation = true
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) { TranscriptionFeature() } withDependencies: {
+			$0.refinement.refine = { _ in throw RefinementTestError.failed }
+			$0.pasteboard.paste = { text in await probe.recordPaste(text) }
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.transcriptionAudioCaptured(audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 2
+		}
+		await store.send(.transcriptionResult("Hello, World!", audioURL)) {
+			$0.isTranscribing = false
+			$0.isRefining = true
+		}
+		await store.receive(.refinementResult("hello world", audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+			$0.isRefining = false
+		}
+		await store.finish()
+
+		let pastedText = await probe.paste
+		XCTAssertEqual(pastedText, "hello world")
+		XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+	}
+
+	func testCancellingRefinementOwnsAudioAndIgnoresLateResult() async throws {
+		let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("refinement-cancel-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let refinementProbe = PendingRefinementProbe()
+		let pasteProbe = RefinementProbe()
+		var state = Self.makeState()
+		state.isTranscribing = true
+		state.$hexSettings.withLock {
+			$0.refinementMode = .refined
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) { TranscriptionFeature() } withDependencies: {
+			$0.refinement.refine = { _ in try await refinementProbe.refine() }
+			$0.pasteboard.paste = { text in await pasteProbe.recordPaste(text) }
+			$0.sleepManagement.allowSleep = {}
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.transcriptionAudioCaptured(audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 2
+		}
+		await store.send(.transcriptionResult("keep this", audioURL)) {
+			$0.isTranscribing = false
+			$0.isRefining = true
+		}
+		await refinementProbe.waitUntilPending()
+
+		await store.send(.cancel) {
+			$0.isRefining = false
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+		}
+		await refinementProbe.resume("late result")
+		await store.finish()
+
+		let pastedText = await pasteProbe.paste
+		XCTAssertNil(pastedText)
+		XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+	}
+
+	func testRefinedHotkeyWithSelectedTextStartsRecording() async throws {
+		let now = Date(timeIntervalSince1970: 1_234)
+		let activeApp = NSWorkspace.shared.frontmostApplication
+		let recordingProbe = RecordingProbe(
+			stopURL: FileManager.default.temporaryDirectory.appendingPathComponent("selected-text-hotkey-\(UUID().uuidString).wav")
+		)
+		let selectedText = SelectedTextCapture(
+			text: "draft message",
+			replaceSelection: { _ in .replaced },
+			cancelSelection: {}
+		)
+		let store = TestStore(initialState: Self.makeState()) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.date.now = now
+			$0.pasteboard.captureSelectedText = { selectedText }
+			$0.recording.startRecording = {
+				await recordingProbe.recordStart()
+			}
+			$0.sleepManagement.preventSleep = { _ in }
+		}
+
+		await store.send(.refinedHotKeyPressed) {
+			$0.isCapturingSelectedTextForRefinement = true
+		}
+		await store.receive(.selectedTextCaptured(selectedText)) {
+			$0.isCapturingSelectedTextForRefinement = false
+			$0.selectedTextForRefinement = selectedText
+		}
+		await store.receive(.startRefinedRecording) {
+			$0.isRecording = true
+			$0.forcedRefinementMode = .refined
+			$0.activeRecordingHotkey = $0.hexSettings.refinedHotkey
+			$0.activeMinimumKeyTime = $0.hexSettings.refinedMinimumKeyTime
+			$0.activeRecordingSource = .refined
+			$0.recordingStartTime = now
+			$0.sourceAppBundleID = activeApp?.bundleIdentifier
+			$0.sourceAppName = activeApp?.localizedName
+		}
+		await store.finish()
+
+		let recordingCounts = await recordingProbe.counts()
+		XCTAssertEqual(recordingCounts.startCalls, 1)
+	}
+
+	func testSelectedTextRefinementUsesSpokenInstruction() async throws {
+		let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("selected-text-refinement-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let refinementProbe = RefinementProbe()
+		let selectedText = SelectedTextCapture(
+			text: "draft message",
+			replaceSelection: { text in
+				await refinementProbe.recordPaste(text)
+				return .replaced
+			},
+			cancelSelection: {}
+		)
+		var state = Self.makeState()
+		state.isTranscribing = true
+		state.forcedRefinementMode = .refined
+		state.selectedTextForRefinement = selectedText
+		state.$hexSettings.withLock {
+			$0.refinementInstructions = "Preserve Markdown."
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.refinement.refine = { request in
+				await refinementProbe.recordInput(request.text)
+				await refinementProbe.recordInstructions(request.instructions)
+				return "shorter draft"
+			}
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.transcriptionAudioCaptured(audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 2
+		}
+		await store.send(.transcriptionResult("make it shorter", audioURL)) {
+			$0.isTranscribing = false
+			$0.isRefining = true
+		}
+		await store.receive(.refinementResult("shorter draft", audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+			$0.isRefining = false
+			$0.selectedTextForRefinement = nil
+			$0.forcedRefinementMode = nil
+			$0.activeRecordingHotkey = nil
+			$0.activeMinimumKeyTime = nil
+			$0.activeRecordingSource = nil
+		}
+		await store.finish()
+
+		XCTAssertEqual(await refinementProbe.input, "draft message")
+		XCTAssertEqual(await refinementProbe.instructions, "Preserve Markdown.\n\nSpoken instruction:\nmake it shorter")
+		XCTAssertEqual(await refinementProbe.paste, "shorter draft")
+	}
+
+	func testSilentSelectedTextRefinementUsesDefaultInstructions() async throws {
+		let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("silent-selected-text-refinement-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let refinementProbe = RefinementProbe()
+		let selectedText = SelectedTextCapture(
+			text: "draft message",
+			replaceSelection: { text in
+				await refinementProbe.recordPaste(text)
+				return .replaced
+			},
+			cancelSelection: {}
+		)
+		var state = Self.makeState()
+		state.isTranscribing = true
+		state.forcedRefinementMode = .refined
+		state.selectedTextForRefinement = selectedText
+		state.$hexSettings.withLock {
+			$0.refinementInstructions = "Preserve Markdown."
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.refinement.refine = { request in
+				await refinementProbe.recordInput(request.text)
+				await refinementProbe.recordInstructions(request.instructions)
+				return "refined draft"
+			}
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.transcriptionAudioCaptured(audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 2
+		}
+		await store.send(.transcriptionResult("", audioURL)) {
+			$0.isTranscribing = false
+			$0.isRefining = true
+		}
+		await store.receive(.refinementResult("refined draft", audioURL, 2)) {
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+			$0.isRefining = false
+			$0.selectedTextForRefinement = nil
+			$0.forcedRefinementMode = nil
+			$0.activeRecordingHotkey = nil
+			$0.activeMinimumKeyTime = nil
+			$0.activeRecordingSource = nil
+		}
+		await store.finish()
+
+		XCTAssertEqual(await refinementProbe.input, "draft message")
+		XCTAssertEqual(await refinementProbe.instructions, "Preserve Markdown.")
+		XCTAssertEqual(await refinementProbe.paste, "refined draft")
+	}
+
+	func testRefinedHotkeyReleaseDuringSelectionCaptureDoesNotStartRecording() async {
+		let captureProbe = PendingSelectedTextCaptureProbe()
+		let store = TestStore(initialState: Self.makeState()) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.pasteboard.captureSelectedText = { await captureProbe.capture() }
+		}
+
+		await store.send(.refinedHotKeyPressed) {
+			$0.isCapturingSelectedTextForRefinement = true
+		}
+		await captureProbe.waitUntilPending()
+		await store.send(.hotKeyReleased(.refined)) {
+			$0.refinedHotKeyReleasedWhileCapturingSelection = true
+		}
+		await captureProbe.resume(nil)
+		await store.receive(.selectedTextCaptureUnavailable) {
+			$0.isCapturingSelectedTextForRefinement = false
+			$0.refinedHotKeyReleasedWhileCapturingSelection = false
+		}
+		await store.finish()
+	}
+
+	func testRefinedHotkeyWithoutSelectionStartsRefinedRecording() async {
+		let now = Date(timeIntervalSince1970: 1_234)
+		let activeApp = NSWorkspace.shared.frontmostApplication
+		let recordingProbe = RecordingProbe(
+			stopURL: FileManager.default.temporaryDirectory.appendingPathComponent("no-selection-hotkey-\(UUID().uuidString).wav")
+		)
+		let store = TestStore(initialState: Self.makeState()) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.date.now = now
+			$0.pasteboard.captureSelectedText = { nil }
+			$0.recording.startRecording = { await recordingProbe.recordStart() }
+			$0.sleepManagement.preventSleep = { _ in }
+		}
+
+		await store.send(.refinedHotKeyPressed) {
+			$0.isCapturingSelectedTextForRefinement = true
+		}
+		await store.receive(.selectedTextCaptureUnavailable) {
+			$0.isCapturingSelectedTextForRefinement = false
+		}
+		await store.receive(.startRefinedRecording) {
+			$0.isRecording = true
+			$0.forcedRefinementMode = .refined
+			$0.activeRecordingHotkey = $0.hexSettings.refinedHotkey
+			$0.activeMinimumKeyTime = $0.hexSettings.refinedMinimumKeyTime
+			$0.activeRecordingSource = .refined
+			$0.recordingStartTime = now
+			$0.sourceAppBundleID = activeApp?.bundleIdentifier
+			$0.sourceAppName = activeApp?.localizedName
+		}
+		await store.finish()
+
+		let recordingCounts = await recordingProbe.counts()
+		XCTAssertEqual(recordingCounts.startCalls, 1)
+	}
+
+	func testRefinedHotkeyFinishesRegularRecordingWithRefinement() async throws {
+		let now = Date(timeIntervalSince1970: 1_234)
+		let audioURL = FileManager.default.temporaryDirectory
+			.appendingPathComponent("refined-finish-\(UUID().uuidString).wav")
+		XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
+		defer { try? FileManager.default.removeItem(at: audioURL) }
+
+		let refinementProbe = RefinementProbe()
+		let regularHotkey = HotKey(key: .a, modifiers: [.command])
+		var state = Self.makeState()
+		state.isRecording = true
+		state.recordingStartTime = now.addingTimeInterval(-1)
+		state.activeRecordingHotkey = regularHotkey
+		state.activeMinimumKeyTime = 0.2
+		state.activeRecordingSource = .regular
+		state.$hexSettings.withLock {
+			$0.hotkey = regularHotkey
+			$0.refinedHotkey = HotKey(key: .r, modifiers: [.command])
+			$0.refinementMode = .raw
+			$0.saveTranscriptionHistory = false
+		}
+		let store = TestStore(initialState: state) {
+			TranscriptionFeature()
+		} withDependencies: {
+			$0.date.now = now
+			$0.recording.stopRecording = { .captured(audioURL) }
+			$0.transcription.transcribe = { _, _, _, _ in "dictated text" }
+			$0.refinement.refine = { request in
+				await refinementProbe.recordInput(request.text)
+				return "refined text"
+			}
+			$0.pasteboard.paste = { _ in }
+			$0.sleepManagement.allowSleep = {}
+			$0.soundEffects.play = { _ in }
+		}
+
+		await store.send(.finishRecordingWithRefinement) {
+			$0.forcedRefinementMode = .refined
+		}
+		await store.receive(.stopRecording) {
+			$0.isRecording = false
+			$0.isTranscribing = true
+			$0.error = nil
+			$0.isPrewarming = true
+		}
+		await store.receive(.transcriptionAudioCaptured(audioURL, 1)) {
+			$0.activeTranscriptionAudioURL = audioURL
+			$0.activeTranscriptionDuration = 1
+		}
+		await store.receive(.transcriptionResult("dictated text", audioURL)) {
+			$0.isTranscribing = false
+			$0.isPrewarming = false
+			$0.isRefining = true
+		}
+		await store.receive(.refinementResult("refined text", audioURL, 1)) {
+			$0.activeTranscriptionAudioURL = nil
+			$0.activeTranscriptionDuration = nil
+			$0.isRefining = false
+			$0.forcedRefinementMode = nil
+			$0.activeRecordingHotkey = nil
+			$0.activeMinimumKeyTime = nil
+			$0.activeRecordingSource = nil
+		}
+		await store.finish()
+
+		XCTAssertEqual(await refinementProbe.input, "dictated text")
+		XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+	}
+
   private static func makeState() -> TranscriptionFeature.State {
     TranscriptionFeature.State(
       hexSettings: Shared(value: .init()),
@@ -283,6 +753,62 @@ final class RecordingRaceTests: XCTestCase {
       transcriptionHistory: Shared(value: .init())
     )
   }
+}
+
+private actor RefinementProbe {
+	private(set) var input: String?
+	private(set) var instructions: String?
+	private(set) var paste: String?
+
+	func recordInput(_ value: String) { input = value }
+	func recordInstructions(_ value: String) { instructions = value }
+	func recordPaste(_ value: String) { paste = value }
+}
+
+private actor PendingSelectedTextCaptureProbe {
+	private var continuation: CheckedContinuation<SelectedTextCapture?, Never>?
+
+	func capture() async -> SelectedTextCapture? {
+		await withCheckedContinuation { continuation in
+			self.continuation = continuation
+		}
+	}
+
+	func waitUntilPending() async {
+		while continuation == nil {
+			await Task.yield()
+		}
+	}
+
+	func resume(_ selectedText: SelectedTextCapture?) {
+		continuation?.resume(returning: selectedText)
+		continuation = nil
+	}
+}
+
+private enum RefinementTestError: Error {
+	case failed
+}
+
+private actor PendingRefinementProbe {
+	private var continuation: CheckedContinuation<String, Error>?
+
+	func refine() async throws -> String {
+		try await withCheckedThrowingContinuation { continuation in
+			self.continuation = continuation
+		}
+	}
+
+	func waitUntilPending() async {
+		while continuation == nil {
+			await Task.yield()
+		}
+	}
+
+	func resume(_ text: String) {
+		continuation?.resume(returning: text)
+		continuation = nil
+	}
 }
 
 private actor RecordingProbe {

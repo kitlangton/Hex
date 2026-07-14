@@ -1,42 +1,51 @@
-# Hex — Voice → Text
+# Hex — Voice → Text, with practical refinements
 
-Press-and-hold a hotkey to transcribe your voice and paste the result wherever you're typing.
+This is a personal fork of [Kit Langton's Hex](https://github.com/kitlangton/Hex), a fast macOS menu-bar app for on-device voice transcription. I created it to bring together a few features I wanted in daily use while they are considered for upstream inclusion.
 
-**[Download Hex for macOS](https://hex-updates.s3.us-east-1.amazonaws.com/hex-latest.dmg)**
+It remains Hex at its core: hold a global hotkey, speak, and have the transcription pasted into the app you are using. This fork adds more dependable recovery, more flexible hotkeys, and optional AI-powered cleanup when you want it.
 
-> **Note:** Hex is currently only available for **Apple Silicon** Macs.
+**[Download the latest release](https://github.com/blackforestboi/Hex/releases/latest)**
 
-Or download via homebrew:
+For the official Hex build without these fork-specific additions, visit the [upstream project](https://github.com/kitlangton/Hex).
+
+## What this fork adds
+
+### Refine transcriptions and selected text with your voice
+
+Keep normal transcription unchanged, or set a separate refinement hotkey to clean up, rewrite, or format the completed transcript with your own instructions.
+
+- Choose Apple Intelligence, Gemini, or any text model available through OpenRouter.
+- Store provider credentials securely and select an OpenRouter model from its catalog.
+- Select text in another app, trigger the refinement hotkey, and dictate an instruction such as “make this shorter and friendlier.” Hex replaces the selected text with the refined result while preserving your clipboard.
+- Refinement runs after Hex's normal text transforms. Audio remains on-device; when you select a cloud provider, only the completed text is sent to it.
+
+### Keep failed recordings available for retry
+
+Failed and cancelled recordings stay in History rather than disappearing. Retry them when you are ready, with successful retry output copied to the clipboard. You can choose whether cancelled recordings should be retained.
+
+### Use modifier-only hotkeys your way
+
+Modifier-only hotkeys support double-tap-only recording and respect your configured minimum key time, rather than imposing a separate hard-coded delay.
+
+## Build from source
+
+This fork is intended to be built locally on an Apple Silicon Mac running macOS 14 or later with Xcode 15 or later:
+
 ```bash
-brew install --cask kitlangton-hex
+git clone https://github.com/blackforestboi/Hex.git
+cd Hex
+xcodebuild -scheme Hex -configuration Debug \
+  -skipMacroValidation -skipPackagePluginValidation \
+  CODE_SIGNING_ALLOWED=NO build
 ```
 
-I've opened-sourced the project in the hopes that others will find it useful! Hex supports both [Parakeet TDT v3](https://github.com/FluidInference/FluidAudio) via the awesome [FluidAudio](https://github.com/FluidInference/FluidAudio) (the default—it's frickin' unbelievable: fast, multilingual, and cloud-optimized) and the awesome [WhisperKit](https://github.com/argmaxinc/WhisperKit) for on-device transcription. We use the incredible [Swift Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) for structuring the app. Please open issues with any questions or feedback! ❤️
+Open the resulting `Hex Debug.app` from Xcode's DerivedData build products, then grant microphone and accessibility permissions when prompted.
 
-## Instructions
+## Upstream work included here
 
-Once you open Hex, you'll need to grant it microphone and accessibility permissions—so it can record your voice and paste the transcribed text into any application, respectively.
+This fork combines and extends several upstream contributions:
 
-Once you've configured a global hotkey, there are **two recording modes**:
-
-1. **Press-and-hold** the hotkey to begin recording, say whatever you want, and then release the hotkey to start the transcription process. 
-2. **Double-tap** the hotkey to *lock recording*, say whatever you want, and then **tap** the hotkey once more to start the transcription process.
-
-## Contributing
-
-**Issue reports are welcome!** If you encounter bugs or have feature requests, please [open an issue](https://github.com/kitlangton/Hex/issues).
-
-**Note on Pull Requests:** At this stage, I'm not actively reviewing code contributions for significant features or core logic changes. The project is evolving rapidly and it's easier for me to work directly from issue reports. Bug fixes and documentation improvements are still appreciated, but please open an issue first to discuss before investing time in a large PR. Thanks for understanding!
-
-### Changelog workflow
-
-- **For AI agents:** Run `bun run changeset:add-ai <type> "summary"` (e.g., `bun run changeset:add-ai patch "Fix clipboard timing"`) to create a changeset non-interactively.
-- **For humans:** Run `bunx changeset` when your PR needs release notes. Pick `patch`, `minor`, or `major` and write a short summary—this creates a `.changeset/*.md` fragment.
-- Check what will ship with `bunx changeset status --verbose`.
-- `npm run sync-changelog` (or `bun run tools/scripts/sync-changelog.ts`) mirrors the root `CHANGELOG.md` into `Hex/Resources/changelog.md` so the in-app sheet always matches GitHub releases.
-- The release tool consumes the pending fragments, bumps `package.json` + `Info.plist`, regenerates `CHANGELOG.md`, and feeds the resulting section to GitHub + Sparkle automatically. Releases fail fast if no changesets are queued, so you can't forget.
-- If you truly need to ship without pending Changesets (for example, re-running a failed publish), the release script will now prompt you to confirm and choose a `patch`/`minor`/`major` bump interactively before continuing.
-
-## License
-
-This project is licensed under the MIT License. See `LICENSE` for details.
+- [#217 — Keep failed and cancelled recordings around for retry](https://github.com/kitlangton/Hex/pull/217)
+- [#227 — Allow double-tap-only mode for modifier hotkeys](https://github.com/kitlangton/Hex/pull/227)
+- [#241 — Respect the user's minimumKeyTime for modifier-only hotkeys](https://github.com/kitlangton/Hex/pull/241)
+- [#191 — Transcription refinement via Apple Intelligence / Gemini](https://github.com/kitlangton/Hex/pull/191), which inspired the refinement workflow and has been substantially adapted here.

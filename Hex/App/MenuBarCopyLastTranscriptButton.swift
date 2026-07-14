@@ -11,7 +11,8 @@ struct MenuBarCopyLastTranscriptButton: View {
   @Dependency(\.pasteboard) var pasteboard
 
   var body: some View {
-    let lastText = transcriptionHistory.history.first?.text
+    let lastText = transcriptionHistory.history
+      .first(where: { $0.resolvedStatus == .completed })?.text
 
     let button = Button("Paste Last Transcript") {
       if let text = lastText {
