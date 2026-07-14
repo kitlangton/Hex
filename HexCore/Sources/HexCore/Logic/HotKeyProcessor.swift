@@ -162,6 +162,15 @@ public struct HotKeyProcessor {
         }
     }
 
+    /// Stops tracking the current activation without emitting a recording action.
+    ///
+    /// This is used when another hotkey takes over ending a recording, so a
+    /// double-tap-locked processor cannot keep intercepting subsequent input.
+    public mutating func reset() {
+        isDirty = false
+        resetToIdle()
+    }
+
     /// Processes a keyboard event and returns an action to take, if any.
     ///
     /// - Parameter keyEvent: The keyboard event containing key and modifier state

@@ -314,7 +314,10 @@ private extension TranscriptionFeature {
 			{
 				// While a regular recording is active, one press of the refinement hotkey
 				// finishes that recording. Do not feed this press to the refinement processor:
-				// its double-tap tracker must remain untouched for the next recording.
+				// its double-tap tracker must remain untouched for the next recording. Reset
+				// the regular processor as well, otherwise a double-tap lock would keep
+				// intercepting every future refinement-hotkey press.
+				hotKeyProcessor.reset()
 				Task { await send(.finishRecordingWithRefinement) }
 				return true
 			}
