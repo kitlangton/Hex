@@ -62,13 +62,34 @@
       }
     },
     "Accuracy" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genauigkeit"
+          }
+        }
+      }
     },
     "Add pattern" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muster hinzufügen"
+          }
+        }
+      }
     },
     "Add replacement" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzung hinzufügen"
+          }
+        }
+      }
     },
     "Are you sure you want to delete all transcripts? This action cannot be undone." : {
       "comment" : "Delete transcript history confirm",
@@ -82,16 +103,44 @@
       }
     },
     "Assign a shortcut (modifier + key) to instantly paste your last transcription." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weise eine Tastenkombination (Modifikatortaste + Taste) zu, um deine letzte Transkription sofort einzufügen."
+          }
+        }
+      }
     },
     "Audio Behavior while Recording" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioverhalten während der Aufnahme"
+          }
+        }
+      }
     },
     "Become a Sponsor" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sponsor werden"
+          }
+        }
+      }
     },
     "Browse Models…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle durchsuchen…"
+          }
+        }
+      }
     },
     "Cancel" : {
       "comment" : "Cancel deleting All Transcripts",
@@ -105,7 +154,14 @@
       }
     },
     "Cancel Download" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download abbrechen"
+          }
+        }
+      }
     },
     "Changelog" : {
       "localizations" : {
@@ -150,10 +206,24 @@
       }
     },
     "Choose a transcription model" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionsmodell auswählen"
+          }
+        }
+      }
     },
     "Clear shortcut" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkombination löschen"
+          }
+        }
+      }
     },
     "Close" : {
       "localizations" : {
@@ -188,7 +258,14 @@
       }
     },
     "Copy transcription text to clipboard in addition to pasting it" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionstext zusätzlich zum Einfügen in die Zwischenablage kopieren"
+          }
+        }
+      }
     },
     "Delete All" : {
       "comment" : "Delete all transcriptions from history.",
@@ -213,10 +290,24 @@
       }
     },
     "Delete removal" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernungsregel löschen"
+          }
+        }
+      }
     },
     "Delete replacement" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzung löschen"
+          }
+        }
+      }
     },
     "Delete Selected Model" : {
       "comment" : "Delete the selected model in settings.",
@@ -242,19 +333,54 @@
       }
     },
     "Do Nothing" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts tun"
+          }
+        }
+      }
     },
     "Done" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        }
+      }
     },
     "Download" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herunterladen"
+          }
+        }
+      }
     },
     "Download %@ and switch to this model" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ herunterladen und zu diesem Modell wechseln"
+          }
+        }
+      }
     },
     "Download a local model to start transcribing." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade ein lokales Modell herunter, um mit der Transkription zu beginnen."
+          }
+        }
+      }
     },
     "Download Error: %@" : {
       "comment" : "Model download error.",
@@ -293,16 +419,44 @@
       }
     },
     "Enable %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aktivieren"
+          }
+        }
+      }
     },
     "Enable double-tap lock" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppeltipp-Sperre aktivieren"
+          }
+        }
+      }
     },
     "Enable in Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In den Einstellungen aktivieren"
+          }
+        }
+      }
     },
     "Enabled" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviert"
+          }
+        }
+      }
     },
     "Ensure Hex can access your microphone and system accessibility features." : {
       "comment" : "Footer for permissions section in settings",
@@ -339,7 +493,14 @@
       }
     },
     "Grant" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gewähren"
+          }
+        }
+      }
     },
     "Granted" : {
       "comment" : "Label title for granted permissions.",
@@ -376,7 +537,14 @@
       }
     },
     "History Disabled" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlauf deaktiviert"
+          }
+        }
+      }
     },
     "Hot Key" : {
       "comment" : "hotkey section in settings.",
@@ -400,28 +568,84 @@
       }
     },
     "Input" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabe"
+          }
+        }
+      }
     },
     "Input Device" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabegerät"
+          }
+        }
+      }
     },
     "Input Monitoring is required so Hex can listen for your hotkey." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabeüberwachung ist erforderlich, damit Hex auf deine Tastenkombination reagieren kann."
+          }
+        }
+      }
     },
     "Keep the microphone warm and prepend a short in-memory buffer for near-instant capture. macOS will keep showing the microphone indicator while this mode is armed." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Mikrofon bleibt aktiv und ein kurzer Zwischenspeicher wird vorangestellt, damit die Aufnahme nahezu sofort beginnt. macOS zeigt die Mikrofonanzeige weiter an, solange dieser Modus bereit ist."
+          }
+        }
+      }
     },
     "Loading model choices…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellauswahl wird geladen…"
+          }
+        }
+      }
     },
     "Lowercase output" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabe in Kleinbuchstaben"
+          }
+        }
+      }
     },
     "Match" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übereinstimmung"
+          }
+        }
+      }
     },
     "Maximum History Entries" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maximale Anzahl an Verlaufseinträgen"
+          }
+        }
+      }
     },
     "Microphone" : {
       "comment" : "Microphone permission.",
@@ -436,28 +660,84 @@
       }
     },
     "Microphone Selection" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonauswahl"
+          }
+        }
+      }
     },
     "Model choices couldn’t be loaded." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellauswahl konnte nicht geladen werden."
+          }
+        }
+      }
     },
     "Model Error: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellfehler: %@"
+          }
+        }
+      }
     },
     "Model Library" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellbibliothek"
+          }
+        }
+      }
     },
     "Model prewarming..." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell wird vorbereitet..."
+          }
+        }
+      }
     },
     "Models run locally on your Mac. Downloads are stored on this device." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle laufen lokal auf deinem Mac. Downloads werden auf diesem Gerät gespeichert."
+          }
+        }
+      }
     },
     "Modifier side" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifikatortastenseite"
+          }
+        }
+      }
     },
     "Mute Volume" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lautstärke stummschalten"
+          }
+        }
+      }
     },
     "No models found." : {
       "comment" : "Replacement text in transcription model section when no available models are found",
@@ -483,16 +763,44 @@
       }
     },
     "Not set" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht festgelegt"
+          }
+        }
+      }
     },
     "Oldest entries will be automatically deleted when limit is reached" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die ältesten Einträge werden automatisch gelöscht, wenn das Limit erreicht ist"
+          }
+        }
+      }
     },
     "On" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein"
+          }
+        }
+      }
     },
     "Open Input Monitoring Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen für Eingabeüberwachung öffnen"
+          }
+        }
+      }
     },
     "Open on Login" : {
       "comment" : "Label for general setting to open app on login.",
@@ -506,10 +814,24 @@
       }
     },
     "Output" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabe"
+          }
+        }
+      }
     },
     "Output formatting" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabeformatierung"
+          }
+        }
+      }
     },
     "Output Language" : {
       "comment" : "transcription model setting for which language to use for text output.",
@@ -523,16 +845,44 @@
       }
     },
     "Override the system default microphone with a specific input device. This setting will persist across sessions." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überschreibe das Standardmikrofon des Systems mit einem bestimmten Eingabegerät. Diese Einstellung bleibt sitzungsübergreifend erhalten."
+          }
+        }
+      }
     },
     "Paste Last Transcript" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Transkription einfügen"
+          }
+        }
+      }
     },
     "Pattern" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muster"
+          }
+        }
+      }
     },
     "Pause Media" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medien pausieren"
+          }
+        }
+      }
     },
     "Pause Media while Recording" : {
       "comment" : "Label for general setting whether to pause media while recording.",
@@ -580,37 +930,114 @@
       }
     },
     "Preview" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau"
+          }
+        }
+      }
     },
     "Quit Hex" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hex beenden"
+          }
+        }
+      }
     },
     "Refresh available input devices" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbare Eingabegeräte aktualisieren"
+          }
+        }
+      }
     },
     "Regex Pattern" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regex-Muster"
+          }
+        }
+      }
     },
     "Remove %@?" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ entfernen?"
+          }
+        }
+      }
     },
     "Remove Download" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download entfernen"
+          }
+        }
+      }
     },
     "Remove Download…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download entfernen…"
+          }
+        }
+      }
     },
     "Remove matching words from every transcript." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übereinstimmende Wörter aus jeder Transkription entfernen."
+          }
+        }
+      }
     },
     "Remove punctuation" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satzzeichen entfernen"
+          }
+        }
+      }
     },
     "Replace" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen"
+          }
+        }
+      }
     },
     "Replace matching words in every transcript." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übereinstimmende Wörter in jeder Transkription ersetzen."
+          }
+        }
+      }
     },
     "Request Permission" : {
       "comment" : "Button texts for requesting permissions in settings.",
@@ -625,22 +1052,64 @@
       }
     },
     "Retry" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        }
+      }
     },
     "Rule type" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regeltyp"
+          }
+        }
+      }
     },
     "Save Transcription History" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionsverlauf speichern"
+          }
+        }
+      }
     },
     "Save transcriptions and audio recordings for later access" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionen und Audioaufnahmen für späteren Zugriff speichern"
+          }
+        }
+      }
     },
     "Select an installed model to use it, or download another model for local transcription." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein installiertes Modell aus oder lade ein anderes Modell für lokale Transkription herunter."
+          }
+        }
+      }
     },
     "Selected device not connected. System default will be used." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ausgewählte Gerät ist nicht verbunden. Der Systemstandard wird verwendet."
+          }
+        }
+      }
     },
     "Selected Model" : {
       "comment" : "Label for selecting which model is active",
@@ -678,7 +1147,14 @@
       }
     },
     "Settings…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen…"
+          }
+        }
+      }
     },
     "Show Changelog" : {
       "localizations" : {
@@ -702,10 +1178,24 @@
       }
     },
     "Show in Finder" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Finder anzeigen"
+          }
+        }
+      }
     },
     "Show in Finder or remove this download" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Finder anzeigen oder diesen Download entfernen"
+          }
+        }
+      }
     },
     "Sound" : {
       "comment" : "sound section in general settings.",
@@ -730,7 +1220,14 @@
       }
     },
     "Speed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschwindigkeit"
+          }
+        }
+      }
     },
     "Stop playback" : {
       "comment" : "Help text for play button in history view.",
@@ -744,19 +1241,54 @@
       }
     },
     "Suggested" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen"
+          }
+        }
+      }
     },
     "Super Fast Mode" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Superschneller Modus"
+          }
+        }
+      }
     },
     "Support the developer" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entwickler unterstützen"
+          }
+        }
+      }
     },
     "This frees %@ on this Mac. You can download it again anytime." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dadurch werden %@ auf diesem Mac freigegeben. Du kannst es jederzeit erneut herunterladen."
+          }
+        }
+      }
     },
     "Transcription history is currently disabled." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Transkriptionsverlauf ist derzeit deaktiviert."
+          }
+        }
+      }
     },
     "Transcription Model" : {
       "comment" : "Label for Transcription Model Section",
@@ -770,19 +1302,54 @@
       }
     },
     "Transforms" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transformationen"
+          }
+        }
+      }
     },
     "Type or speak a sample…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel eingeben oder sprechen…"
+          }
+        }
+      }
     },
     "Unavailable Device" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verfügbares Gerät"
+          }
+        }
+      }
     },
     "Unlimited" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbegrenzt"
+          }
+        }
+      }
     },
     "Use at least one modifier (⌘, ⌥, ⇧, ⌃) plus a key." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwende mindestens eine Modifikatortaste (⌘, ⌥, ⇧, ⌃) plus eine Taste."
+          }
+        }
+      }
     },
     "Use clipboard to insert" : {
       "comment" : "Label for toggle in general section.",
@@ -807,7 +1374,14 @@
       }
     },
     "Use double-tap only" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Doppeltipp verwenden"
+          }
+        }
+      }
     },
     "Version" : {
       "comment" : "Label for version in About section.",
@@ -821,7 +1395,14 @@
       }
     },
     "View All Models…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Modelle anzeigen…"
+          }
+        }
+      }
     },
     "Visit our GitHub" : {
       "comment" : "button text to link to github",
@@ -835,13 +1416,34 @@
       }
     },
     "Volume" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lautstärke"
+          }
+        }
+      }
     },
     "When disabled, transcriptions will not be saved and audio files will be deleted immediately after transcription." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn deaktiviert, werden Transkriptionen nicht gespeichert und Audiodateien direkt nach der Transkription gelöscht."
+          }
+        }
+      }
     },
     "Word rules" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wortregeln"
+          }
+        }
+      }
     },
     "Your transcription history will appear here." : {
       "comment" : "Empty history subtitle.",
