@@ -2,4 +2,4 @@
 "hex-app": patch
 ---
 
-Improve German localization wording and add missing translations
+Improve German localization wording and add missing translations (#263)
