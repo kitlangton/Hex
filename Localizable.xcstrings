@@ -76,7 +76,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Muster hinzufügen"
+            "value" : "Suchmuster hinzufügen"
           }
         }
       }
@@ -86,7 +86,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ersetzung hinzufügen"
+            "value" : "Ersetzen-Regel hinzufügen"
           }
         }
       }
@@ -107,7 +107,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Weise eine Tastenkombination (Modifikatortaste + Taste) zu, um deine letzte Transkription sofort einzufügen."
+            "value" : "Lege einen Tastaturkurzbefehl (Sondertaste + Taste) fest, um die letzte Transkription sofort einzufügen."
           }
         }
       }
@@ -117,7 +117,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audioverhalten während der Aufnahme"
+            "value" : "Audioverhalten bei der Aufnahme"
           }
         }
       }
@@ -220,7 +220,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tastenkombination löschen"
+            "value" : "Tastaturkurzbefehl löschen"
           }
         }
       }
@@ -294,7 +294,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entfernungsregel löschen"
+            "value" : "Entfernen-Regel löschen"
           }
         }
       }
@@ -304,7 +304,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ersetzung löschen"
+            "value" : "Ersetzen-Regel löschen"
           }
         }
       }
@@ -337,7 +337,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nichts tun"
+            "value" : "Keine Aktion"
           }
         }
       }
@@ -423,7 +423,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ aktivieren"
+            "value" : "%@ einschalten"
           }
         }
       }
@@ -433,7 +433,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Doppeltipp-Sperre aktivieren"
+            "value" : "Doppeltipp-Sperre einschalten"
           }
         }
       }
@@ -443,7 +443,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In den Einstellungen aktivieren"
+            "value" : "In den Systemeinstellungen einschalten"
           }
         }
       }
@@ -497,7 +497,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gewähren"
+            "value" : "Erlauben"
           }
         }
       }
@@ -509,7 +509,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zugelassen"
+            "value" : "Erlaubt"
           }
         }
       }
@@ -592,7 +592,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eingabeüberwachung ist erforderlich, damit Hex auf deine Tastenkombination reagieren kann."
+            "value" : "Input-Monitoring ist erforderlich, damit Hex deine Tastenkombination erkennen kann."
           }
         }
       }
@@ -602,7 +602,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Mikrofon bleibt aktiv und ein kurzer Zwischenspeicher wird vorangestellt, damit die Aufnahme nahezu sofort beginnt. macOS zeigt die Mikrofonanzeige weiter an, solange dieser Modus bereit ist."
+            "value" : "Das Mikrofon bleibt aktiv und Hex fügt einen kurzen Zwischenspeicher hinzu, damit die Aufnahme nahezu sofort beginnt. macOS zeigt die Mikrofonanzeige weiter an, solange dieser Modus eingeschaltet ist."
           }
         }
       }
@@ -724,7 +724,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modifikatortastenseite"
+            "value" : "Seite der Sondertaste"
           }
         }
       }
@@ -734,7 +734,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lautstärke stummschalten"
+            "value" : "Ton stummschalten"
           }
         }
       }
@@ -777,7 +777,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die ältesten Einträge werden automatisch gelöscht, wenn das Limit erreicht ist"
+            "value" : "Die ältesten Einträge werden automatisch gelöscht, wenn der Grenzwert erreicht ist"
           }
         }
       }
@@ -797,7 +797,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einstellungen für Eingabeüberwachung öffnen"
+            "value" : "Systemeinstellungen für Input-Monitoring öffnen"
           }
         }
       }
@@ -849,7 +849,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Überschreibe das Standardmikrofon des Systems mit einem bestimmten Eingabegerät. Diese Einstellung bleibt sitzungsübergreifend erhalten."
+            "value" : "Verwende statt des Standardmikrofons des Systems ein bestimmtes Eingabegerät. Diese Einstellung bleibt auch nach dem Beenden von Hex erhalten."
           }
         }
       }
@@ -1046,7 +1046,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Berechtigung anfordern"
+            "value" : "Zugriff erlauben"
           }
         }
       }
@@ -1096,7 +1096,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle ein installiertes Modell aus oder lade ein anderes Modell für lokale Transkription herunter."
+            "value" : "Wähle ein installiertes Modell aus oder lade ein anderes Modell für die lokale Transkription."
           }
         }
       }
@@ -1106,7 +1106,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das ausgewählte Gerät ist nicht verbunden. Der Systemstandard wird verwendet."
+            "value" : "Das ausgewählte Gerät ist nicht verbunden. Das Standardgerät des Systems wird verwendet."
           }
         }
       }
@@ -1255,7 +1255,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Superschneller Modus"
+            "value" : "Modus \"Superschnell\""
           }
         }
       }
@@ -1275,7 +1275,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dadurch werden %@ auf diesem Mac freigegeben. Du kannst es jederzeit erneut herunterladen."
+            "value" : "Dadurch werden %@ auf diesem Mac freigegeben. Du kannst das Modell jederzeit erneut laden."
           }
         }
       }
@@ -1346,7 +1346,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verwende mindestens eine Modifikatortaste (⌘, ⌥, ⇧, ⌃) plus eine Taste."
+            "value" : "Verwende mindestens eine Sondertaste (⌘, ⌥, ⇧, ⌃) und eine weitere Taste."
           }
         }
       }
