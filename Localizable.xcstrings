@@ -44,7 +44,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Über"
+            "value" : "Über Hex"
           }
         }
       }
@@ -86,7 +86,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ersetzen-Regel hinzufügen"
+            "value" : "Ersetzungsregel hinzufügen"
           }
         }
       }
@@ -107,7 +107,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lege einen Tastaturkurzbefehl (Sondertaste + Taste) fest, um die letzte Transkription sofort einzufügen."
+            "value" : "Lege einen Tastenkombination (Sondertaste + Taste) fest, um die letzte Transkription sofort einzufügen."
           }
         }
       }
@@ -220,7 +220,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tastaturkurzbefehl löschen"
+            "value" : "Tastenkombination löschen"
           }
         }
       }
@@ -294,7 +294,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entfernen-Regel löschen"
+            "value" : "Entfernungsregel löschen"
           }
         }
       }
@@ -304,7 +304,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ersetzen-Regel löschen"
+            "value" : "Ersetzungsregel löschen"
           }
         }
       }
@@ -497,7 +497,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erlauben"
+            "value" : "Genehmigen"
           }
         }
       }
@@ -509,7 +509,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erlaubt"
+            "value" : "Genehmigt"
           }
         }
       }
@@ -797,7 +797,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Systemeinstellungen für Input-Monitoring öffnen"
+            "value" : "Systemeinstellungen für Eingabeüberwachung öffnen"
           }
         }
       }
@@ -879,7 +879,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Medien pausieren"
+            "value" : "Wiedergabe pausieren"
           }
         }
       }
@@ -891,7 +891,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Medien während der Aufnahme pausieren"
+            "value" : "Wiedergabe während der Aufnahme pausieren"
           }
         }
       }
@@ -913,7 +913,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio abspielen"
+            "value" : "Ton abspielen"
           }
         }
       }
@@ -1410,7 +1410,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GitHub-Repository besuchen"
+            "value" : "GitHub-Repository aufrufen"
           }
         }
       }
@@ -1440,7 +1440,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wortregeln"
+            "value" : "Textersetzung"
           }
         }
       }
