@@ -76,7 +76,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bist du sicher, dass du alle Transkriptionen löschen möchtest? Das kann nicht gängig gemacht werden."
+            "value" : "Bist du sicher, dass du alle Transkriptionen löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden."
           }
         }
       }
@@ -144,7 +144,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Suche nach Updates…"
+            "value" : "Nach Updates suchen…"
           }
         }
       }
@@ -287,7 +287,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lade %@ herunter"
+            "value" : "%@ wird heruntergeladen..."
           }
         }
       }
@@ -311,7 +311,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sicherstellen, dass Hex dein Mikrofon und Systemweite Bedienungshilfen benutzen kann."
+            "value" : "Stelle sicher, dass Hex dein Mikrofon und systemweite Bedienungshilfen verwenden kann."
           }
         }
       }
@@ -322,7 +322,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eingabe einer Tastenkombination"
+            "value" : "Tastenkombination eingeben"
           }
         }
       }
@@ -370,7 +370,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Transkriptionsaktivitäten"
+            "value" : "Transkriptionsverlauf"
           }
         }
       }
@@ -384,7 +384,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tassenkombination"
+            "value" : "Tastenkombination"
           }
         }
       }
@@ -394,7 +394,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unter %0.1fs ignorieren"
+            "value" : "Kürzer als %0.1fs ignorieren"
           }
         }
       }
@@ -574,7 +574,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Systemschlaf während der Aufnahme verhindern"
+            "value" : "Ruhezustand während der Aufnahme verhindern"
           }
         }
       }
@@ -619,7 +619,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erlaubnis anfordern"
+            "value" : "Berechtigung anfordern"
           }
         }
       }
@@ -649,7 +649,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modell auswählen"
+            "value" : "Ausgewähltes Modell"
           }
         }
       }
@@ -724,7 +724,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ton-Effekte"
+            "value" : "Toneffekte"
           }
         }
       }
@@ -738,7 +738,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wiedergabe anhalten."
+            "value" : "Wiedergabe anhalten"
           }
         }
       }
@@ -829,7 +829,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Besuche unser GitHub"
+            "value" : "GitHub-Repository besuchen"
           }
         }
       }
@@ -849,7 +849,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine Transkriptionsaktivitäten werden hier angezeigt werden"
+            "value" : "Deine Transkriptionen werden hier angezeigt."
           }
         }
       }
