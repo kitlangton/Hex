@@ -96,7 +96,10 @@ class KeyEventMonitorClientLive {
   private var runLoopSource: CFRunLoopSource?
   private var continuations: [UUID: @Sendable (KeyEvent) -> Bool] = [:]
   private var inputContinuations: [UUID: @Sendable (InputEvent) -> Bool] = [:]
-  private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
+  // This serial queue owns event handlers and permission state. It can re-enter the monitor
+  // while delivering an event, so state reads must not synchronously dispatch onto it again.
+  private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor")
+  private let queueSpecificKey = DispatchSpecificKey<UInt8>()
   private var isMonitoring = false
   private var wantsMonitoring = false
   private var accessibilityTrusted = false
@@ -113,6 +116,7 @@ class KeyEventMonitorClientLive {
   private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
   init() {
+    queue.setSpecific(key: queueSpecificKey, value: 1)
     logger.info("Initializing HotKeyClient with CGEvent tap.")
     registerSystemEventObservers()
   }
@@ -126,7 +130,16 @@ class KeyEventMonitorClientLive {
   }
 
   private var hasHandlers: Bool {
-    queue.sync { !(continuations.isEmpty && inputContinuations.isEmpty) }
+    withQueueState { !(continuations.isEmpty && inputContinuations.isEmpty) }
+  }
+
+  /// Reads monitor-owned state without synchronously dispatching to this queue from one of its
+  /// own event handlers, which libdispatch treats as a fatal client error.
+  private func withQueueState<T>(_ operation: () -> T) -> T {
+    if DispatchQueue.getSpecific(key: queueSpecificKey) != nil {
+      return operation()
+    }
+    return queue.sync(execute: operation)
   }
 
   private func setMonitoringIntent(_ value: Bool) {
@@ -141,7 +154,7 @@ class KeyEventMonitorClientLive {
     // flow, and tearing the tap down on that signal killed working hotkeys (#250). The tap only
     // needs Accessibility to exist; without Input Monitoring, macOS simply withholds key events
     // (modifiers still arrive), and creating the tap is what triggers the permission prompt.
-    queue.sync {
+    withQueueState {
       wantsMonitoring
         && accessibilityTrusted
         && !(continuations.isEmpty && inputContinuations.isEmpty)
@@ -482,29 +495,27 @@ class KeyEventMonitorClientLive {
     }
   }
 
-  private func processEvent<T>(
-    _ event: T,
-    handlers: [UUID: @Sendable (T) -> Bool]
-  ) -> Bool {
-    let handlerList = queue.sync { Array(handlers.values) }
+  private func processEvent<T>(_ event: T, handlerList: [@Sendable (T) -> Bool]) -> Bool {
     return handlerList.reduce(false) { handled, handler in
       handler(event) || handled
     }
   }
 
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
-    processEvent(keyEvent, handlers: continuations)
+    let handlerList = withQueueState { Array(continuations.values) }
+    return processEvent(keyEvent, handlerList: handlerList)
   }
 
   private func processInputEvent(_ inputEvent: InputEvent) -> Bool {
-    processEvent(inputEvent, handlers: inputContinuations)
+    let handlerList = withQueueState { Array(inputContinuations.values) }
+    return processEvent(inputEvent, handlerList: handlerList)
   }
 
   /// Records that an event was delivered to the tap. Key events are proof that Input
   /// Monitoring is genuinely granted even when `IOHIDCheckAccess` reports otherwise (#250).
   fileprivate func noteEventDelivered(type: CGEventType) {
     guard type == .keyDown || type == .keyUp else { return }
-    let alreadyProven = queue.sync { inputMonitoringProvenByEvents }
+    let alreadyProven = withQueueState { inputMonitoringProvenByEvents }
     guard !alreadyProven else { return }
     queue.async(flags: .barrier) { [weak self] in
       self?.inputMonitoringProvenByEvents = true
@@ -577,7 +588,7 @@ extension KeyEventMonitorClientLive {
     }
     // A stale TCC cache can report denied while key events demonstrably flow (#250);
     // trust the events over the check so the watchdog and settings UI stay honest.
-    return queue.sync { inputMonitoringProvenByEvents }
+    return withQueueState { inputMonitoringProvenByEvents }
   }
 
   // Intentionally no request helper: creating the event tap prompts macOS 15+ for Input Monitoring
