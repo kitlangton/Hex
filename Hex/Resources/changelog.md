@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.4
+
+### Patch Changes
+
+- 8739929: Overhaul audio engine lifecycle: recover recordings across device/route changes instead of silently capturing nothing (#251, #252, #218, #226), rebuild the warm capture engine immediately when devices change while idle instead of leaving a stale engine running (#209), suspend the warm microphone while the screen is locked or asleep and rearm on wake, stop the sound-effects engine when idle (#209), and fix a crash on quit caused by racy audio teardown (#245)
+- 2c5d8ae: Add Whisper Large v3 Turbo (632MB) to the model library: near large-v3 accuracy at several times the speed (#185). Whisper models are now labeled by their real sizes (Tiny, Base) instead of Small/Medium.
+- 9c597cb: Prevent Hex from crashing on first launch before hotkey permissions are granted (#254)
+
 ## 0.8.3
 
 ### Patch Changes
