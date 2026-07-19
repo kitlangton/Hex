@@ -97,6 +97,7 @@ class KeyEventMonitorClientLive {
   private var continuations: [UUID: @Sendable (KeyEvent) -> Bool] = [:]
   private var inputContinuations: [UUID: @Sendable (InputEvent) -> Bool] = [:]
   private let queue = DispatchQueue(label: "com.kitlangton.Hex.KeyEventMonitor", attributes: .concurrent)
+  private let queueSpecificKey = DispatchSpecificKey<Void>()
   private var isMonitoring = false
   private var wantsMonitoring = false
   private var accessibilityTrusted = false
@@ -108,11 +109,30 @@ class KeyEventMonitorClientLive {
   private var systemEventObservers: [NSObjectProtocol] = []
   private var isFnPressed = false
   private var hasPromptedForAccessibilityTrust = false
+  private let accessibilityTrustProvider: @Sendable () -> Bool
+  private let accessibilityTrustPrompt: @Sendable () -> Bool
+  private let inputMonitoringTrustProvider: @Sendable () -> Bool
   @Shared(.hotkeyPermissionState) private var hotkeyPermissionState: HotkeyPermissionState
 
   private let trustCheckIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
 
-  init() {
+  init(
+    accessibilityTrustProvider: @escaping @Sendable () -> Bool = {
+      let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+      return AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary)
+    },
+    accessibilityTrustPrompt: @escaping @Sendable () -> Bool = {
+      let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+      return AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+    },
+    inputMonitoringTrustProvider: @escaping @Sendable () -> Bool = {
+      IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+    }
+  ) {
+    self.accessibilityTrustProvider = accessibilityTrustProvider
+    self.accessibilityTrustPrompt = accessibilityTrustPrompt
+    self.inputMonitoringTrustProvider = inputMonitoringTrustProvider
+    queue.setSpecific(key: queueSpecificKey, value: ())
     logger.info("Initializing HotKeyClient with CGEvent tap.")
     registerSystemEventObservers()
   }
@@ -126,7 +146,15 @@ class KeyEventMonitorClientLive {
   }
 
   private var hasHandlers: Bool {
-    queue.sync { !(continuations.isEmpty && inputContinuations.isEmpty) }
+    readState { !(continuations.isEmpty && inputContinuations.isEmpty) }
+  }
+
+  func readState<Value>(_ operation: () -> Value) -> Value {
+    // Handler registration performs permission checks from a barrier block on this queue.
+    if DispatchQueue.getSpecific(key: queueSpecificKey) != nil {
+      return operation()
+    }
+    return queue.sync(execute: operation)
   }
 
   private func setMonitoringIntent(_ value: Bool) {
@@ -141,7 +169,7 @@ class KeyEventMonitorClientLive {
     // flow, and tearing the tap down on that signal killed working hotkeys (#250). The tap only
     // needs Accessibility to exist; without Input Monitoring, macOS simply withholds key events
     // (modifiers still arrive), and creating the tap is what triggers the permission prompt.
-    queue.sync {
+    readState {
       wantsMonitoring
         && accessibilityTrusted
         && !(continuations.isEmpty && inputContinuations.isEmpty)
@@ -484,27 +512,27 @@ class KeyEventMonitorClientLive {
 
   private func processEvent<T>(
     _ event: T,
-    handlers: [UUID: @Sendable (T) -> Bool]
+    handlers: () -> [UUID: @Sendable (T) -> Bool]
   ) -> Bool {
-    let handlerList = queue.sync { Array(handlers.values) }
+    let handlerList = readState { Array(handlers().values) }
     return handlerList.reduce(false) { handled, handler in
       handler(event) || handled
     }
   }
 
   private func processKeyEvent(_ keyEvent: KeyEvent) -> Bool {
-    processEvent(keyEvent, handlers: continuations)
+    processEvent(keyEvent, handlers: { continuations })
   }
 
   private func processInputEvent(_ inputEvent: InputEvent) -> Bool {
-    processEvent(inputEvent, handlers: inputContinuations)
+    processEvent(inputEvent, handlers: { inputContinuations })
   }
 
   /// Records that an event was delivered to the tap. Key events are proof that Input
   /// Monitoring is genuinely granted even when `IOHIDCheckAccess` reports otherwise (#250).
   fileprivate func noteEventDelivered(type: CGEventType) {
     guard type == .keyDown || type == .keyUp else { return }
-    let alreadyProven = queue.sync { inputMonitoringProvenByEvents }
+    let alreadyProven = readState { inputMonitoringProvenByEvents }
     guard !alreadyProven else { return }
     queue.async(flags: .barrier) { [weak self] in
       self?.inputMonitoringProvenByEvents = true
@@ -562,22 +590,20 @@ extension KeyEventMonitorClientLive {
   }
 
   private func currentAccessibilityTrust() -> Bool {
-    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-    return AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary)
+    accessibilityTrustProvider()
   }
 
   private func requestAccessibilityTrustPrompt() -> Bool {
-    let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-    return AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+    accessibilityTrustPrompt()
   }
 
   private func currentInputMonitoringTrust() -> Bool {
-    if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted {
+    if inputMonitoringTrustProvider() {
       return true
     }
     // A stale TCC cache can report denied while key events demonstrably flow (#250);
     // trust the events over the check so the watchdog and settings UI stay honest.
-    return queue.sync { inputMonitoringProvenByEvents }
+    return readState { inputMonitoringProvenByEvents }
   }
 
   // Intentionally no request helper: creating the event tap prompts macOS 15+ for Input Monitoring
