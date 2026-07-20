@@ -76,10 +76,8 @@ actor SoundEffectsClientLive {
   @Shared(.hexSettings) var hexSettings: HexSettings
   private var playerNodes: [SoundEffect: AVAudioPlayerNode] = [:]
   private var audioBuffers: [SoundEffect: AVAudioPCMBuffer] = [:]
-  private var idleShutdownTask: Task<Void, Never>?
-  /// Comfortably longer than any sound effect, short enough that an idle Hex doesn't keep
-  /// an output IOProc (and coreaudiod) running around the clock (#209).
-  private static let idleShutdownDelay: Duration = .seconds(10)
+  private var activePlaybackTokens: [SoundEffect: UUID] = [:]
+  private var playbackTimeoutTasks: [SoundEffect: Task<Void, Never>] = [:]
 
   func play(_ soundEffect: SoundEffect) {
     guard hexSettings.soundEffectsEnabled else { return }
@@ -90,29 +88,59 @@ actor SoundEffectsClientLive {
     prepareEngineIfNeeded()
     let clampedVolume = min(max(hexSettings.soundEffectsVolume, 0), baselineVolume)
     player.volume = Float(clampedVolume)
+    let playbackToken = UUID()
+    activePlaybackTokens[soundEffect] = playbackToken
     player.stop()
-    player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+    player.scheduleBuffer(
+      buffer,
+      at: nil,
+      options: [],
+      completionCallbackType: .dataPlayedBack
+    ) { [weak self] _ in
+      Task {
+        await self?.playbackFinished(soundEffect, token: playbackToken)
+      }
+    }
     player.play()
-    scheduleIdleShutdown()
+
+    // The played-back callback is the normal shutdown path. Keep a short duration-based
+    // fallback in case a route change prevents AVAudioPlayerNode from delivering it.
+    playbackTimeoutTasks[soundEffect]?.cancel()
+    let playbackDuration = Double(buffer.frameLength) / buffer.format.sampleRate
+    playbackTimeoutTasks[soundEffect] = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(playbackDuration + 0.5))
+      guard !Task.isCancelled else { return }
+      await self?.playbackFinished(soundEffect, token: playbackToken)
+    }
   }
 
-  /// Stops the output engine shortly after playback so it doesn't run while idle.
-  /// Restarting it on the next play costs only a few milliseconds.
-  private func scheduleIdleShutdown() {
-    idleShutdownTask?.cancel()
-    idleShutdownTask = Task {
-      try? await Task.sleep(for: Self.idleShutdownDelay)
-      guard !Task.isCancelled else { return }
+  private func playbackFinished(_ soundEffect: SoundEffect, token: UUID) {
+    guard activePlaybackTokens[soundEffect] == token else { return }
+    playbackTimeoutTasks[soundEffect]?.cancel()
+    playbackTimeoutTasks[soundEffect] = nil
+    activePlaybackTokens[soundEffect] = nil
+    playerNodes[soundEffect]?.stop()
+    if activePlaybackTokens.isEmpty {
       stopEngineIfNeeded()
     }
   }
 
   func stop(_ soundEffect: SoundEffect) {
     playerNodes[soundEffect]?.stop()
+    playbackTimeoutTasks[soundEffect]?.cancel()
+    playbackTimeoutTasks[soundEffect] = nil
+    activePlaybackTokens[soundEffect] = nil
+    if activePlaybackTokens.isEmpty {
+      stopEngineIfNeeded()
+    }
   }
 
   func stopAll() {
     playerNodes.values.forEach { $0.stop() }
+    playbackTimeoutTasks.values.forEach { $0.cancel() }
+    playbackTimeoutTasks.removeAll()
+    activePlaybackTokens.removeAll()
+    stopEngineIfNeeded()
   }
 
   func preloadSounds() async {
@@ -128,12 +156,10 @@ actor SoundEffectsClientLive {
   func setEnabled(_: Bool) async {
     await preloadSounds()
 
-    // No prewarm on enable: play() starts the engine lazily, and an idle prewarm would
-    // just be shut down again by the idle timer.
+    // No prewarm on enable: play() starts the engine lazily and playback completion
+    // releases the output route again.
     if !hexSettings.soundEffectsEnabled {
       stopAll()
-      idleShutdownTask?.cancel()
-      stopEngineIfNeeded()
     }
   }
 
