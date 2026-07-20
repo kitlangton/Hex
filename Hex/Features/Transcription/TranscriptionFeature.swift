@@ -163,13 +163,13 @@ private extension TranscriptionFeature {
   func startHotKeyMonitoringEffect() -> Effect<Action> {
     .run { send in
       var hotKeyProcessor: HotKeyProcessor = .init(hotkey: HotKey(key: nil, modifiers: [.option]))
-      @Shared(.isSettingHotKey) var isSettingHotKey: Bool
+		@Shared(.hotKeyCaptureTarget) var hotKeyCaptureTarget: HotKeyCaptureTarget?
       @Shared(.hexSettings) var hexSettings: HexSettings
 
       // Handle incoming input events (keyboard and mouse)
       let token = keyEventMonitor.handleInputEvent { inputEvent in
         // Skip if the user is currently setting a hotkey
-        if isSettingHotKey {
+        if hotKeyCaptureTarget != nil {
           return false
         }
 
