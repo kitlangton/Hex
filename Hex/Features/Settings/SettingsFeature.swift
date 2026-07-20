@@ -80,6 +80,7 @@ struct SettingsFeature {
     case setDoubleTapLockEnabled(Bool)
     case setUseDoubleTapOnly(Bool)
     case setMinimumKeyTime(Double)
+    case setStopDelayMilliseconds(Int)
     case setOutputLanguage(String?)
     case setSelectedMicrophoneID(String?)
     case setSoundEffectsEnabled(Bool)
@@ -484,6 +485,10 @@ struct SettingsFeature {
 
       case let .setMinimumKeyTime(value):
         state.$hexSettings.withLock { $0.minimumKeyTime = value }
+        return .none
+
+      case let .setStopDelayMilliseconds(value):
+        state.$hexSettings.withLock { $0.stopDelayMilliseconds = max(0, value) }
         return .none
 
       case let .setOutputLanguage(language):
