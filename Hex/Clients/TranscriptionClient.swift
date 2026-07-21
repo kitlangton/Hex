@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import ComposableArchitecture
 import Dependencies
 import DependenciesMacros
 import Foundation
@@ -73,6 +74,12 @@ actor TranscriptionClientLive {
   /// The name of the currently loaded model, if any.
   private var currentModelName: String?
   private var parakeet: ParakeetClient = ParakeetClient()
+  private let appleSpeech = AppleSpeechClient()
+
+  /// Apple Speech resolves its locale from the user's Output Language setting;
+  /// reading settings directly is the established client pattern (see
+  /// RecordingClient, SoundEffect, PasteboardClient).
+  @Shared(.hexSettings) var hexSettings: HexSettings
 
   /// The base folder under which we store model data (e.g., ~/Library/Application Support/...).
   private lazy var modelsBaseFolder: URL = {
@@ -91,6 +98,12 @@ actor TranscriptionClientLive {
     // If Parakeet, use Parakeet client path
     if isParakeet(variant) {
       try await parakeet.ensureLoaded(modelName: variant, progress: progressCallback)
+      currentModelName = variant
+      return
+    }
+    // Apple Speech: "download" means installing OS-managed locale assets.
+    if isAppleSpeech(variant) {
+      try await appleSpeech.ensureModel(languagePreference: hexSettings.outputLanguage, progress: progressCallback)
       currentModelName = variant
       return
     }
@@ -145,6 +158,13 @@ actor TranscriptionClientLive {
       if currentModelName == variant { unloadCurrentModel() }
       return
     }
+    if isAppleSpeech(variant) {
+      // Apple Speech assets are managed by macOS (AssetInventory has no
+      // uninstall API); the UI hides Delete for this row, so this is
+      // defense in depth.
+      modelsLogger.info("Apple Speech assets are managed by macOS; nothing to delete")
+      return
+    }
     let modelFolder = modelPath(for: variant)
 
     // Check if the model exists
@@ -171,6 +191,11 @@ actor TranscriptionClientLive {
       let available = await parakeet.isModelAvailable(modelName)
       parakeetLogger.debug("Parakeet available? \(available)")
       return available
+    }
+    if isAppleSpeech(modelName) {
+      // "Downloaded" = assets for the locale resolved from the current
+      // Output Language setting are installed on-device.
+      return await appleSpeech.isModelInstalled(languagePreference: hexSettings.outputLanguage)
     }
     let modelFolderPath = modelPath(for: modelName).path
     let fileManager = FileManager.default
@@ -215,6 +240,12 @@ actor TranscriptionClientLive {
       if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
     }
     #endif
+    // Offer Apple Speech only when the engine reports itself usable
+    // (macOS 26+, supported hardware, built with the macOS 26 SDK). The UI
+    // keys the row's visibility off this list.
+    if await appleSpeech.isSupported(), !names.contains(AppleSpeechModel.system.identifier) {
+      names.insert(AppleSpeechModel.system.identifier, at: 0)
+    }
     return names
   }
 
@@ -228,6 +259,15 @@ actor TranscriptionClientLive {
     progressCallback: @escaping (Progress) -> Void
   ) async throws -> String {
     let startAll = Date()
+    if isAppleSpeech(model) {
+      transcriptionLogger.notice("Transcribing with Apple Speech model=\(model) file=\(url.lastPathComponent)")
+      // Language rides in on the caller's DecodingOptions; assets are ensured
+      // inside the client, so no separate load step is needed.
+      let text = try await appleSpeech.transcribe(url: url, languagePreference: options.language, progress: progressCallback)
+      currentModelName = model
+      transcriptionLogger.info("Apple Speech request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
+      return text
+    }
     if isParakeet(model) {
       transcriptionLogger.notice("Transcribing with Parakeet model=\(model) file=\(url.lastPathComponent)")
       let startLoad = Date()
@@ -299,6 +339,10 @@ actor TranscriptionClientLive {
 
   private func isParakeet(_ name: String) -> Bool {
     ParakeetModel(rawValue: name) != nil
+  }
+
+  private func isAppleSpeech(_ name: String) -> Bool {
+    AppleSpeechModel(rawValue: name) != nil
   }
 
   /// Creates or returns the local folder (on disk) for a given `variant` model.
