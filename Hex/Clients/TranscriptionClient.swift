@@ -101,7 +101,7 @@ actor TranscriptionClientLive {
       currentModelName = variant
       return
     }
-    // Apple Speech: "download" means installing OS-managed locale assets.
+    // Apple Speech: "download" means installing OS-managed locale assets (#255).
     if isAppleSpeech(variant) {
       try await appleSpeech.ensureModel(languagePreference: hexSettings.outputLanguage, progress: progressCallback)
       currentModelName = variant
