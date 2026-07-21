@@ -488,7 +488,9 @@ struct SettingsFeature {
 
       case let .setOutputLanguage(language):
         state.$hexSettings.withLock { $0.outputLanguage = language }
-        return .none
+        // Apple Speech's installed-state is per-locale (OS-managed asset
+        // packs), so refresh the model list to reflect the new language.
+        return .send(.modelDownload(.fetchModels))
 
       case let .setSelectedMicrophoneID(deviceID):
         state.$hexSettings.withLock { $0.selectedMicrophoneID = deviceID }

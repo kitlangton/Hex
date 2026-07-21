@@ -120,6 +120,128 @@ final class ModelDownloadFeatureTests: XCTestCase {
     await store.skipInFlightEffects()
   }
 
+  // MARK: – Apple Speech (SpeechAnalyzer) row
+
+  func testFilterForPlatformDropsAppleSpeechOnOlderOS() {
+    let models = [makeAppleSpeechCuratedInfo(), makeParakeetCuratedInfo()]
+
+    let filtered = CuratedModelLoader.filterForPlatform(models, osSupportsAppleSpeech: false)
+    XCTAssertFalse(filtered.contains(where: \.isAppleSpeech))
+    XCTAssertTrue(filtered.contains(where: \.isParakeet))
+
+    let kept = CuratedModelLoader.filterForPlatform(models, osSupportsAppleSpeech: true)
+    XCTAssertTrue(kept.contains(where: \.isAppleSpeech))
+  }
+
+  func testModelsLoadedDropsAppleRowWhenEngineUnsupported() async {
+    // The engine advertises itself by injecting its identifier into the
+    // available list; when absent (old hardware, Xcode 16 build), the curated
+    // row must disappear.
+    let state = makeState(selectedModel: ParakeetModel.multilingualV3.identifier)
+
+    let store = TestStore(initialState: state) {
+      ModelDownloadFeature()
+    }
+    store.exhaustivity = .off
+
+    await store.send(.modelsLoaded(
+      recommended: "",
+      available: [ModelInfo(name: ParakeetModel.multilingualV3.identifier, isDownloaded: true)]
+    ))
+
+    XCTAssertFalse(store.state.curatedModels.contains(where: \.isAppleSpeech))
+  }
+
+  func testModelsLoadedKeepsAppleRowAndMergesInstalledState() async throws {
+    // Requires the bundled apple row, which CuratedModelLoader filters out on
+    // hosts older than macOS 26.
+    guard #available(macOS 26.0, *) else {
+      throw XCTSkip("Apple Speech curated row only exists on macOS 26+")
+    }
+    let state = makeState(selectedModel: ParakeetModel.multilingualV3.identifier)
+
+    let store = TestStore(initialState: state) {
+      ModelDownloadFeature()
+    }
+    store.exhaustivity = .off
+
+    await store.send(.modelsLoaded(
+      recommended: "",
+      available: [ModelInfo(name: AppleSpeechModel.system.identifier, isDownloaded: true)]
+    ))
+
+    let appleRow = store.state.curatedModels.first(where: \.isAppleSpeech)
+    XCTAssertNotNil(appleRow)
+    XCTAssertTrue(appleRow?.isDownloaded == true)
+  }
+
+  func testAppleSelectionSurvivesMissingLocaleAssets() async throws {
+    // When Apple Speech is selected and its row is present, "not downloaded"
+    // only means the current language's locale pack is missing — the engine
+    // selection must not silently switch to another installed model.
+    guard #available(macOS 26.0, *) else {
+      throw XCTSkip("Apple Speech curated row only exists on macOS 26+")
+    }
+    let state = makeState(selectedModel: AppleSpeechModel.system.identifier)
+
+    let store = TestStore(initialState: state) {
+      ModelDownloadFeature()
+    }
+    store.exhaustivity = .off
+
+    await store.send(.modelsLoaded(
+      recommended: "",
+      available: [
+        ModelInfo(name: AppleSpeechModel.system.identifier, isDownloaded: false),
+        ModelInfo(name: ParakeetModel.multilingualV3.identifier, isDownloaded: true),
+      ]
+    ))
+
+    XCTAssertEqual(store.state.hexSettings.selectedModel, AppleSpeechModel.system.identifier)
+  }
+
+  func testAppleSelectionAutoSwitchesWhenEngineAbsent() async {
+    // OS downgrade / unsupported hardware: the persisted apple selection heals
+    // to an installed local model via the existing fallback logic.
+    let state = makeState(selectedModel: AppleSpeechModel.system.identifier)
+
+    let store = TestStore(initialState: state) {
+      ModelDownloadFeature()
+    }
+    store.exhaustivity = .off
+
+    await store.send(.modelsLoaded(
+      recommended: "",
+      available: [ModelInfo(name: ParakeetModel.multilingualV3.identifier, isDownloaded: true)]
+    ))
+
+    XCTAssertEqual(store.state.hexSettings.selectedModel, ParakeetModel.multilingualV3.identifier)
+  }
+
+  private func makeAppleSpeechCuratedInfo(isDownloaded: Bool = false) -> CuratedModelInfo {
+    CuratedModelInfo(
+      displayName: "Apple Speech",
+      internalName: AppleSpeechModel.system.identifier,
+      size: "Multilingual",
+      accuracyStars: 4,
+      speedStars: 5,
+      storageSize: "Managed by macOS",
+      isDownloaded: isDownloaded
+    )
+  }
+
+  private func makeParakeetCuratedInfo() -> CuratedModelInfo {
+    CuratedModelInfo(
+      displayName: "Parakeet TDT v3",
+      internalName: ParakeetModel.multilingualV3.identifier,
+      size: "Multilingual",
+      accuracyStars: 5,
+      speedStars: 5,
+      storageSize: "650MB",
+      isDownloaded: false
+    )
+  }
+
   private func makeState(selectedModel: String) -> ModelDownloadFeature.State {
     var settings = HexSettings()
     settings.selectedModel = selectedModel
