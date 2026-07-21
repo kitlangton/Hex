@@ -55,6 +55,16 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 		parakeetModel != nil
 	}
 
+	var isAppleSpeech: Bool {
+		AppleSpeechModel(rawValue: internalName) != nil
+	}
+
+	/// Apple Speech assets are OS-managed: there is no Finder location to show
+	/// and AssetInventory offers no uninstall API, so the UI hides both.
+	var supportsLocalFileManagement: Bool {
+		!isAppleSpeech
+	}
+
 	public init(
 		displayName: String,
 		internalName: String,
@@ -88,7 +98,8 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 }
 
 // Convenience helper for loading the bundled models.json once.
-private enum CuratedModelLoader {
+// (Internal rather than private so tests can exercise the platform filter.)
+enum CuratedModelLoader {
 	private static let bundledModels: [CuratedModelInfo] = {
 		guard let url = Bundle.main.url(forResource: "models", withExtension: "json") ??
 			Bundle.main.url(forResource: "models", withExtension: "json", subdirectory: "Data")
@@ -100,8 +111,21 @@ private enum CuratedModelLoader {
 		catch { assertionFailure("Failed to decode models.json - \(error)"); return [] }
 	}()
 
+	/// Drops curated rows whose engine cannot exist on this OS: Apple Speech
+	/// requires macOS 26+, so on older systems the row never appears (not even
+	/// for a frame — this runs at State init).
+	static func filterForPlatform(_ models: [CuratedModelInfo], osSupportsAppleSpeech: Bool) -> [CuratedModelInfo] {
+		osSupportsAppleSpeech ? models : models.filter { !$0.isAppleSpeech }
+	}
+
 	static func load() -> [CuratedModelInfo] {
-		bundledModels
+		let osSupportsAppleSpeech: Bool
+		if #available(macOS 26.0, *) {
+			osSupportsAppleSpeech = true
+		} else {
+			osSupportsAppleSpeech = false
+		}
+		return filterForPlatform(bundledModels, osSupportsAppleSpeech: osSupportsAppleSpeech)
 	}
 }
 
@@ -326,13 +350,28 @@ public struct ModelDownloadFeature {
 					curated[idx].isDownloaded = false
 				}
 			}
+			// Apple Speech is only offered when the engine reported itself usable
+			// (macOS 26+ on capable hardware, built with the macOS 26 SDK) — its
+			// identifier's presence in the available list is that signal.
+			curated.removeAll { model in
+				model.isAppleSpeech && !available.contains(where: { $0.name == AppleSpeechModel.system.identifier })
+			}
 			state.curatedModels = IdentifiedArrayOf(uniqueElements: curated)
 			// If the selection isn't installed but another model is, switch to the
 			// installed one so transcription keeps working. Never clear the user's
 			// selection outright: availability scans can produce false negatives
 			// (e.g. after a dependency changes its cache layout), and wiping the
 			// setting turns a transient glitch into a permanent silent failure.
+			//
+			// Apple Speech exception: when its row is present, "not downloaded"
+			// only means the current language's locale pack is missing — the user
+			// should see the Download prompt, not have their engine silently
+			// switched. When the row is absent (OS downgrade, unsupported
+			// hardware), the normal healing below still applies.
+			let appleSpeechSelectionPresent = AppleSpeechModel(rawValue: state.selectedModel) != nil
+				&& state.curatedModels.contains(where: \.isAppleSpeech)
 			if !state.selectedModelIsDownloaded,
+			   !appleSpeechSelectionPresent,
 			   let installedModel = state.curatedModels.first(where: \.isDownloaded)
 			{
 				let fallback = resolvePattern(installedModel.internalName, from: Array(state.availableModels)) ?? installedModel.internalName
