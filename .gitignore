@@ -21,3 +21,7 @@ node_modules/
 
 # Claude
 .claude/
+
+# Test artifacts
+test_audio/
+

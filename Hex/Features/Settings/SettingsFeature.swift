@@ -75,6 +75,7 @@ struct SettingsFeature {
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
     case toggleSuperFastMode(Bool)
+    case toggleParallelMode(Bool)
     case setUseClipboardPaste(Bool)
     case setCopyToClipboard(Bool)
     case setDoubleTapLockEnabled(Bool)
@@ -484,6 +485,10 @@ struct SettingsFeature {
 
       case let .setMinimumKeyTime(value):
         state.$hexSettings.withLock { $0.minimumKeyTime = value }
+        return .none
+
+      case let .toggleParallelMode(enabled):
+        state.$hexSettings.withLock { $0.transcribeMode = enabled ? .parallel : .default }
         return .none
 
       case let .setOutputLanguage(language):

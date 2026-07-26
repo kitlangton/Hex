@@ -83,6 +83,19 @@ struct GeneralSectionView: View {
 			}
 
 			Label {
+				Toggle(
+					"Parallel Mode",
+					isOn: Binding(
+						get: { store.hexSettings.transcribeMode == .parallel },
+						set: { store.send(.toggleParallelMode($0)) }
+					)
+				)
+				Text("Process Whisper audio in parallel 30s chunks across Neural Engine and GPU cores for up to 10x faster transcription.")
+			} icon: {
+				Image(systemName: "cpu")
+			}
+
+			Label {
 				HStack(alignment: .center) {
 					Text("Audio Behavior while Recording")
 				Spacer()

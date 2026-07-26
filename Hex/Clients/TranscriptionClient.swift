@@ -164,7 +164,7 @@ actor TranscriptionClientLive {
     modelsLogger.info("Deleted model \(variant)")
   }
 
-  /// Returns `true` if the model is already downloaded to the local folder.
+  /// Returns `true` if the model is already downloaded to local application support or Documents folder.
   /// Performs a thorough check to ensure the model files are actually present and usable.
   func isModelDownloaded(_ modelName: String) async -> Bool {
     if isParakeet(modelName) {
@@ -172,34 +172,28 @@ actor TranscriptionClientLive {
       parakeetLogger.debug("Parakeet available? \(available)")
       return available
     }
-    let modelFolderPath = modelPath(for: modelName).path
     let fileManager = FileManager.default
 
-    // First, check if the basic model directory exists
-    guard fileManager.fileExists(atPath: modelFolderPath) else {
-      // Don't print logs that would spam the console
-      return false
-    }
+    for candidate in modelCandidatePaths(for: modelName) {
+      let modelFolderPath = candidate.path
+      guard fileManager.fileExists(atPath: modelFolderPath) else { continue }
 
-    do {
-      // Check if the directory has actual model files in it
-      let contents = try fileManager.contentsOfDirectory(atPath: modelFolderPath)
+      do {
+        let contents = try fileManager.contentsOfDirectory(atPath: modelFolderPath)
+        guard !contents.isEmpty else { continue }
 
-      // Model should have multiple files and certain key components
-      guard !contents.isEmpty else {
-        return false
+        let hasModelFiles = contents.contains { $0.hasSuffix(".mlmodelc") || $0.contains("model") || $0 == "config.json" }
+        let tokenizerFolderPath = candidate.appendingPathComponent("tokenizer", isDirectory: true).path
+        let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolderPath) || contents.contains(where: { $0.contains("tokenizer") })
+
+        if hasModelFiles && hasTokenizer {
+          return true
+        }
+      } catch {
+        continue
       }
-
-      // Check for specific model structure - need both tokenizer and model files
-      let hasModelFiles = contents.contains { $0.hasSuffix(".mlmodelc") || $0.contains("model") }
-      let tokenizerFolderPath = tokenizerPath(for: modelName).path
-      let hasTokenizer = fileManager.fileExists(atPath: tokenizerFolderPath)
-
-      // Both conditions must be true for a model to be considered downloaded
-      return hasModelFiles && hasTokenizer
-    } catch {
-      return false
     }
+    return false
   }
 
   /// Returns a list of recommended models based on current device hardware.
@@ -207,14 +201,48 @@ actor TranscriptionClientLive {
     await WhisperKit.recommendedRemoteModels()
   }
 
-  /// Lists all model variants available in the `argmaxinc/whisperkit-coreml` repository.
+  /// Lists all model variants available in remote repository plus local models in App Support and Documents.
   func getAvailableModels() async throws -> [String] {
-    var names = try await WhisperKit.fetchAvailableModels()
+    var names = (try? await WhisperKit.fetchAvailableModels()) ?? []
     #if canImport(FluidAudio)
     for model in ParakeetModel.allCases.reversed() {
       if !names.contains(model.identifier) { names.insert(model.identifier, at: 0) }
     }
     #endif
+
+    let fm = FileManager.default
+    var scanDirectories: [URL] = []
+
+    if let baseDir = try? URL.hexModelsDirectory.appendingPathComponent("argmaxinc/whisperkit-coreml", isDirectory: true) {
+      scanDirectories.append(baseDir)
+    }
+
+    let docsURL = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+    if let docsURL {
+      scanDirectories.append(docsURL.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml", isDirectory: true))
+      scanDirectories.append(docsURL.appendingPathComponent("models/argmaxinc/whisperkit-coreml", isDirectory: true))
+      scanDirectories.append(docsURL.appendingPathComponent("models", isDirectory: true))
+      scanDirectories.append(docsURL)
+    }
+
+    for dir in scanDirectories {
+      guard let subdirs = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { continue }
+      for subdir in subdirs {
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: subdir.path, isDirectory: &isDir), isDir.boolValue {
+          let folderName = subdir.lastPathComponent
+          if folderName != "argmaxinc" && folderName != "whisperkit-coreml" && folderName != "huggingface" && folderName != "models" {
+            if let contents = try? fm.contentsOfDirectory(atPath: subdir.path),
+               contents.contains(where: { $0.hasSuffix(".mlmodelc") || $0.contains("model") || $0 == "tokenizer" || $0 == "config.json" }) {
+              if !names.contains(folderName) {
+                names.append(folderName)
+              }
+            }
+          }
+        }
+      }
+    }
+
     return names
   }
 
@@ -234,13 +262,13 @@ actor TranscriptionClientLive {
       try await downloadAndLoadModel(variant: model) { p in
         progressCallback(p)
       }
-      transcriptionLogger.info("Parakeet ensureLoaded took \(String(format: "%.2f", Date().timeIntervalSince(startLoad)))s")
+      transcriptionLogger.info("Parakeet ensureLoaded took \(String(format: "%.2f", Date().timeIntervalSince(startLoad)), privacy: .public)s")
       let preparedClip = try ParakeetClipPreparer.ensureMinimumDuration(url: url, logger: parakeetLogger)
       defer { preparedClip.cleanup() }
       let startTx = Date()
       let text = try await parakeet.transcribe(preparedClip.url)
-      transcriptionLogger.info("Parakeet transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
-      transcriptionLogger.info("Parakeet request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
+      transcriptionLogger.info("Parakeet transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)), privacy: .public)s")
+      transcriptionLogger.info("Parakeet request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)), privacy: .public)s")
       return text
     }
     let model = await resolveVariant(model)
@@ -253,7 +281,7 @@ actor TranscriptionClientLive {
         progressCallback(p)
       }
       let loadDuration = Date().timeIntervalSince(startLoad)
-      transcriptionLogger.info("WhisperKit ensureLoaded model=\(model) took \(String(format: "%.2f", loadDuration))s")
+      transcriptionLogger.info("WhisperKit ensureLoaded model=\(model, privacy: .public) took \(String(format: "%.2f", loadDuration), privacy: .public)s")
     }
 
     guard let whisperKit = whisperKit else {
@@ -266,16 +294,145 @@ actor TranscriptionClientLive {
       )
     }
 
-    // Perform the transcription.
-    transcriptionLogger.notice("Transcribing with WhisperKit model=\(model) file=\(url.lastPathComponent)")
+    // Check if parallel mode is requested via concurrentWorkerCount > 0
+    let useParallel = options.concurrentWorkerCount > 0
+    let audioLen = try await audioDuration(of: url)
+
+    if useParallel {
+      transcriptionLogger.notice("Using parallel chunked transcription for model=\(model, privacy: .public) file=\(url.lastPathComponent, privacy: .public) duration=\(String(format: "%.1f", audioLen), privacy: .public)s")
+      let text = try await transcribeParallel(whisperKit: whisperKit, url: url, model: model, options: options)
+      transcriptionLogger.info("Parallel transcription total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)), privacy: .public)s")
+      return text
+    }
+
+    // Standard transcription path.
+    transcriptionLogger.notice("Transcribing with WhisperKit model=\(model, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
     let startTx = Date()
     let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)
-    transcriptionLogger.info("WhisperKit transcription took \(String(format: "%.2f", Date().timeIntervalSince(startTx)))s")
-    transcriptionLogger.info("WhisperKit request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)))s")
+    let txDuration = Date().timeIntervalSince(startTx)
+    transcriptionLogger.info("WhisperKit transcription took \(String(format: "%.2f", txDuration), privacy: .public)s for \(String(format: "%.1f", audioLen), privacy: .public)s audio (realtime=\(String(format: "%.1f", audioLen/txDuration), privacy: .public)x)")
+    transcriptionLogger.info("WhisperKit request total elapsed \(String(format: "%.2f", Date().timeIntervalSince(startAll)), privacy: .public)s")
 
-    // Concatenate results from all segments.
     let text = results.map(\.text).joined(separator: " ")
     return text
+  }
+
+  /// Splits audio into chunks and transcribes them concurrently using WhisperKit's existing pipeline.
+  private func transcribeParallel(
+    whisperKit: WhisperKit,
+    url: URL,
+    model: String,
+    options: DecodingOptions
+  ) async throws -> String {
+    // Load audio into memory
+    let loadStart = Date()
+    let audioArray = try await loadAudioArray(from: url)
+    let loadTime = Date().timeIntervalSince(loadStart)
+    let totalSamples = audioArray.count
+    let sampleRate = WhisperKit.sampleRate
+    let totalDuration = Double(totalSamples) / Double(sampleRate)
+    transcriptionLogger.info("Parallel: audio load took \(String(format: "%.3f", loadTime), privacy: .public)s for \(String(format: "%.1f", totalDuration), privacy: .public)s audio")
+
+    // Split into fixed 30s chunks
+    let chunkSec = 30
+    let chunkSamples = chunkSec * sampleRate
+    var chunks: [[Float]] = []
+    var offset = 0
+    while offset < totalSamples {
+      let end = min(offset + chunkSamples, totalSamples)
+      let chunk = Array(audioArray[offset..<end])
+      chunks.append(chunk)
+      offset = end
+    }
+    let numChunks = chunks.count
+    transcriptionLogger.info("Parallel: split into \(numChunks, privacy: .public) chunks of \(chunkSec, privacy: .public)s each")
+
+    // Use WhisperKit's built-in concurrent transcription for robustness
+    let txStart = Date()
+    var chunkOptions = options
+    // Disable VAD chunking since we pre-split, no timestamps for pure text
+    chunkOptions.chunkingStrategy = .none
+    chunkOptions.clipTimestamps = []
+    chunkOptions.verbose = false
+
+    let results = await whisperKit.transcribeWithResults(
+      audioArrays: chunks,
+      decodeOptions: chunkOptions,
+      callback: nil
+    )
+
+    let totalTxTime = Date().timeIntervalSince(txStart)
+
+    var texts: [String] = []
+    var successCount = 0
+    for result in results {
+      switch result {
+      case .success(let transcriptionResults):
+        let text = transcriptionResults.map(\.text).joined(separator: " ")
+        texts.append(text)
+        successCount += 1
+      case .failure(let error):
+        transcriptionLogger.error("Parallel: chunk failed: \(error.localizedDescription)")
+        texts.append("")
+      }
+    }
+
+    let realtimeFactor = totalDuration / totalTxTime
+    transcriptionLogger.notice("Parallel: \(successCount, privacy: .public)/\(numChunks, privacy: .public) chunks OK in \(String(format: "%.3f", totalTxTime), privacy: .public)s for \(String(format: "%.1f", totalDuration), privacy: .public)s audio (realtime=\(String(format: "%.1f", realtimeFactor), privacy: .public)x)")
+    transcriptionLogger.info("Parallel: naive sequential estimate ~\(String(format: "%.1f", totalTxTime * Double(numChunks) / Double(ProcessInfo.processInfo.activeProcessorCount)), privacy: .public)s (assuming \(ProcessInfo.processInfo.activeProcessorCount, privacy: .public) cores)")
+
+    return texts.joined(separator: " ")
+  }
+
+  /// Loads audio file into a float array, returns 16kHz mono PCM.
+  private func loadAudioArray(from url: URL) async throws -> [Float] {
+    let audioFile = try AVAudioFile(forReading: url)
+    let format = audioFile.processingFormat
+    let frameCount = UInt32(audioFile.length)
+    guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+      throw NSError(domain: "TranscriptionClient", code: -5, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio buffer"])
+    }
+    try audioFile.read(into: buffer)
+
+    let srcRate = Float(format.sampleRate)
+    let targetRate = Float(WhisperKit.sampleRate)
+
+    if format.commonFormat == .pcmFormatFloat32 {
+      let samples = Array(UnsafeBufferPointer(start: buffer.floatChannelData?[0], count: Int(buffer.frameLength)))
+      if srcRate != targetRate {
+        return resample(samples, from: srcRate, to: targetRate)
+      }
+      return samples
+    } else if format.commonFormat == .pcmFormatInt16 {
+      let intSamples = Array(UnsafeBufferPointer(start: buffer.int16ChannelData?[0], count: Int(buffer.frameLength)))
+      let samples = intSamples.map { Float($0) / Float(Int16.max) }
+      if srcRate != targetRate {
+        return resample(samples, from: srcRate, to: targetRate)
+      }
+      return samples
+    }
+    throw NSError(domain: "TranscriptionClient", code: -6, userInfo: [NSLocalizedDescriptionKey: "Unsupported audio format"])
+  }
+
+  /// Simple linear resampling
+  private func resample(_ samples: [Float], from srcRate: Float, to dstRate: Float) -> [Float] {
+    let ratio = srcRate / dstRate
+    let outLen = Int(Float(samples.count) / ratio)
+    var out = [Float](repeating: 0, count: outLen)
+    for i in 0..<outLen {
+      let srcIdx = Float(i) * ratio
+      let lo = Int(srcIdx)
+      let hi = min(lo + 1, samples.count - 1)
+      let frac = srcIdx - Float(lo)
+      out[i] = samples[lo] * (1 - frac) + samples[hi] * frac
+    }
+    return out
+  }
+
+  /// Returns audio duration in seconds.
+  private func audioDuration(of url: URL) async throws -> TimeInterval {
+    let audioFile = try AVAudioFile(forReading: url)
+    return TimeInterval(audioFile.length) / audioFile.processingFormat.sampleRate
   }
 
   // MARK: - Private Helpers
@@ -301,11 +458,39 @@ actor TranscriptionClientLive {
     ParakeetModel(rawValue: name) != nil
   }
 
+  private func modelCandidatePaths(for variant: String) -> [URL] {
+    let sanitizedVariant = variant.components(separatedBy: CharacterSet(charactersIn: "./\\")).joined(separator: "_")
+    var candidates: [URL] = []
+
+    // 1. Application Support default models directory
+    candidates.append(
+      modelsBaseFolder
+        .appendingPathComponent("argmaxinc")
+        .appendingPathComponent("whisperkit-coreml")
+        .appendingPathComponent(sanitizedVariant, isDirectory: true)
+    )
+
+    // 2. ~/Documents directory & subpaths
+    let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    if let docsURL {
+      candidates.append(docsURL.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/\(sanitizedVariant)", isDirectory: true))
+      candidates.append(docsURL.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(sanitizedVariant)", isDirectory: true))
+      candidates.append(docsURL.appendingPathComponent("models/\(sanitizedVariant)", isDirectory: true))
+      candidates.append(docsURL.appendingPathComponent(sanitizedVariant, isDirectory: true))
+    }
+
+    return candidates
+  }
+
   /// Creates or returns the local folder (on disk) for a given `variant` model.
   private func modelPath(for variant: String) -> URL {
-    // Remove any possible path traversal or invalid characters from variant name
+    let fm = FileManager.default
+    for candidate in modelCandidatePaths(for: variant) {
+      if fm.fileExists(atPath: candidate.path) {
+        return candidate
+      }
+    }
     let sanitizedVariant = variant.components(separatedBy: CharacterSet(charactersIn: "./\\")).joined(separator: "_")
-
     return modelsBaseFolder
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")

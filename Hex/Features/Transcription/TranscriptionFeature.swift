@@ -337,7 +337,7 @@ private extension TranscriptionFeature {
     let minimumKeyTime = state.hexSettings.minimumKeyTime
     let hotkeyHasKey = state.hexSettings.hotkey.key != nil
     transcriptionFeatureLogger.notice(
-      "Recording stopped duration=\(String(format: "%.3f", duration))s start=\(startStamp) stop=\(stopStamp) decision=\(String(describing: decision)) minimumKeyTime=\(String(format: "%.2f", minimumKeyTime)) hotkeyHasKey=\(hotkeyHasKey)"
+      "Recording stopped duration=\(String(format: "%.3f", duration), privacy: .public)s start=\(startStamp, privacy: .public) stop=\(stopStamp, privacy: .public) decision=\(String(describing: decision), privacy: .public) minimumKeyTime=\(String(format: "%.2f", minimumKeyTime), privacy: .public) hotkeyHasKey=\(hotkeyHasKey, privacy: .public)"
     )
 
     guard decision == .proceedToTranscription else {
@@ -365,6 +365,7 @@ private extension TranscriptionFeature {
     state.isTranscribing = true
     state.error = nil
     let language = state.hexSettings.outputLanguage
+    let isParallelMode = state.hexSettings.transcribeMode == .parallel
 
     state.isPrewarming = true
 
@@ -407,12 +408,13 @@ private extension TranscriptionFeature {
           let decodeOptions = DecodingOptions(
             language: language,
             detectLanguage: language == nil, // Only auto-detect if no language specified
-            chunkingStrategy: .vad,
+            concurrentWorkerCount: isParallelMode ? 8 : 0,
+            chunkingStrategy: .vad
           )
 
           let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
 
-          transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
+          transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent, privacy: .public) to text length \(result.count, privacy: .public)")
           audioURL = nil
           await send(.transcriptionResult(result, capturedURL, duration))
         } catch {
