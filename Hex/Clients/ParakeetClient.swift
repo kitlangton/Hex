@@ -59,26 +59,18 @@ actor ParakeetClient {
     p.completedUnitCount = 1
     progress(p)
 
-    // Best-effort progress polling while FluidAudio downloads
-    let fm = FileManager.default
-    let support = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-    let faDir = support?.appendingPathComponent("FluidAudio/Models/\(variant.identifier)", isDirectory: true)
-    let pollTask = Task {
-      while p.completedUnitCount < 95 {
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        if let dir = faDir, let size = directorySize(dir) {
-          let target: Double = 650 * 1024 * 1024 // ~650MB
-          let frac = max(0.0, min(1.0, Double(size) / target))
-          p.completedUnitCount = Int64(5 + frac * 90)
-          progress(p)
-        }
-        if Task.isCancelled { break }
+    // Use FluidAudio's byte-weighted progress. Polling the cache directory
+    // size doesn't work: files are downloaded to a temporary location and
+    // only moved into the cache once each completes, so the bar sat at 5%
+    // until the ~600MB encoder landed. FluidAudio re-emits a 0–1 range per
+    // internal stage (download, per-model compile), so only move forward.
+    let models = try await AsrModels.downloadAndLoad(version: variant.asrVersion) { downloadProgress in
+      let mapped = Int64((downloadProgress.fractionCompleted * 98).rounded()) + 1
+      if mapped > p.completedUnitCount, mapped < 100 {
+        p.completedUnitCount = mapped
+        progress(p)
       }
     }
-    defer { pollTask.cancel() }
-
-    // Download + load the requested variant (returns when all assets are present)
-    let models = try await AsrModels.downloadAndLoad(version: variant.asrVersion)
     self.models = models
     let manager = AsrManager(config: .init(), models: models)
     self.asr = manager
@@ -86,18 +78,6 @@ actor ParakeetClient {
     p.completedUnitCount = 100
     progress(p)
     logger.notice("Parakeet ensureLoaded completed in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
-  }
-
-  private func directorySize(_ dir: URL) -> UInt64? {
-    let fm = FileManager.default
-    guard let en = fm.enumerator(at: dir, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: .skipsHiddenFiles) else { return nil }
-    var total: UInt64 = 0
-    for case let url as URL in en {
-      if let vals = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), vals.isRegularFile == true {
-        total &+= UInt64(vals.fileSize ?? 0)
-      }
-    }
-    return total
   }
 
   private func migrateLegacyCacheIfNeeded(_ variant: ParakeetModel, to directory: URL) {
