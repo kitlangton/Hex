@@ -187,6 +187,19 @@ struct WordRemappingsView: View {
 						)
 					)
 					.toggleStyle(.switch)
+
+					Divider()
+						.frame(height: 22)
+
+					Toggle(
+						"Remove trailing punctuation",
+						isOn: Binding(
+							get: { store.hexSettings.removeTrailingPunctuation },
+							set: { store.send(.setRemoveTrailingPunctuation($0)) }
+						)
+					)
+					.toggleStyle(.switch)
+					.disabled(store.hexSettings.removePunctuation)
 					Spacer()
 				}
 				.padding(.vertical, 4)
@@ -253,7 +266,8 @@ struct WordRemappingsView: View {
 		output = TranscriptFormattingApplier.apply(
 			output,
 			lowercase: store.hexSettings.lowercaseTranscripts,
-			removePunctuation: store.hexSettings.removePunctuation
+			removePunctuation: store.hexSettings.removePunctuation,
+			removeTrailingPunctuation: store.hexSettings.removeTrailingPunctuation
 		)
 		return output
 	}

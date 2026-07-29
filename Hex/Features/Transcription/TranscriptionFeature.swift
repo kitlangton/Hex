@@ -480,7 +480,8 @@ private extension TranscriptionFeature {
       let formattedResult = TranscriptFormattingApplier.apply(
         remappedResult,
         lowercase: state.hexSettings.lowercaseTranscripts,
-        removePunctuation: state.hexSettings.removePunctuation
+        removePunctuation: state.hexSettings.removePunctuation,
+        removeTrailingPunctuation: state.hexSettings.removeTrailingPunctuation
       )
       if formattedResult != remappedResult {
         transcriptionFeatureLogger.info("Applied paste formatting")

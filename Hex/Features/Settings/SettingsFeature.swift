@@ -115,6 +115,7 @@ struct SettingsFeature {
     case setRemappingScratchpadFocused(Bool)
     case setLowercaseTranscripts(Bool)
     case setRemovePunctuation(Bool)
+    case setRemoveTrailingPunctuation(Bool)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -409,6 +410,10 @@ struct SettingsFeature {
 
       case let .setRemovePunctuation(enabled):
         state.$hexSettings.withLock { $0.removePunctuation = enabled }
+        return .none
+
+      case let .setRemoveTrailingPunctuation(enabled):
+        state.$hexSettings.withLock { $0.removeTrailingPunctuation = enabled }
         return .none
 
       case .startSettingPasteLastTranscriptHotkey:
