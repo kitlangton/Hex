@@ -48,9 +48,11 @@ struct TranscriptionFeature {
     // Cancel/discard flow
     case cancel   // Explicit cancellation with sound
     case discard  // Silent discard (too short/accidental)
+    case escapeTranscribe  // ESC pressed with "transcribe" behavior: save but don't paste
 
     // Transcription result flow
     case transcriptionResult(String, URL, TimeInterval)
+    case transcriptionResultWithoutPaste(String, URL, TimeInterval)
     case transcriptionError(Error, URL?)
 
     // Model availability
@@ -118,7 +120,10 @@ struct TranscriptionFeature {
       // MARK: - Transcription Results
 
       case let .transcriptionResult(result, audioURL, duration):
-        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration)
+        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration, shouldPaste: true)
+
+      case let .transcriptionResultWithoutPaste(result, audioURL, duration):
+        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration, shouldPaste: false)
 
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
@@ -134,6 +139,13 @@ struct TranscriptionFeature {
           return .none
         }
         return handleCancel(&state)
+
+      case .escapeTranscribe:
+        // ESC with "transcribe" behavior: never interrupt a take already being transcribed.
+        guard state.isRecording else {
+          return .none
+        }
+        return handleStopRecording(&state, shouldPaste: false)
 
       case .discard:
         // Silent discard for quick/accidental recordings
@@ -179,12 +191,16 @@ private extension TranscriptionFeature {
         hotKeyProcessor.doubleTapLockEnabled = hexSettings.doubleTapLockEnabled
         hotKeyProcessor.useDoubleTapOnly = useDoubleTapOnly
         hotKeyProcessor.minimumKeyTime = hexSettings.minimumKeyTime
+        hotKeyProcessor.escapeKeyBehavior = hexSettings.escapeKeyBehavior
 
         switch inputEvent {
         case .keyboard(let keyEvent):
-          // If Escape is pressed with no modifiers while idle, let's treat that as `cancel`.
+          // If Escape is pressed with no modifiers while idle, treat it as `cancel`.
+          // Only in "cancel" mode: in "transcribe"/"ignore" modes we never interrupt a
+          // transcription once it has started, so the take is never lost.
           if keyEvent.key == .escape, keyEvent.modifiers.isEmpty,
-             hotKeyProcessor.state == .idle
+             hotKeyProcessor.state == .idle,
+             hexSettings.escapeKeyBehavior == .cancel
           {
             Task { await send(.cancel) }
             return false
@@ -203,7 +219,15 @@ private extension TranscriptionFeature {
             return false // or `true` if you want to intercept
 
           case .cancel:
-            Task { await send(.cancel) }
+            // ESC ended the recording. Route it based on the user's escape behavior.
+            switch hexSettings.escapeKeyBehavior {
+            case .cancel:
+              Task { await send(.cancel) }
+            case .transcribe:
+              Task { await send(.escapeTranscribe) }
+            case .ignore:
+              break
+            }
             return true
 
           case .discard:
@@ -316,7 +340,7 @@ private extension TranscriptionFeature {
     )
   }
 
-  func handleStopRecording(_ state: inout State) -> Effect<Action> {
+  func handleStopRecording(_ state: inout State, shouldPaste: Bool = true) -> Effect<Action> {
     state.isRecording = false
     
     let stopTime = now
@@ -370,7 +394,7 @@ private extension TranscriptionFeature {
 
     return .merge(
       .cancel(id: CancelID.recordingStart),
-      .run { [sleepManagement] send in
+      .run { [sleepManagement, shouldPaste] send in
         // Allow system to sleep again
         await sleepManagement.allowSleep()
 
@@ -414,7 +438,11 @@ private extension TranscriptionFeature {
 
           transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
           audioURL = nil
-          await send(.transcriptionResult(result, capturedURL, duration))
+          if shouldPaste {
+            await send(.transcriptionResult(result, capturedURL, duration))
+          } else {
+            await send(.transcriptionResultWithoutPaste(result, capturedURL, duration))
+          }
         } catch {
           transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
           await send(.transcriptionError(error, nil))
@@ -432,7 +460,8 @@ private extension TranscriptionFeature {
     _ state: inout State,
     result: String,
     audioURL: URL,
-    duration: TimeInterval
+    duration: TimeInterval,
+    shouldPaste: Bool
   ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
@@ -506,7 +535,8 @@ private extension TranscriptionFeature {
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,
           audioURL: audioURL,
-          transcriptionHistory: transcriptionHistory
+          transcriptionHistory: transcriptionHistory,
+          shouldPaste: shouldPaste
         )
       } catch {
         await send(.transcriptionError(error, audioURL))
@@ -538,7 +568,8 @@ private extension TranscriptionFeature {
     sourceAppBundleID: String?,
     sourceAppName: String?,
     audioURL: URL,
-    transcriptionHistory: Shared<TranscriptionHistory>
+    transcriptionHistory: Shared<TranscriptionHistory>,
+    shouldPaste: Bool
   ) async throws {
     @Shared(.hexSettings) var hexSettings: HexSettings
 
@@ -568,7 +599,9 @@ private extension TranscriptionFeature {
       FileManager.default.removeItemIfExists(at: audioURL)
     }
 
-    await pasteboard.paste(result)
+    if shouldPaste {
+      await pasteboard.paste(result)
+    }
     soundEffect.play(.pasteTranscript)
   }
 }

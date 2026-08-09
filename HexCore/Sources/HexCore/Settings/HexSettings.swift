@@ -6,6 +6,16 @@ public enum RecordingAudioBehavior: String, Codable, CaseIterable, Equatable, Se
 	case doNothing
 }
 
+/// What pressing the Escape key does while a recording is active.
+public enum EscapeKeyBehavior: String, Codable, CaseIterable, Equatable, Sendable {
+	/// Stop recording and discard the audio (the original behavior).
+	case cancel
+	/// Stop recording, transcribe, and save to history — but don't paste automatically.
+	case transcribe
+	/// ESC does nothing during recording; the recording continues.
+	case ignore
+}
+
 /// User-configurable settings saved to disk.
 public struct HexSettings: Codable, Equatable, Sendable {
 	public static let defaultPasteLastTranscriptHotkey = HotKey(key: .v, modifiers: [.option, .shift])
@@ -32,6 +42,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var useClipboardPaste: Bool
 	public var preventSystemSleep: Bool
 	public var recordingAudioBehavior: RecordingAudioBehavior
+	public var escapeKeyBehavior: EscapeKeyBehavior
 	public var minimumKeyTime: Double
 	public var copyToClipboard: Bool
 	public var superFastModeEnabled: Bool
@@ -66,6 +77,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		useClipboardPaste: Bool = true,
 		preventSystemSleep: Bool = true,
 		recordingAudioBehavior: RecordingAudioBehavior = .doNothing,
+		escapeKeyBehavior: EscapeKeyBehavior = .cancel,
 		minimumKeyTime: Double = HexCoreConstants.defaultMinimumKeyTime,
 		copyToClipboard: Bool = false,
 		superFastModeEnabled: Bool = true,
@@ -93,6 +105,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.useClipboardPaste = useClipboardPaste
 		self.preventSystemSleep = preventSystemSleep
 		self.recordingAudioBehavior = recordingAudioBehavior
+		self.escapeKeyBehavior = escapeKeyBehavior
 		self.minimumKeyTime = minimumKeyTime
 		self.copyToClipboard = copyToClipboard
 		self.superFastModeEnabled = superFastModeEnabled
@@ -143,6 +156,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case preventSystemSleep
 	case recordingAudioBehavior
 	case pauseMediaOnRecord // Legacy
+	case escapeKeyBehavior
 	case minimumKeyTime
 	case copyToClipboard
 	case superFastModeEnabled
@@ -242,6 +256,7 @@ private enum HexSettingsSchema {
 				return defaultValue
 			}
 		).eraseToAny(),
+		SettingsField(.escapeKeyBehavior, keyPath: \.escapeKeyBehavior, default: defaults.escapeKeyBehavior).eraseToAny(),
 		SettingsField(.minimumKeyTime, keyPath: \.minimumKeyTime, default: defaults.minimumKeyTime).eraseToAny(),
 		SettingsField(.copyToClipboard, keyPath: \.copyToClipboard, default: defaults.copyToClipboard).eraseToAny(),
 		SettingsField(.superFastModeEnabled, keyPath: \.superFastModeEnabled, default: defaults.superFastModeEnabled).eraseToAny(),

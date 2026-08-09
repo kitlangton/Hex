@@ -56,10 +56,15 @@ private let hotKeyLogger = HexLog.hotKey
 ///
 /// # ESC Key Handling
 ///
-/// Pressing ESC always cancels active recordings:
-/// - Returns `.cancel` output (plays cancel sound)
-/// - Enters dirty state to prevent immediate re-triggering
-/// - Works in both `.pressAndHold` and `.doubleTapLock` states
+/// ESC behavior is configurable via `escapeKeyBehavior`:
+/// - `.cancel` (default): Pressing ESC always cancels active recordings.
+///   Returns `.cancel` output (plays cancel sound), enters dirty state.
+/// - `.transcribe`: Also ends the recording, but the feature transcribes it
+///   instead of discarding, so nothing is lost.
+/// - `.ignore`: ESC is a no-op during recording; the recording continues.
+///
+/// In `.cancel` and `.transcribe` modes, ESC works in both `.pressAndHold`
+/// and `.doubleTapLock` states.
 ///
 /// # Example Interaction Flow
 ///
@@ -106,6 +111,12 @@ public struct HotKeyProcessor {
     /// For modifier-only hotkeys, this is overridden to 0.3s minimum
     public var minimumKeyTime: TimeInterval = 0.15
 
+    /// What pressing ESC does while a recording is active.
+    /// - `.cancel`: stop and discard the recording (default).
+    /// - `.transcribe`: stop, transcribe, and save — the feature decides how to route it.
+    /// - `.ignore`: ESC does nothing; the recording keeps going.
+    public var escapeKeyBehavior: EscapeKeyBehavior = .cancel
+
     // MARK: - State
     
     /// Current state of the processor
@@ -140,12 +151,14 @@ public struct HotKeyProcessor {
         hotkey: HotKey,
         useDoubleTapOnly: Bool = false,
         doubleTapLockEnabled: Bool = true,
-        minimumKeyTime: TimeInterval = HexCoreConstants.defaultMinimumKeyTime
+        minimumKeyTime: TimeInterval = HexCoreConstants.defaultMinimumKeyTime,
+        escapeKeyBehavior: EscapeKeyBehavior = .cancel
     ) {
         self.hotkey = hotkey
         self.useDoubleTapOnly = useDoubleTapOnly
         self.doubleTapLockEnabled = doubleTapLockEnabled
         self.minimumKeyTime = minimumKeyTime
+        self.escapeKeyBehavior = escapeKeyBehavior
     }
 
     // MARK: - Public API
@@ -171,15 +184,20 @@ public struct HotKeyProcessor {
     /// 3. Matching chord → handle as hotkey press
     /// 4. Non-matching chord → handle as release or different key
     public mutating func process(keyEvent: KeyEvent) -> Output? {
-        // 1) ESC => immediate cancel
-        if keyEvent.key == .escape {
-            let currentState = state
-            hotKeyLogger.notice("ESC pressed while state=\(String(describing: currentState))")
-        }
+        // 1) ESC while recording => cancel/transcribe or ignore depending on the setting
         if keyEvent.key == .escape, state != .idle {
-            isDirty = true
-            resetToIdle()
-            return .cancel
+            let currentState = state
+            let currentBehavior = escapeKeyBehavior
+            hotKeyLogger.notice("ESC pressed while state=\(String(describing: currentState)) escapeKeyBehavior=\(String(describing: currentBehavior))")
+            switch escapeKeyBehavior {
+            case .ignore:
+                // ESC is disabled during recording: keep recording and let the key pass through.
+                return nil
+            case .cancel, .transcribe:
+                isDirty = true
+                resetToIdle()
+                return .cancel
+            }
         }
 
         // 2) If dirty, ignore until full release (nil, [])

@@ -8,6 +8,18 @@ The key insight: **Modifier-only hotkeys need protection from accidental trigger
 
 ---
 
+## ESC Key Handling (configurable)
+
+Pressing ESC while a recording is active is governed by the **"Escape during recording"** setting:
+
+- **Cancel** (default): Stop recording and discard the audio. The whole take is lost.
+- **Transcribe**: Stop recording, transcribe, and save to history — **no auto-paste**. Recover the text with the "paste last transcript" hotkey (or the menu bar copy button). A take is never lost to an accidental ESC.
+- **Ignore**: ESC does nothing while recording; the recording continues. There is no keyboard abort; a recording always ends via release (press-and-hold) or a hotkey tap (double-tap lock).
+
+In **Transcribe** and **Ignore** modes, ESC also never interrupts a transcription that is already running — it always finishes and lands in history.
+
+---
+
 ## Quick Reference
 
 ### Modifier-Only Hotkeys (e.g., Option, Option+Command)
@@ -26,7 +38,7 @@ The key insight: **Modifier-only hotkeys need protection from accidental trigger
 - Click → NOP (ignore, keep recording)
 - Press A → NOP (ignore, keep recording)
 - Add Shift → NOP (ignore, keep recording)
-- ESC → CANCEL (only way to stop)
+- ESC → CANCEL *in default mode* (configurable — see [ESC Key Handling](#esc-key-handling-configurable))
 
 **Key points:**
 - **< 0.3s**: Everything except ESC triggers **silent discard** (no sound)
@@ -54,7 +66,7 @@ The key insight: **Modifier-only hotkeys need protection from accidental trigger
 
 **Any time:**
 - Release → STOP (transcribe if long enough)
-- ESC → CANCEL
+- ESC → CANCEL *in default mode* (configurable — see [ESC Key Handling](#esc-key-handling-configurable))
 
 **Key points:**
 - **< minimumKeyTime** (default 0.2s): **Silent discard**
@@ -175,14 +187,16 @@ Result: Recording continues, Option+Shift passes through
 Why: User might be pressing Shift for capital letters while speaking
 ```
 
-#### Scenario G: ESC cancels anytime
+#### Scenario G: ESC cancels anytime (default mode)
 ```
 User: Hold Option (any duration) → Press ESC
       ↓
   START ───────────→ CANCEL (with sound)
   
 Result: Recording cancelled, cancel sound plays
-Why: ESC is explicit "I want to cancel" gesture
+Why: ESC is explicit "I want to cancel" gesture.
+      With the "Transcribe" setting, ESC instead ends the take and saves the
+      transcript to history without pasting; with "Ignore", ESC is a no-op.
 ```
 
 ---
@@ -542,7 +556,7 @@ Result: Recording cancelled ✅
   - Click → Ignore (keep recording)
   - Press key → Ignore (keep recording)
   - Add modifier → Ignore (keep recording)
-  - ESC → Cancel
+  - ESC → Cancel, Transcribe, or Ignore (configurable)
 
 **Regular (Cmd+A):**
 
@@ -559,7 +573,7 @@ Result: Recording cancelled ✅
 
 - **Any time:**
   - Release → Transcribe (if long enough)
-  - ESC → Cancel
+  - ESC → Cancel, Transcribe, or Ignore (configurable)
 
 ---
 

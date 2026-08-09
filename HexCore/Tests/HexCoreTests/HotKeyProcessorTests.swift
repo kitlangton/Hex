@@ -514,7 +514,61 @@ struct HotKeyProcessorTests {
             ]
         )
     }
-    
+
+    // Tests that ESC with "transcribe" behavior still ends the recording (feature routes to transcription)
+    @Test
+    func escape_transcribeBehavior_endsRecording() throws {
+        runScenario(
+            hotkey: HotKey(key: .a, modifiers: [.command]),
+            escapeKeyBehavior: .transcribe,
+            steps: [
+                // Start recording
+                ScenarioStep(time: 0.0, key: .a, modifiers: [.command], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Press ESC -> ends recording (same output as cancel; the feature decides what to do)
+                ScenarioStep(time: 0.5, key: .escape, modifiers: [], expectedOutput: .cancel, expectedIsMatched: false),
+            ]
+        )
+    }
+
+    // Tests that ESC with "ignore" behavior does nothing while recording
+    @Test
+    func escape_ignoreBehavior_doesNotInterrupt() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option]),
+            escapeKeyBehavior: .ignore,
+            steps: [
+                // Start recording
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                // Press ESC -> ignored, still recording
+                ScenarioStep(time: 0.5, key: .escape, modifiers: [], expectedOutput: nil, expectedIsMatched: true),
+                // Release -> normal stop
+                ScenarioStep(time: 0.6, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+
+    // Tests that ESC with "ignore" behavior doesn't interrupt double-tap lock either
+    @Test
+    func escape_ignoreBehavior_doesNotInterruptLock() throws {
+        runScenario(
+            hotkey: HotKey(key: nil, modifiers: [.option]),
+            escapeKeyBehavior: .ignore,
+            steps: [
+                // First tap
+                ScenarioStep(time: 0.0, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                // First release
+                ScenarioStep(time: 0.1, key: nil, modifiers: [], expectedOutput: .stopRecording, expectedIsMatched: false),
+                // Second tap (locks)
+                ScenarioStep(time: 0.2, key: nil, modifiers: [.option], expectedOutput: .startRecording, expectedIsMatched: true),
+                ScenarioStep(time: 0.3, key: nil, modifiers: [], expectedOutput: nil, expectedIsMatched: true),
+                // Now locked - press ESC -> ignored, still locked
+                ScenarioStep(time: 1.0, key: .escape, modifiers: [], expectedOutput: nil, expectedIsMatched: true),
+                // Tap hotkey again -> normal stop
+                ScenarioStep(time: 1.1, key: nil, modifiers: [.option], expectedOutput: .stopRecording, expectedIsMatched: false),
+            ]
+        )
+    }
+
     // Tests that partially releasing multiple modifiers counts as full release
     @Test
     func multipleModifiers_partialRelease() throws {
@@ -640,6 +694,7 @@ func runScenario(
     hotkey: HotKey,
     useDoubleTapOnly: Bool = false,
     doubleTapLockEnabled: Bool = true,
+    escapeKeyBehavior: EscapeKeyBehavior = .cancel,
     steps: [ScenarioStep]
 ) {
     // Sort steps by time, just in case they're not in ascending order
@@ -655,7 +710,8 @@ func runScenario(
         HotKeyProcessor(
             hotkey: hotkey,
             useDoubleTapOnly: useDoubleTapOnly,
-            doubleTapLockEnabled: doubleTapLockEnabled
+            doubleTapLockEnabled: doubleTapLockEnabled,
+            escapeKeyBehavior: escapeKeyBehavior
         )
     }
 

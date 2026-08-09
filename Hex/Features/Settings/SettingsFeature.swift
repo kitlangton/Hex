@@ -74,6 +74,7 @@ struct SettingsFeature {
     case toggleShowDockIcon(Bool)
     case togglePreventSystemSleep(Bool)
     case setRecordingAudioBehavior(RecordingAudioBehavior)
+    case setEscapeKeyBehavior(EscapeKeyBehavior)
     case toggleSuperFastMode(Bool)
     case setUseClipboardPaste(Bool)
     case setCopyToClipboard(Bool)
@@ -459,6 +460,10 @@ struct SettingsFeature {
 
       case let .setRecordingAudioBehavior(behavior):
         state.$hexSettings.withLock { $0.recordingAudioBehavior = behavior }
+        return .none
+
+      case let .setEscapeKeyBehavior(behavior):
+        state.$hexSettings.withLock { $0.escapeKeyBehavior = behavior }
         return .none
 
       case let .toggleSuperFastMode(enabled):

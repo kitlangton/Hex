@@ -25,6 +25,7 @@ final class HexSettingsMigrationTests: XCTestCase {
 		XCTAssertEqual(decoded.maxHistoryEntries, 10)
 		XCTAssertEqual(decoded.hasCompletedModelBootstrap, true)
 		XCTAssertEqual(decoded.hasCompletedStorageMigration, true)
+		XCTAssertEqual(decoded.escapeKeyBehavior, .cancel, "New escapeKeyBehavior should default to cancel for old settings")
 		XCTAssertFalse(decoded.lowercaseTranscripts)
 		XCTAssertFalse(decoded.removePunctuation)
 	}

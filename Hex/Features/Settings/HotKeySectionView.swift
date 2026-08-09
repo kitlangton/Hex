@@ -85,6 +85,29 @@ struct HotKeySectionView: View {
                     Image(systemName: "clock")
                 }
             }
+
+            // What pressing Escape does while recording
+            Label {
+                HStack(alignment: .center) {
+                    Text("Escape during recording")
+                    Spacer()
+                    Picker("", selection: Binding(
+                        get: { store.hexSettings.escapeKeyBehavior },
+                        set: { store.send(.setEscapeKeyBehavior($0)) }
+                    )) {
+                        Label("Cancel", systemImage: "xmark.circle")
+                            .tag(EscapeKeyBehavior.cancel)
+                        Label("Transcribe", systemImage: "text.quote")
+                            .tag(EscapeKeyBehavior.transcribe)
+                        Label("Ignore", systemImage: "hand.raised.slash")
+                            .tag(EscapeKeyBehavior.ignore)
+                    }
+                    .pickerStyle(.menu)
+                }
+                Text("Cancel discards the recording. Transcribe stops, saves it to history, and won't paste it. Ignore keeps recording.")
+            } icon: {
+                Image(systemName: "escape")
+            }
         }
         .enableInjection()
     }
