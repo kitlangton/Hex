@@ -781,6 +781,30 @@ private struct LoadingWave: View {
 	}
 }
 
+private enum LongRecordingCancellationAlert {
+	@MainActor
+	static func present() -> NSApplication.ModalResponse {
+		let alert = NSAlert()
+		alert.messageText = "Cancel long recording?"
+		alert.informativeText = "This recording has been running for a while. Cancelling will stop it without transcribing it."
+		alert.addButton(withTitle: "Keep Recording")
+		alert.addButton(withTitle: "Cancel Recording")
+		alert.buttons.last?.hasDestructiveAction = true
+
+		if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+			let window = alert.window
+			window.setFrameOrigin(
+				.init(
+					x: screen.visibleFrame.midX - window.frame.width / 2,
+					y: screen.visibleFrame.midY - window.frame.height / 2
+				)
+			)
+		}
+
+		return alert.runModal()
+	}
+}
+
 // MARK: - View
 
 struct TranscriptionIndicatorOverlayView: View {
@@ -856,18 +880,18 @@ struct TranscriptionIndicatorOverlayView: View {
 			}
 		}
 		.onDisappear { onPillSizeChange(nil, false) }
-		.alert("Cancel long recording?", isPresented: Binding(
-			get: { store.isLongRecordingCancellationConfirmationPresented },
-			set: { if !$0 { store.send(.dismissLongRecordingCancellationConfirmation) } }
-		)) {
-			Button("Keep Recording", role: .cancel) {
-				store.send(.dismissLongRecordingCancellationConfirmation)
+		.onChange(of: store.isLongRecordingCancellationConfirmationPresented) { _, isPresented in
+			guard isPresented else { return }
+
+			DispatchQueue.main.async {
+				guard store.isLongRecordingCancellationConfirmationPresented else { return }
+				switch LongRecordingCancellationAlert.present() {
+				case .alertSecondButtonReturn:
+					store.send(.confirmLongRecordingCancellation)
+				default:
+					store.send(.dismissLongRecordingCancellationConfirmation)
+				}
 			}
-			Button("Cancel Recording", role: .destructive) {
-				store.send(.confirmLongRecordingCancellation)
-			}
-		} message: {
-			Text("This recording has been running for a while. Cancelling will stop it without transcribing it.")
 		}
 		.task {
 			await store.send(.task).finish()
