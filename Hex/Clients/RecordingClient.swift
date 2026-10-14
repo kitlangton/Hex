@@ -362,6 +362,7 @@ actor RecordingClientLive {
   }
 
   private enum RecordingBackend: String {
+    case inputOnly = "input-only"
     case captureEngine = "capture-engine"
     case recorderFallback = "recorder-fallback"
   }
@@ -393,6 +394,10 @@ actor RecordingClientLive {
   ]
   private let (meterStream, meterContinuation) = AsyncStream<Meter>.makeStream()
   private var meterTask: Task<Void, Never>?
+  private lazy var inputOnlyCaptureController = InputOnlyCaptureController(
+    meterContinuation: meterContinuation
+  )
+  private var inputOnlyCaptureDeviceID: AudioDeviceID?
   private lazy var captureController = SuperFastCaptureController(
     meterContinuation: meterContinuation,
     onEngineConfigurationChange: { [weak self] generation in
@@ -648,17 +653,47 @@ actor RecordingClientLive {
     let currentInputDevice = getDefaultInputDevice()
     let currentOutputDevice = getDefaultOutputDevice()
     let isRecorderRecording = recorder?.isRecording == true
+    let isInputOnlyRecording = inputOnlyCaptureController.isRecording
     let isEngineRecording = captureController.isRecording
-    let isRecordingActive = isRecorderRecording || isEngineRecording
+    let isRecordingActive = isRecorderRecording || isInputOnlyRecording || isEngineRecording
 
     recordingLogger.notice(
-      "Capture environment changed reason=\(reason) activeRecording=\(isRecordingActive) input=\(self.describeDevice(currentInputDevice)) output=\(self.describeDevice(currentOutputDevice)) captureEngineArmed=\(self.captureController.isRunning) primed=\(self.isRecorderPrimedForNextSession)"
+      "Capture environment changed reason=\(reason) activeRecording=\(isRecordingActive) input=\(self.describeDevice(currentInputDevice)) output=\(self.describeDevice(currentOutputDevice)) inputOnlyRunning=\(self.inputOnlyCaptureController.isRunning) captureEngineArmed=\(self.captureController.isRunning) primed=\(self.isRecorderPrimedForNextSession)"
     )
 
     if isRecordingActive {
       invalidatePrimedState()
+      if isInputOnlyRecording {
+        guard let activeInputDevice = resolveCaptureInputDevice() else {
+          deferredCaptureRestartReason = reason
+          recordingLogger.error("No input device available while rebuilding input-only capture")
+          return
+        }
+        let inputChanged = activeInputDevice != inputOnlyCaptureDeviceID
+        let captureDisrupted = !inputOnlyCaptureController.isRunning
+        guard inputChanged || captureDisrupted else {
+          recordingLogger.debug("Environment change does not affect input-only capture; ignoring reason=\(reason)")
+          return
+        }
+        do {
+          try inputOnlyCaptureController.restartPreservingRecording(
+            deviceID: activeInputDevice,
+            reason: reason
+          )
+          inputOnlyCaptureDeviceID = activeInputDevice
+          deferredCaptureRestartReason = nil
+          recordingLogger.notice(
+            "Rebuilt input-only capture mid-recording reason=\(reason) input=\(self.describeDevice(activeInputDevice))"
+          )
+          return
+        } catch {
+          recordingLogger.error(
+            "Mid-recording input-only capture rebuild failed reason=\(reason): \(error.localizedDescription); deferring restart"
+          )
+        }
+      }
       if isEngineRecording {
-        let activeInputDevice = applyPreferredInputDevice()
+        let activeInputDevice = resolveCaptureInputDevice()
         // Only disturb an active recording when its capture path is actually affected:
         // the input device changed, or the engine already died (configuration change).
         // Output-only changes (plugging in headphones) must not cause an audio gap.
@@ -672,7 +707,10 @@ actor RecordingClientLive {
         // stale engine "running" against the old route silently captured nothing for the
         // rest of the recording (#251, #252, #218, #226).
         do {
-          try captureController.restartPreservingRecording(reason: reason)
+          try captureController.restartPreservingRecording(
+            deviceID: activeInputDevice,
+            reason: reason
+          )
           captureControllerDeviceID = activeInputDevice
           captureControllerNeedsRestartReason = nil
           deferredCaptureRestartReason = nil
@@ -701,7 +739,7 @@ actor RecordingClientLive {
 
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "environment-change-\(reason)")
-      let activeInputDevice = applyPreferredInputDevice()
+      let activeInputDevice = resolveCaptureInputDevice()
       // Skip the rebuild when nothing that matters changed. Device events arrive in
       // bursts (a Bluetooth connect fires devices-changed, default-input-changed,
       // default-output-changed, and more over 1-2s); once the first event settles the
@@ -736,10 +774,11 @@ actor RecordingClientLive {
       return
     }
 
-    _ = applyPreferredInputDevice()
+    inputOnlyCaptureController.stop(reason: "environment-change-\(reason)")
+    inputOnlyCaptureDeviceID = nil
     stopCaptureController(reason: reason)
     releaseRecorder(reason: "environment-change-\(reason)")
-    recordingLogger.debug("Standard mode uses on-demand capture startup after reason=\(reason)")
+    recordingLogger.debug("Standard mode uses on-demand input-only capture after reason=\(reason)")
   }
 
   /// Records that a lock/sleep transition happened and tears down the warm engine unless a
@@ -747,7 +786,10 @@ actor RecordingClientLive {
   /// via finalizeCaptureStateAfterRecording).
   private func suspendWarmCapture(source: CaptureSuspensionSource) {
     guard captureSuspensionSources.insert(source).inserted else { return }
-    guard recorder?.isRecording != true, !captureController.isRecording else {
+    guard recorder?.isRecording != true,
+          !inputOnlyCaptureController.isRecording,
+          !captureController.isRecording
+    else {
       recordingLogger.notice("Lock/sleep during active recording; capture continues, suspending after stop source=\(source.rawValue)")
       return
     }
@@ -768,7 +810,9 @@ actor RecordingClientLive {
 
   private func tearDownWarmCapture(reason: String) {
     captureControllerNeedsRestartReason = reason
-    guard captureController.isRunning || recorder != nil else { return }
+    guard captureController.isRunning || inputOnlyCaptureController.isRunning || recorder != nil else { return }
+    inputOnlyCaptureController.stop(reason: reason)
+    inputOnlyCaptureDeviceID = nil
     stopCaptureController(reason: reason)
     releaseRecorder(reason: reason)
   }
@@ -908,28 +952,6 @@ actor RecordingClientLive {
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
   
-  /// Set device as the default input device
-  private func setInputDevice(deviceID: AudioDeviceID) {
-    var device = deviceID
-    let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-    var address = audioPropertyAddress(kAudioHardwarePropertyDefaultInputDevice)
-    
-    let status = AudioObjectSetPropertyData(
-      AudioObjectID(kAudioObjectSystemObject),
-      &address,
-      0,
-      nil,
-      size,
-      &device
-    )
-    
-    if status != 0 {
-      recordingLogger.error("Failed to set default input device: \(status)")
-    } else {
-      recordingLogger.notice("Selected input device set to \(deviceID)")
-    }
-  }
-
   func requestMicrophoneAccess() async -> Bool {
     await AVCaptureDevice.requestAccess(for: .audio)
   }
@@ -976,23 +998,13 @@ actor RecordingClientLive {
   }
 
   private func getDeviceID(uid: String) -> AudioDeviceID? {
-    var address = audioPropertyAddress(kAudioHardwarePropertyDeviceForUID)
-    var deviceUID = uid as CFString
-    var deviceID = AudioDeviceID(0)
-    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-    let status = withUnsafePointer(to: &deviceUID) { pointer in
-      AudioObjectGetPropertyData(
-        AudioObjectID(kAudioObjectSystemObject),
-        &address,
-        UInt32(MemoryLayout<CFString>.size),
-        pointer,
-        &size,
-        &deviceID
-      )
+    // Core Audio device IDs are ephemeral, while the UID stored in settings is stable.
+    // Resolve it against the current device list instead of using
+    // kAudioHardwarePropertyDeviceForUID, whose value is an AudioValueTranslation rather
+    // than qualifier data and previously caused every persisted selection to miss.
+    getAllAudioDevices().first { deviceID in
+      getDeviceUID(deviceID: deviceID) == uid
     }
-
-    guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
-    return deviceID
   }
 
   private func formatDuration(_ duration: TimeInterval?) -> String {
@@ -1012,7 +1024,7 @@ actor RecordingClientLive {
     let idleDuration = lastRecordingEndedAt.map { Date().timeIntervalSince($0) }
     let outputDeviceID = getDefaultOutputDevice()
     recordingLogger.notice(
-      "Recording requested mode=\(mode.rawValue) idle=\(self.formatDuration(idleDuration)) input=\(self.describeDevice(inputDeviceID)) output=\(self.describeDevice(outputDeviceID)) fallbackPrimed=\(self.isRecorderPrimedForNextSession)"
+      "Recording requested mode=\(mode.rawValue, privacy: .public) idle=\(self.formatDuration(idleDuration), privacy: .public) input=\(self.describeDevice(inputDeviceID), privacy: .public) output=\(self.describeDevice(outputDeviceID), privacy: .public) fallbackPrimed=\(self.isRecorderPrimedForNextSession, privacy: .public)"
     )
   }
 
@@ -1020,29 +1032,19 @@ actor RecordingClientLive {
     hexSettings.superFastModeEnabled ? .superFast : .standard
   }
 
-  @discardableResult
-  private func applyPreferredInputDevice() -> AudioDeviceID? {
-    let targetDeviceID = resolvePreferredInputDevice()
-    let currentDefaultDevice = getDefaultInputDevice()
+  /// Resolves the microphone Hex should bind to without changing the system-wide default.
+  private func resolveCaptureInputDevice() -> AudioDeviceID? {
+    Self.captureDeviceID(
+      preferredDeviceID: resolvePreferredInputDevice(),
+      systemDefaultDeviceID: getDefaultInputDevice()
+    )
+  }
 
-    if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
-      recordingLogger.notice("Default input changed from \(primedDevice) to \(currentDefaultDevice ?? 0); invalidating primed state")
-      invalidatePrimedState()
-    }
-
-    if let targetDeviceID {
-      if targetDeviceID != currentDefaultDevice {
-        recordingLogger.notice("Switching input device from \(currentDefaultDevice ?? 0) to \(targetDeviceID)")
-        setInputDevice(deviceID: targetDeviceID)
-        invalidatePrimedState()
-      } else {
-        recordingLogger.debug("Device \(targetDeviceID) already set as default, skipping setInputDevice()")
-      }
-    } else {
-      recordingLogger.debug("Using system default microphone")
-    }
-
-    return getDefaultInputDevice()
+  nonisolated static func captureDeviceID(
+    preferredDeviceID: AudioDeviceID?,
+    systemDefaultDeviceID: AudioDeviceID?
+  ) -> AudioDeviceID? {
+    preferredDeviceID ?? systemDefaultDeviceID
   }
 
   private func makeCaptureRecordingURL() -> URL {
@@ -1070,6 +1072,7 @@ actor RecordingClientLive {
     }
 
     try captureController.startIfNeeded(
+      deviceID: deviceID,
       reason: reason,
       keepWarmBuffer: currentCaptureMode().keepsWarmBuffer
     )
@@ -1139,8 +1142,8 @@ actor RecordingClientLive {
   }
 
   /// Checks and fixes muted input device before recording
-  private func ensureInputDeviceUnmuted() {
-    guard let deviceID = getDefaultInputDevice() else { return }
+  private func ensureInputDeviceUnmuted(_ deviceID: AudioDeviceID?) {
+    guard let deviceID else { return }
     if isInputDeviceMuted(deviceID) {
       recordingLogger.error("⚠️ Input device \(deviceID) is MUTED at Core Audio level! This causes silent recordings.")
       unmuteInputDevice(deviceID)
@@ -1300,17 +1303,54 @@ actor RecordingClientLive {
       break
     }
 
-    let activeInputDevice = applyPreferredInputDevice()
-    // Check the actual active device after applying the user's preferred input.
-    ensureInputDeviceUnmuted()
+    let activeInputDevice = resolveCaptureInputDevice()
+    ensureInputDeviceUnmuted(activeInputDevice)
     let mode = currentCaptureMode()
     logRecordingStartRequest(mode: mode, inputDeviceID: activeInputDevice)
     let startRequestAt = Date()
 
+    if mode == .standard {
+      guard let activeInputDevice else {
+        recordingLogger.error("Failed to start input-only recording: no input device is available")
+        endRecordingSession()
+        return
+      }
+      do {
+        let recordingURL = makeCaptureRecordingURL()
+        try inputOnlyCaptureController.beginRecording(
+          to: recordingURL,
+          deviceID: activeInputDevice,
+          requestedAt: startRequestAt
+        )
+        inputOnlyCaptureDeviceID = activeInputDevice
+        let startedAt = Date()
+        activeRecordingSession = ActiveRecordingSession(
+          startedAt: startedAt,
+          mode: mode,
+          backend: .inputOnly
+        )
+        recordingLogger.notice(
+          "Recording started mode=\(mode.rawValue) backend=\(RecordingBackend.inputOnly.rawValue) startup=\(self.formatDuration(startedAt.timeIntervalSince(startRequestAt)))"
+        )
+      } catch {
+        inputOnlyCaptureController.stop(reason: "input-only-start-failed")
+        inputOnlyCaptureDeviceID = nil
+        recordingLogger.error("Failed to start input-only recording: \(error.localizedDescription)")
+        clearActiveRecordingMetadata()
+        endRecordingSession()
+      }
+      return
+    }
+
     do {
       try ensureCaptureControllerReadyAfterDeferredRestart(for: activeInputDevice, reason: "startRecording")
       let recordingURL = makeCaptureRecordingURL()
-      try captureController.beginRecording(to: recordingURL, requestedAt: startRequestAt, mode: mode)
+      try captureController.beginRecording(
+        to: recordingURL,
+        deviceID: activeInputDevice,
+        requestedAt: startRequestAt,
+        mode: mode
+      )
       let startedAt = Date()
       activeRecordingSession = ActiveRecordingSession(
         startedAt: startedAt,
@@ -1354,6 +1394,50 @@ actor RecordingClientLive {
   func stopRecording() async -> RecordingStopResult {
     let stopSessionID = recordingSessionID
     let activeSession = activeRecordingSession
+
+    if activeSession?.backend == .inputOnly || inputOnlyCaptureController.isRecording {
+      let stopTimingEstimate = inputOnlyCaptureController.stopTimingEstimate
+      recordingLogger.debug(
+        "Waiting \(self.formatDuration(stopTimingEstimate.gracePeriod)) before finalizing input-only recording callbackInterval=\(self.formatDuration(stopTimingEstimate.callbackInterval)) bufferDuration=\(self.formatDuration(stopTimingEstimate.bufferDuration))"
+      )
+      try? await Task.sleep(
+        for: .milliseconds(Int((stopTimingEstimate.gracePeriod * 1000).rounded()))
+      )
+
+      if Self.shouldIgnoreStopRequest(
+        snapshotSessionID: stopSessionID,
+        currentSessionID: recordingSessionID
+      ) {
+        recordingLogger.notice("Ignoring stale input-only stop request after a newer recording session started")
+        return .ignored(.staleSession)
+      }
+
+      let stoppedAt = Date()
+      let session = activeSession ?? ActiveRecordingSession(
+        startedAt: stoppedAt,
+        mode: .standard,
+        backend: .inputOnly
+      )
+      let result = inputOnlyCaptureController.finishRecording()
+      inputOnlyCaptureDeviceID = nil
+      endRecordingSession()
+      clearActiveRecordingMetadata()
+      lastRecordingEndedAt = stoppedAt
+      recordingLogger.notice(
+        "Recording stopped mode=\(session.mode.rawValue) backend=\(session.backend.rawValue) duration=\(self.formatDuration(stoppedAt.timeIntervalSince(session.startedAt)))"
+      )
+      finalizeCaptureStateAfterRecording()
+      await resumeMediaIfNeeded()
+
+      switch result {
+      case let .captured(url):
+        return .captured(url)
+      case let .failed(error):
+        return .failed(error)
+      case .idle:
+        return .ignored(.noActiveRecording)
+      }
+    }
 
     if activeSession?.backend == .captureEngine || captureController.isRecording {
       let stopTimingEstimate = captureController.stopTimingEstimate
@@ -1657,7 +1741,11 @@ actor RecordingClientLive {
   }
 
   func warmUpRecorder() async {
-    guard activeRecordingSession == nil, recorder?.isRecording != true, !captureController.isRecording else {
+    guard activeRecordingSession == nil,
+          recorder?.isRecording != true,
+          !inputOnlyCaptureController.isRecording,
+          !captureController.isRecording
+    else {
       recordingLogger.notice("Skipping recorder warm-up while recording is active")
       return
     }
@@ -1665,7 +1753,7 @@ actor RecordingClientLive {
       recordingLogger.notice("Skipping recorder warm-up while capture is suspended (screen locked/asleep)")
       return
     }
-    let activeInputDevice = applyPreferredInputDevice()
+    let activeInputDevice = resolveCaptureInputDevice()
 
     if hexSettings.superFastModeEnabled {
       releaseRecorder(reason: "warm-up-super-fast")
@@ -1678,8 +1766,10 @@ actor RecordingClientLive {
     }
 
     stopCaptureController(reason: "warm-up-standard")
+    inputOnlyCaptureController.stop(reason: "warm-up-standard")
+    inputOnlyCaptureDeviceID = nil
     releaseRecorder(reason: "warm-up-standard")
-    recordingLogger.debug("Standard mode uses on-demand capture engine startup; skipping idle recorder priming")
+    recordingLogger.debug("Standard mode uses on-demand input-only capture; skipping idle recorder priming")
   }
 
   /// Release recorder resources. Call on app termination.
@@ -1687,6 +1777,8 @@ actor RecordingClientLive {
     endRecordingSession()
     await resumeMediaIfNeeded()
     stopObservingSystemChanges()
+    inputOnlyCaptureController.stop(reason: "cleanup")
+    inputOnlyCaptureDeviceID = nil
     stopCaptureController(reason: "cleanup")
     releaseRecorder(reason: "cleanup")
     recordingLogger.notice("RecordingClient cleaned up")

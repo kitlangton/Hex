@@ -1,4 +1,6 @@
 import AVFoundation
+import AudioToolbox
+import CoreAudio
 import Foundation
 import HexCore
 
@@ -117,6 +119,7 @@ final class SuperFastCaptureController {
   )!
 
   private var engine: AVAudioEngine?
+  private var configuredDeviceID: AudioDeviceID?
   private var converter: AVAudioConverter?
   private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
@@ -170,7 +173,11 @@ final class SuperFastCaptureController {
     }
   }
 
-  func startIfNeeded(reason: String = "unknown", keepWarmBuffer: Bool = false) throws {
+  func startIfNeeded(
+    deviceID: AudioDeviceID?,
+    reason: String = "unknown",
+    keepWarmBuffer: Bool = false
+  ) throws {
     processingQueue.sync {
       let didDisableWarmBuffer = self.keepWarmBuffer && !keepWarmBuffer
       self.keepWarmBuffer = keepWarmBuffer
@@ -179,28 +186,52 @@ final class SuperFastCaptureController {
       }
     }
 
-    if engine?.isRunning == true {
+    if engine?.isRunning == true, configuredDeviceID == deviceID {
       logger.debug("Capture engine already armed reason=\(reason)")
       return
     }
 
     stop(reason: "restart-before-arm")
-    try armEngine(reason: reason)
+    try armEngine(deviceID: deviceID, reason: reason)
   }
 
   /// Tears down and recreates the engine while keeping the active recording file open, so
   /// capture resumes onto the same file after a device/route change mid-recording
   /// (#251, #252, #218, #226). The ring buffer, timing metrics, and active recording survive;
   /// only the engine, tap, and converter are rebuilt.
-  func restartPreservingRecording(reason: String) throws {
+  func restartPreservingRecording(deviceID: AudioDeviceID?, reason: String) throws {
     logger.notice("Restarting capture engine preserving active recording reason=\(reason)")
     detachEngine()
-    try armEngine(reason: reason)
+    try armEngine(deviceID: deviceID, reason: reason)
   }
 
-  private func armEngine(reason: String) throws {
+  private func armEngine(deviceID: AudioDeviceID?, reason: String) throws {
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
+    if var deviceID {
+      guard let audioUnit = inputNode.audioUnit else {
+        throw NSError(
+          domain: "SuperFastCapture",
+          code: -2,
+          userInfo: [NSLocalizedDescriptionKey: "Unable to access the capture engine input unit."]
+        )
+      }
+      let status = AudioUnitSetProperty(
+        audioUnit,
+        kAudioOutputUnitProperty_CurrentDevice,
+        kAudioUnitScope_Global,
+        0,
+        &deviceID,
+        UInt32(MemoryLayout<AudioDeviceID>.size)
+      )
+      guard status == noErr else {
+        throw NSError(
+          domain: "SuperFastCapture",
+          code: Int(status),
+          userInfo: [NSLocalizedDescriptionKey: "Unable to bind the selected input device (Core Audio status \(status))."]
+        )
+      }
+    }
     let inputFormat = inputNode.inputFormat(forBus: 0)
     guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
       throw NSError(
@@ -237,6 +268,7 @@ final class SuperFastCaptureController {
       throw error
     }
     self.engine = engine
+    configuredDeviceID = deviceID
     configurationChangeObserver = NotificationCenter.default.addObserver(
       forName: .AVAudioEngineConfigurationChange,
       object: engine,
@@ -282,6 +314,7 @@ final class SuperFastCaptureController {
     }
     engine?.stop()
     engine = nil
+    configuredDeviceID = nil
   }
 
   private func handleConfigurationChange(generation: Int) {
@@ -300,8 +333,17 @@ final class SuperFastCaptureController {
     processingQueue.sync { generation == captureGeneration }
   }
 
-  func beginRecording(to url: URL, requestedAt: Date = Date(), mode: CaptureRecordingMode) throws {
-    try startIfNeeded(reason: "begin-recording", keepWarmBuffer: mode.keepsWarmBuffer)
+  func beginRecording(
+    to url: URL,
+    deviceID: AudioDeviceID?,
+    requestedAt: Date = Date(),
+    mode: CaptureRecordingMode
+  ) throws {
+    try startIfNeeded(
+      deviceID: deviceID,
+      reason: "begin-recording",
+      keepWarmBuffer: mode.keepsWarmBuffer
+    )
 
     var startError: Error?
     processingQueue.sync {

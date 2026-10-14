@@ -1,5 +1,6 @@
 import AppKit
 import ComposableArchitecture
+import CoreAudio
 import Foundation
 import HexCore
 import XCTest
@@ -100,6 +101,41 @@ final class RecordingRaceTests: XCTestCase {
         callbackGeneration: 1,
         currentGeneration: 2
       )
+    )
+  }
+
+  func testInputOnlyCaptureIgnoresCallbacksFromOlderGeneration() {
+    XCTAssertTrue(
+      InputOnlyCaptureController.shouldProcessCallback(
+        callbackGeneration: 4,
+        currentGeneration: 4
+      )
+    )
+    XCTAssertFalse(
+      InputOnlyCaptureController.shouldProcessCallback(
+        callbackGeneration: 3,
+        currentGeneration: 4
+      )
+    )
+  }
+
+  func testPreferredMicrophoneIsBoundWithoutReplacingSystemDefault() {
+    let macBookMicrophone = AudioDeviceID(42)
+    let airPodsMicrophone = AudioDeviceID(84)
+
+    XCTAssertEqual(
+      RecordingClientLive.captureDeviceID(
+        preferredDeviceID: macBookMicrophone,
+        systemDefaultDeviceID: airPodsMicrophone
+      ),
+      macBookMicrophone
+    )
+    XCTAssertEqual(
+      RecordingClientLive.captureDeviceID(
+        preferredDeviceID: nil,
+        systemDefaultDeviceID: airPodsMicrophone
+      ),
+      airPodsMicrophone
     )
   }
 
