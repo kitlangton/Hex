@@ -1,8 +1,7 @@
 # Hex Has Moved
 
-I rewrote Hex in Rust. **[Try the new beta](https://hex.kitlangton.com)** and tell me what you think.
-
-The new source lives at **[anomalyco/hex](https://github.com/anomalyco/hex)**.
+Hex has moved to **[anomalyco/hex](https://github.com/anomalyco/hex)**. This Swift app is no longer maintained.
+Download the new app at **[hex.kitlangton.com](https://hex.kitlangton.com)**, and please file new issues on [anomalyco/hex](https://github.com/anomalyco/hex/issues).
 This repository preserves the original Swift app, its history, and its releases.
 
 ## Legacy Swift App
