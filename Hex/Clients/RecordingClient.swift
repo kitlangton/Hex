@@ -13,6 +13,7 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import HexCore
+import IOKit
 
 private let recordingLogger = HexLog.recording
 private let mediaLogger = HexLog.media
@@ -672,6 +673,7 @@ actor RecordingClientLive {
         // stale engine "running" against the old route silently captured nothing for the
         // rest of the recording (#251, #252, #218, #226).
         do {
+          captureController.setPreferredInputDevice(activeInputDevice)
           try captureController.restartPreservingRecording(reason: reason)
           captureControllerDeviceID = activeInputDevice
           captureControllerNeedsRestartReason = nil
@@ -908,6 +910,55 @@ actor RecordingClientLive {
     return buffersPointer.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
   }
   
+  /// True when the MacBook lid is closed (clamshell mode); false when the state cannot
+  /// be determined (e.g. desktop Macs, which have no lid).
+  private func isLidClosed() -> Bool {
+    let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+    guard service != 0 else { return false }
+    defer { IOObjectRelease(service) }
+    guard let state = IORegistryEntryCreateCFProperty(
+      service,
+      "AppleClamshellState" as CFString,
+      kCFAllocatorDefault,
+      0
+    )?.takeRetainedValue() else { return false }
+    return (state as? Bool) == true
+  }
+
+  private func isBuiltInDevice(deviceID: AudioDeviceID) -> Bool {
+    var address = audioPropertyAddress(kAudioDevicePropertyTransportType)
+    var transportType: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transportType) == noErr else {
+      return false
+    }
+    return transportType == kAudioDeviceTransportTypeBuiltIn
+  }
+
+  private func deviceIsAlive(deviceID: AudioDeviceID) -> Bool {
+    var address = audioPropertyAddress(kAudioDevicePropertyDeviceIsAlive)
+    var alive: UInt32 = 1
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &alive) == noErr else {
+      // Property unsupported on some devices; assume alive rather than rejecting them.
+      return true
+    }
+    return alive == 1
+  }
+
+  /// Whether a device can actually capture audio right now. The built-in microphone stays
+  /// registered (and often stays the system default input) while the lid is closed, but
+  /// recording from it yields nothing (#260, #282).
+  private func deviceIsUsableForCapture(deviceID: AudioDeviceID, lidClosed: Bool) -> Bool {
+    guard deviceHasInput(deviceID: deviceID), deviceIsAlive(deviceID: deviceID) else { return false }
+    if lidClosed, isBuiltInDevice(deviceID: deviceID) { return false }
+    return true
+  }
+
+  private func findUsableInputDevice(lidClosed: Bool) -> AudioDeviceID? {
+    getAllAudioDevices().first { deviceIsUsableForCapture(deviceID: $0, lidClosed: lidClosed) }
+  }
+
   /// Set device as the default input device
   private func setInputDevice(deviceID: AudioDeviceID) {
     var device = deviceID
@@ -959,19 +1010,19 @@ actor RecordingClientLive {
     return deviceID
   }
 
-  private func resolvePreferredInputDevice() -> AudioDeviceID? {
+  private func resolvePreferredInputDevice(lidClosed: Bool) -> AudioDeviceID? {
     guard let selectedMicrophoneID = hexSettings.selectedMicrophoneID else { return nil }
     if let deviceID = getDeviceID(uid: selectedMicrophoneID),
-       deviceHasInput(deviceID: deviceID) {
+       deviceIsUsableForCapture(deviceID: deviceID, lidClosed: lidClosed) {
       return deviceID
     }
 
     if let legacyDeviceID = AudioDeviceID(selectedMicrophoneID),
-       deviceHasInput(deviceID: legacyDeviceID) {
+       deviceIsUsableForCapture(deviceID: legacyDeviceID, lidClosed: lidClosed) {
       return legacyDeviceID
     }
 
-    recordingLogger.notice("Selected device \(selectedMicrophoneID) missing; using system default")
+    recordingLogger.notice("Selected device \(selectedMicrophoneID) missing or unusable (lidClosed=\(lidClosed)); using system default")
     return nil
   }
 
@@ -1022,7 +1073,8 @@ actor RecordingClientLive {
 
   @discardableResult
   private func applyPreferredInputDevice() -> AudioDeviceID? {
-    let targetDeviceID = resolvePreferredInputDevice()
+    let lidClosed = isLidClosed()
+    let targetDeviceID = resolvePreferredInputDevice(lidClosed: lidClosed)
     let currentDefaultDevice = getDefaultInputDevice()
 
     if let primedDevice = lastPrimedDeviceID, primedDevice != currentDefaultDevice {
@@ -1038,11 +1090,30 @@ actor RecordingClientLive {
       } else {
         recordingLogger.debug("Device \(targetDeviceID) already set as default, skipping setInputDevice()")
       }
-    } else {
-      recordingLogger.debug("Using system default microphone")
+      // Capture from the resolved device directly instead of re-reading the default:
+      // the default-input change made by setInputDevice() propagates asynchronously, so
+      // an immediate read can still return the previous device.
+      return targetDeviceID
     }
 
-    return getDefaultInputDevice()
+    // System-default mode: verify the default can actually capture. macOS keeps the dead
+    // built-in microphone as the default input in clamshell mode (#260, #282).
+    if let currentDefaultDevice,
+       deviceIsUsableForCapture(deviceID: currentDefaultDevice, lidClosed: lidClosed) {
+      recordingLogger.debug("Using system default microphone")
+      return currentDefaultDevice
+    }
+
+    if let fallbackDeviceID = findUsableInputDevice(lidClosed: lidClosed) {
+      recordingLogger.notice(
+        "System default input \(self.describeDevice(currentDefaultDevice)) cannot capture (lidClosed=\(lidClosed)); capturing from \(self.describeDevice(fallbackDeviceID)) instead"
+      )
+      invalidatePrimedState()
+      return fallbackDeviceID
+    }
+
+    recordingLogger.error("No usable input device found (lidClosed=\(lidClosed)); staying on system default \(self.describeDevice(currentDefaultDevice))")
+    return currentDefaultDevice
   }
 
   private func makeCaptureRecordingURL() -> URL {
@@ -1069,6 +1140,7 @@ actor RecordingClientLive {
       stopCaptureController(reason: forceRestart ? "restart-\(reason)" : "input-device-changed")
     }
 
+    captureController.setPreferredInputDevice(deviceID)
     try captureController.startIfNeeded(
       reason: reason,
       keepWarmBuffer: currentCaptureMode().keepsWarmBuffer
@@ -1139,8 +1211,8 @@ actor RecordingClientLive {
   }
 
   /// Checks and fixes muted input device before recording
-  private func ensureInputDeviceUnmuted() {
-    guard let deviceID = getDefaultInputDevice() else { return }
+  private func ensureInputDeviceUnmuted(deviceID: AudioDeviceID?) {
+    guard let deviceID else { return }
     if isInputDeviceMuted(deviceID) {
       recordingLogger.error("⚠️ Input device \(deviceID) is MUTED at Core Audio level! This causes silent recordings.")
       unmuteInputDevice(deviceID)
@@ -1302,7 +1374,7 @@ actor RecordingClientLive {
 
     let activeInputDevice = applyPreferredInputDevice()
     // Check the actual active device after applying the user's preferred input.
-    ensureInputDeviceUnmuted()
+    ensureInputDeviceUnmuted(deviceID: activeInputDevice)
     let mode = currentCaptureMode()
     logRecordingStartRequest(mode: mode, inputDeviceID: activeInputDevice)
     let startRequestAt = Date()

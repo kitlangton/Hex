@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 import HexCore
@@ -117,6 +118,7 @@ final class SuperFastCaptureController {
   )!
 
   private var engine: AVAudioEngine?
+  private var preferredInputDeviceID: AudioDeviceID?
   private var converter: AVAudioConverter?
   private var configurationChangeObserver: NSObjectProtocol?
   private var activeRecording: ActiveRecording?
@@ -198,9 +200,43 @@ final class SuperFastCaptureController {
     try armEngine(reason: reason)
   }
 
+  /// Pins the capture engine to a concrete input device. Pass nil to follow the system
+  /// default input device. Takes effect the next time the engine is (re)armed.
+  func setPreferredInputDevice(_ deviceID: AudioDeviceID?) {
+    preferredInputDeviceID = deviceID
+  }
+
+  /// Binds the input AUHAL to a concrete device instead of the system default. Without
+  /// this the engine records from whatever the default input is at arm time, which in
+  /// clamshell mode can be the dead built-in microphone (#260, #282).
+  private func bindInputNode(_ inputNode: AVAudioInputNode, to deviceID: AudioDeviceID) -> Bool {
+    guard let audioUnit = inputNode.audioUnit else {
+      logger.error("Capture engine input node has no audio unit; falling back to default input device")
+      return false
+    }
+    var device = deviceID
+    let status = AudioUnitSetProperty(
+      audioUnit,
+      kAudioOutputUnitProperty_CurrentDevice,
+      kAudioUnitScope_Global,
+      0,
+      &device,
+      UInt32(MemoryLayout<AudioDeviceID>.size)
+    )
+    if status != noErr {
+      logger.error("Failed to bind capture engine to input device \(deviceID) status=\(status); falling back to default input device")
+      return false
+    }
+    return true
+  }
+
   private func armEngine(reason: String) throws {
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
+    var boundDeviceID: AudioDeviceID?
+    if let preferredInputDeviceID, bindInputNode(inputNode, to: preferredInputDeviceID) {
+      boundDeviceID = preferredInputDeviceID
+    }
     let inputFormat = inputNode.inputFormat(forBus: 0)
     guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
       throw NSError(
@@ -245,7 +281,7 @@ final class SuperFastCaptureController {
       self?.handleConfigurationChange(generation: generation)
     }
     logger.notice(
-      "Capture engine armed reason=\(reason) sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
+      "Capture engine armed reason=\(reason) input=\(boundDeviceID.map(String.init(describing:)) ?? "system-default") sampleRate=\(String(format: "%.0f", inputFormat.sampleRate))Hz channels=\(inputFormat.channelCount) ringBuffer=\(String(format: "%.2f", SuperFastCaptureConstants.ringBufferDuration))s defaultPreRoll=\(String(format: "%.2f", SuperFastCaptureConstants.defaultPreRollDuration))s"
     )
   }
 
