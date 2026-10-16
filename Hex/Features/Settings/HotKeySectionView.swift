@@ -52,8 +52,7 @@ struct HotKeySectionView: View {
                 Image(systemName: "hand.tap")
             }
 
-            // Double-tap only mode applies to key+modifier combinations.
-            if hotKey.key != nil {
+            if store.hexSettings.doubleTapLockEnabled {
                 Label {
                     Toggle(
                         "Use double-tap only",
@@ -62,14 +61,14 @@ struct HotKeySectionView: View {
                             set: { store.send(.setUseDoubleTapOnly($0)) }
                         )
                     )
-                        .disabled(!store.hexSettings.doubleTapLockEnabled)
                 } icon: {
                     Image(systemName: "hand.tap.fill")
                 }
             }
 
             // Minimum key time (for modifier-only shortcuts)
-            if store.hexSettings.hotkey.key == nil {
+            if store.hexSettings.hotkey.key == nil,
+               !(store.hexSettings.doubleTapLockEnabled && store.hexSettings.useDoubleTapOnly) {
                 Label {
                     Slider(
                         value: Binding(
