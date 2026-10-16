@@ -43,7 +43,7 @@ private let hotKeyLogger = HexLog.hotKey
 /// For hotkeys with no key component (e.g., Option-only):
 /// - "Press" = all required modifiers held, no key pressed
 /// - "Release" = any required modifier released
-/// - Uses higher minimum duration (0.3s) to prevent conflicts with OS shortcuts
+/// - Uses user's `minimumKeyTime` setting as the discard threshold
 /// - Mouse clicks within threshold → silent discard (prevents Option+click conflicts)
 /// - After threshold, only ESC cancels (mouse clicks ignored)
 ///
@@ -135,7 +135,7 @@ public struct HotKeyProcessor {
     ///   - hotkey: The key combination to detect
     ///   - useDoubleTapOnly: If true, disables press-and-hold for key+modifier hotkeys
     ///   - doubleTapLockEnabled: If false, disables double-tap lock behavior
-    ///   - minimumKeyTime: Minimum duration for valid key press (overridden to modifierOnlyMinimumDuration for modifier-only)
+    ///   - minimumKeyTime: Minimum duration for valid key press (user configured)
     public init(
         hotkey: HotKey,
         useDoubleTapOnly: Bool = false,
@@ -232,9 +232,8 @@ public struct HotKeyProcessor {
         case let .pressAndHold(startTime):
             // Mouse click during modifier-only recording
             let elapsed = now.timeIntervalSince(startTime)
-            // For modifier-only hotkeys, use the same threshold as RecordingDecisionEngine
-            // (max of minimumKeyTime and 0.3s) to be consistent
-            let effectiveMinimum = max(minimumKeyTime, RecordingDecisionEngine.modifierOnlyMinimumDuration)
+            // Use the user's minimumKeyTime directly (consistent with RecordingDecisionEngine)
+            let effectiveMinimum = minimumKeyTime
             
             // Only discard if within threshold - after threshold, ignore clicks (only ESC cancels)
             if elapsed < effectiveMinimum {
@@ -396,7 +395,7 @@ extension HotKeyProcessor {
                 
                 // Modifier-only hotkeys: Only discard within threshold, ignore after
                 if hotkey.key == nil {
-                    let effectiveMinimum = max(minimumKeyTime, RecordingDecisionEngine.modifierOnlyMinimumDuration)
+                    let effectiveMinimum = minimumKeyTime
                     
                     if elapsed < effectiveMinimum {
                         // Within threshold => discard silently (accidental trigger)
