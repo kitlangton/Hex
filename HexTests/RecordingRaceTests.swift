@@ -232,7 +232,7 @@ final class RecordingRaceTests: XCTestCase {
       TranscriptionFeature()
     }
 
-    await store.send(.transcriptionResult("", audioURL, 1.25))
+    await store.send(.transcriptionResult("", audioURL, 1.25, nil))
     await store.finish()
 
     XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
@@ -248,13 +248,14 @@ final class RecordingRaceTests: XCTestCase {
       audioPath: audioURL,
       duration: duration,
       sourceAppBundleID: nil,
-      sourceAppName: nil
+      sourceAppName: nil,
+      modelIdentifier: "test-model"
     )
     let probe = TranscriptPersistenceProbe()
     let store = TestStore(initialState: Self.makeState()) {
       TranscriptionFeature()
     } withDependencies: {
-      $0.transcriptPersistence.save = { text, audioURL, duration, sourceAppBundleID, sourceAppName in
+      $0.transcriptPersistence.save = { text, audioURL, duration, sourceAppBundleID, sourceAppName, modelIdentifier in
         await probe.record(duration: duration)
         return transcript
       }
@@ -262,7 +263,7 @@ final class RecordingRaceTests: XCTestCase {
       $0.soundEffects.play = { _ in }
     }
 
-    await store.send(.transcriptionResult("hello", audioURL, duration))
+    await store.send(.transcriptionResult("hello", audioURL, duration, "test-model"))
     while await probe.duration == nil {
       await Task.yield()
     }

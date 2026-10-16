@@ -88,7 +88,9 @@ public struct CuratedModelInfo: Equatable, Identifiable, Codable {
 }
 
 // Convenience helper for loading the bundled models.json once.
-private enum CuratedModelLoader {
+// (Internal rather than private so the History view can resolve model
+// display names for transcript attribution.)
+enum CuratedModelLoader {
 	private static let bundledModels: [CuratedModelInfo] = {
 		guard let url = Bundle.main.url(forResource: "models", withExtension: "json") ??
 			Bundle.main.url(forResource: "models", withExtension: "json", subdirectory: "Data")
@@ -102,6 +104,20 @@ private enum CuratedModelLoader {
 
 	static func load() -> [CuratedModelInfo] {
 		bundledModels
+	}
+
+	/// Friendly label for a raw model identifier (e.g. history attribution).
+	/// Resolves against the unfiltered bundled list so transcripts keep their
+	/// label even when the model is no longer offered on this system, and
+	/// prettifies unknown identifiers instead of failing.
+	static func displayName(for identifier: String) -> String {
+		if let match = bundledModels.first(where: { ModelPatternMatcher.matches($0.internalName, identifier) }) {
+			return match.displayName
+		}
+		return identifier
+			.replacingOccurrences(of: "-", with: " ")
+			.replacingOccurrences(of: "_", with: " ")
+			.capitalized
 	}
 }
 
@@ -213,10 +229,7 @@ public struct ModelDownloadFeature {
 		if let match = curated.first(where: { ModelPatternMatcher.matches($0.internalName, model) }) {
 			return match.displayName
 		}
-		return model
-			.replacingOccurrences(of: "-", with: " ")
-			.replacingOccurrences(of: "_", with: " ")
-			.capitalized
+		return CuratedModelLoader.displayName(for: model)
 	}
 
 	private func updateBootstrapState(_ state: inout State) {

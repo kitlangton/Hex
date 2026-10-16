@@ -50,7 +50,7 @@ struct TranscriptionFeature {
     case discard  // Silent discard (too short/accidental)
 
     // Transcription result flow
-    case transcriptionResult(String, URL, TimeInterval)
+    case transcriptionResult(String, URL, TimeInterval, String?)
     case transcriptionError(Error, URL?)
 
     // Model availability
@@ -117,8 +117,8 @@ struct TranscriptionFeature {
 
       // MARK: - Transcription Results
 
-      case let .transcriptionResult(result, audioURL, duration):
-        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration)
+      case let .transcriptionResult(result, audioURL, duration, modelIdentifier):
+        return handleTranscriptionResult(&state, result: result, audioURL: audioURL, duration: duration, modelIdentifier: modelIdentifier)
 
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
@@ -414,7 +414,9 @@ private extension TranscriptionFeature {
 
           transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
           audioURL = nil
-          await send(.transcriptionResult(result, capturedURL, duration))
+          // Attribute the transcript to the model actually used for this run
+          // (the selection could change in Settings while transcription runs).
+          await send(.transcriptionResult(result, capturedURL, duration, model))
         } catch {
           transcriptionFeatureLogger.error("Transcription failed: \(error.localizedDescription)")
           await send(.transcriptionError(error, nil))
@@ -432,7 +434,8 @@ private extension TranscriptionFeature {
     _ state: inout State,
     result: String,
     audioURL: URL,
-    duration: TimeInterval
+    duration: TimeInterval,
+    modelIdentifier: String?
   ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
@@ -505,6 +508,7 @@ private extension TranscriptionFeature {
           duration: duration,
           sourceAppBundleID: sourceAppBundleID,
           sourceAppName: sourceAppName,
+          modelIdentifier: modelIdentifier,
           audioURL: audioURL,
           transcriptionHistory: transcriptionHistory
         )
@@ -537,6 +541,7 @@ private extension TranscriptionFeature {
     duration: TimeInterval,
     sourceAppBundleID: String?,
     sourceAppName: String?,
+    modelIdentifier: String?,
     audioURL: URL,
     transcriptionHistory: Shared<TranscriptionHistory>
   ) async throws {
@@ -548,7 +553,8 @@ private extension TranscriptionFeature {
         audioURL,
         duration,
         sourceAppBundleID,
-        sourceAppName
+        sourceAppName,
+        modelIdentifier
       )
 
       transcriptionHistory.withLock { history in

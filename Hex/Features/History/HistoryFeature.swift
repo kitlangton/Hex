@@ -255,6 +255,14 @@ struct TranscriptView: View {
 					Text(transcript.timestamp.formatted(date: .omitted, time: .shortened))
 					Text("•")
 					Text(String(format: "%.1fs", transcript.duration))
+					// Which model produced this transcript (absent on entries
+					// saved before model attribution existed).
+					if let modelIdentifier = transcript.modelIdentifier {
+						Text("•")
+						Text(CuratedModelLoader.displayName(for: modelIdentifier))
+							.lineLimit(1)
+							.truncationMode(.tail)
+					}
 				}
 				.font(.subheadline)
 				.foregroundStyle(.secondary)
@@ -333,7 +341,7 @@ struct TranscriptView: View {
 
 #Preview {
 	TranscriptView(
-		transcript: Transcript(timestamp: Date(), text: "Hello, world!", audioPath: URL(fileURLWithPath: "/Users/langton/Downloads/test.m4a"), duration: 1.0),
+		transcript: Transcript(timestamp: Date(), text: "Hello, world!", audioPath: URL(fileURLWithPath: "/Users/langton/Downloads/test.m4a"), duration: 1.0, modelIdentifier: "parakeet-tdt-0.6b-v3-coreml"),
 		isPlaying: false,
 		onPlay: {},
 		onCopy: {},
