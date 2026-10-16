@@ -13,6 +13,7 @@ struct WordRemappingsView: View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: 24) {
 				previewSection
+				customVocabularySection
 				wordRulesSection
 				outputFormattingSection
 			}
@@ -57,6 +58,51 @@ struct WordRemappingsView: View {
 							.padding(.horizontal, 8)
 							.padding(.vertical, 5)
 							.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+					}
+				}
+				.padding(.vertical, 4)
+			}
+		}
+	}
+
+	private var customVocabularySection: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Text("Custom vocabulary")
+				.font(.headline)
+
+			GroupBox {
+				VStack(alignment: .leading, spacing: 10) {
+					HStack {
+						Text("Words the transcriber gets wrong (names, jargon). Whisper models are biased toward these spellings before you speak.")
+							.settingsCaption()
+							.fixedSize(horizontal: false, vertical: true)
+						Spacer()
+						Toggle(
+							"Enabled",
+							isOn: Binding(
+								get: { store.hexSettings.customVocabularyEnabled },
+								set: { store.send(.setCustomVocabularyEnabled($0)) }
+							)
+						)
+						.toggleStyle(.switch)
+						.controlSize(.small)
+					}
+
+					TextField(
+						"Comma-separated, e.g. Langton, Kit, TCA, WhisperKit",
+						text: Binding(
+							get: { store.hexSettings.customVocabulary },
+							set: { store.send(.setCustomVocabulary($0)) }
+						),
+						axis: .vertical
+					)
+					.textFieldStyle(.roundedBorder)
+					.lineLimit(2...4)
+					.disabled(!store.hexSettings.customVocabularyEnabled)
+
+					if ParakeetModel(rawValue: store.hexSettings.selectedModel) != nil {
+						Text("Custom vocabulary only applies to Whisper models. Your selected model is Parakeet.")
+							.settingsCaption()
 					}
 				}
 				.padding(.vertical, 4)

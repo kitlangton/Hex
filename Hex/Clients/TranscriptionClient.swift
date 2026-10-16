@@ -22,7 +22,9 @@ private let parakeetLogger = HexLog.parakeet
 struct TranscriptionClient {
   /// Transcribes an audio file at the specified `URL` using the named `model`.
   /// Reports transcription progress via `progressCallback`.
-  var transcribe: @Sendable (URL, String, DecodingOptions, @escaping (Progress) -> Void) async throws -> String
+  /// `customVocabularyPrompt`, when non-nil, is tokenized and passed to Whisper via
+  /// `DecodingOptions.promptTokens` to bias decoding toward the user's terms.
+  var transcribe: @Sendable (URL, String, DecodingOptions, String?, @escaping (Progress) -> Void) async throws -> String
 
   /// Ensures a model is downloaded (if missing) and loaded into memory, reporting progress via `progressCallback`.
   var downloadModel: @Sendable (String, @escaping (Progress) -> Void) async throws -> Void
@@ -44,7 +46,7 @@ extension TranscriptionClient: DependencyKey {
   static var liveValue: Self {
     let live = TranscriptionClientLive()
     return Self(
-      transcribe: { try await live.transcribe(url: $0, model: $1, options: $2, progressCallback: $3) },
+      transcribe: { try await live.transcribe(url: $0, model: $1, options: $2, customVocabularyPrompt: $3, progressCallback: $4) },
       downloadModel: { try await live.downloadAndLoadModel(variant: $0, progressCallback: $1) },
       deleteModel: { try await live.deleteModel(variant: $0) },
       isModelDownloaded: { await live.isModelDownloaded($0) },
@@ -225,6 +227,7 @@ actor TranscriptionClientLive {
     url: URL,
     model: String,
     options: DecodingOptions,
+    customVocabularyPrompt: String? = nil,
     progressCallback: @escaping (Progress) -> Void
   ) async throws -> String {
     let startAll = Date()
@@ -267,6 +270,15 @@ actor TranscriptionClientLive {
     }
 
     // Perform the transcription.
+    // Inject custom vocabulary as decoder prompt tokens (Whisper's `initial_prompt`
+    // equivalent): the model treats them as previously transcribed context and is
+    // more likely to reproduce the exact spelling/casing of the listed terms.
+    var options = options
+    if let customVocabularyPrompt,
+       let tokenizer = whisperKit.tokenizer {
+      options.promptTokens = tokenizer.encode(text: customVocabularyPrompt)
+      transcriptionLogger.info("Injected custom vocabulary prompt (\(options.promptTokens?.count ?? 0) tokens)")
+    }
     transcriptionLogger.notice("Transcribing with WhisperKit model=\(model) file=\(url.lastPathComponent)")
     let startTx = Date()
     let results = try await whisperKit.transcribe(audioPath: url.path, decodeOptions: options)

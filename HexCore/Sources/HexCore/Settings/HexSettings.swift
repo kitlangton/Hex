@@ -50,6 +50,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemappings: [WordRemapping]
 	public var lowercaseTranscripts: Bool
 	public var removePunctuation: Bool
+	public var customVocabularyEnabled: Bool
+	public var customVocabulary: String
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -84,7 +86,9 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
 		wordRemappings: [WordRemapping] = [],
 		lowercaseTranscripts: Bool = false,
-		removePunctuation: Bool = false
+		removePunctuation: Bool = false,
+		customVocabularyEnabled: Bool = true,
+		customVocabulary: String = ""
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -113,6 +117,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemappings = wordRemappings
 		self.lowercaseTranscripts = lowercaseTranscripts
 		self.removePunctuation = removePunctuation
+		self.customVocabularyEnabled = customVocabularyEnabled
+		self.customVocabulary = customVocabulary
 		normalizeDoubleTapSettings()
 	}
 
@@ -164,7 +170,9 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemappings
 	case lowercaseTranscripts
 	case removePunctuation
-}
+	case customVocabularyEnabled
+	case customVocabulary
+	}
 
 private struct SettingsField<Value: Codable & Sendable> {
 	let key: HexSettingKey
@@ -299,6 +307,8 @@ private enum HexSettingsSchema {
 			default: defaults.wordRemappings
 		).eraseToAny(),
 		SettingsField(.lowercaseTranscripts, keyPath: \.lowercaseTranscripts, default: defaults.lowercaseTranscripts).eraseToAny(),
-		SettingsField(.removePunctuation, keyPath: \.removePunctuation, default: defaults.removePunctuation).eraseToAny()
+		SettingsField(.removePunctuation, keyPath: \.removePunctuation, default: defaults.removePunctuation).eraseToAny(),
+		SettingsField(.customVocabularyEnabled, keyPath: \.customVocabularyEnabled, default: defaults.customVocabularyEnabled).eraseToAny(),
+		SettingsField(.customVocabulary, keyPath: \.customVocabulary, default: defaults.customVocabulary).eraseToAny()
 	]
 }

@@ -365,6 +365,12 @@ private extension TranscriptionFeature {
     state.isTranscribing = true
     state.error = nil
     let language = state.hexSettings.outputLanguage
+    // Bias Whisper decoding toward the user's custom vocabulary (names, jargon).
+    // No-op for Parakeet, which doesn't support prompt conditioning.
+    let customVocabularyPrompt = CustomVocabularyPrompt.makePromptText(
+      vocabulary: state.hexSettings.customVocabulary,
+      isEnabled: state.hexSettings.customVocabularyEnabled
+    )
 
     state.isPrewarming = true
 
@@ -410,7 +416,7 @@ private extension TranscriptionFeature {
             chunkingStrategy: .vad,
           )
 
-          let result = try await transcription.transcribe(capturedURL, model, decodeOptions) { _ in }
+          let result = try await transcription.transcribe(capturedURL, model, decodeOptions, customVocabularyPrompt) { _ in }
 
           transcriptionFeatureLogger.notice("Transcribed audio from \(capturedURL.lastPathComponent) to text length \(result.count)")
           audioURL = nil
