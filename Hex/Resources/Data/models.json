@@ -46,5 +46,13 @@
     "accuracyStars": 5,
     "speedStars": 2,
     "storageSize": "1.5GB"
+  },
+  {
+    "displayName": "Apple Speech",
+    "internalName": "apple-speechanalyzer",
+    "size": "Multilingual",
+    "accuracyStars": 4,
+    "speedStars": 5,
+    "storageSize": "Managed by macOS"
   }
 ]

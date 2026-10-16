@@ -68,6 +68,7 @@ The app uses **The Composable Architecture (TCA)** for state management. Key arc
 
 - Default: Parakeet TDT v3 (multilingual) via FluidAudio
 - Additional curated: Whisper Small (Tiny), Whisper Medium (Base), Whisper Large v3
+- Apple Speech (`apple-speechanalyzer`): Apple's on‑device SpeechAnalyzer engine, shown only on macOS 26+ with capable hardware and only in builds made with the macOS 26 SDK (Xcode 26; older toolchains compile a stub via `#if compiler(>=6.2)`). Locale assets are OS‑managed via AssetInventory and follow the Output Language setting — there is no Finder location and no uninstall API, so the row hides Show in Finder / Delete. Batch‑only today (transcribes the recorded file); streaming is a possible follow‑up.
 - Note: Distil‑Whisper is English‑only and not shown by default
 
 ### Storage Locations

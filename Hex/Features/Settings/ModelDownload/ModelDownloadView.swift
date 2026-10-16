@@ -535,9 +535,11 @@ private struct ModelLibraryRow: View {
 		.contextMenu {
 			if isDownloading {
 				Button("Cancel Download", role: .destructive, action: onCancelDownload)
-				Button("Show in Finder", action: onShowInFinder)
+				if model.supportsLocalFileManagement {
+					Button("Show in Finder", action: onShowInFinder)
+				}
 			}
-			if model.isDownloaded {
+			if model.isDownloaded, model.supportsLocalFileManagement {
 				managementMenuItems
 			}
 		}
@@ -566,21 +568,29 @@ private struct ModelLibraryRow: View {
 					.controlSize(.small)
 			}
 		} else if model.isDownloaded {
-			Menu {
-				managementMenuItems
-			} label: {
-				Image(systemName: "ellipsis.circle")
-					.font(.body)
-					.foregroundStyle(.secondary)
+			// Apple Speech assets have no Finder location and no uninstall API,
+			// so there is nothing to manage — the "Installed" status says it all.
+			if model.supportsLocalFileManagement {
+				Menu {
+					managementMenuItems
+				} label: {
+					Image(systemName: "ellipsis.circle")
+						.font(.body)
+						.foregroundStyle(.secondary)
+				}
+				.menuStyle(.borderlessButton)
+				.menuIndicator(.hidden)
+				.fixedSize()
+				.help("Show in Finder or remove this download")
 			}
-			.menuStyle(.borderlessButton)
-			.menuIndicator(.hidden)
-			.fixedSize()
-			.help("Show in Finder or remove this download")
 		} else {
 			Button("Download", action: onDownload)
 				.controlSize(.small)
-				.help("Download \(model.storageSize) and switch to this model")
+				.help(
+					model.supportsLocalFileManagement
+						? "Download \(model.storageSize) and switch to this model"
+						: "Download speech assets for your language and switch to this model"
+				)
 		}
 	}
 
