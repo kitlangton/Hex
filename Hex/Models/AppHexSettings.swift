@@ -7,6 +7,11 @@ import HexCore
 typealias RecordingAudioBehavior = HexCore.RecordingAudioBehavior
 typealias HexSettings = HexCore.HexSettings
 
+enum HotKeyCaptureTarget: Equatable, Sendable {
+	case recording
+	case pasteLastTranscript
+}
+
 extension SharedReaderKey
 	where Self == FileStorageKey<HexSettings>.Default
 {
@@ -15,6 +20,14 @@ extension SharedReaderKey
 			.fileStorage(.hexSettingsURL),
 			default: .init()
 		]
+	}
+}
+
+extension SharedReaderKey
+	where Self == InMemoryKey<HotKeyCaptureTarget?>.Default
+{
+	static var hotKeyCaptureTarget: Self {
+		Self[.inMemory("hotKeyCaptureTarget"), default: nil]
 	}
 }
 
