@@ -280,8 +280,12 @@ private enum HexSettingsSchema {
 			.pasteLastTranscriptHotkey,
 			keyPath: \.pasteLastTranscriptHotkey,
 			default: defaults.pasteLastTranscriptHotkey,
+			decode: { container, key, defaultValue in
+				guard container.contains(key) else { return defaultValue }
+				return try container.decode(HotKey?.self, forKey: key)
+			},
 			encode: { container, key, value in
-				try container.encodeIfPresent(value, forKey: key)
+				try container.encode(value, forKey: key)
 			}
 		).eraseToAny(),
 		SettingsField(.hasCompletedModelBootstrap, keyPath: \.hasCompletedModelBootstrap, default: defaults.hasCompletedModelBootstrap).eraseToAny(),
